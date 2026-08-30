@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Review Submission</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      The Ledger
+    </a>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">3</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Proof submitted, awaiting review</p><p class="text-xs text-slate-500 mt-0.5">Riley · 5 min ago</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <a href="submissive-detail.html" class="text-xs text-slate-500 hover:text-slate-300">&larr; Riley</a>
+
+  <div class="flex items-center justify-between mt-3 mb-6">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <h1 class="text-xl font-semibold tracking-tight">Review submission</h1>
+        <span class="text-[11px] font-medium bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">verification</span>
+      </div>
+      <p class="text-sm text-slate-400">Riley · scheduled check-in · submitted 5 minutes ago</p>
+    </div>
+    <span class="text-xs font-semibold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-full">pending</span>
+  </div>
+
+  <div class="rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-2 mb-6 text-xs text-slate-500">
+    Reviewing a <span class="font-medium text-slate-300">punishment completion</span> proof instead looks the same, minus the code panel below — verified there marks the punishment <span class="text-emerald-400">completed</span>, failed <span class="text-red-400">fails it and triggers its escalation</span>.
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+
+    <!-- media -->
+    <div class="md:col-span-3 space-y-4">
+      <div class="aspect-[4/3] rounded-xl border border-slate-800 bg-slate-900 flex flex-col items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+        <p class="text-xs">attachment_2f9a3c.jpg &middot; 2.1 MB</p>
+        <p class="text-[11px] text-slate-700 mt-1">preview placeholder — mockup only</p>
+      </div>
+      <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+        <div>
+          <p class="text-xs text-slate-400">Verification code expected in frame</p>
+          <p class="text-lg font-mono tracking-widest text-amber-500">A7QK3D</p>
+        </div>
+        <p class="text-xs text-slate-500 text-right">issued 09:02<br/>expires 09:17 · submitted 09:06</p>
+      </div>
+      <div class="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3">
+        <p class="text-xs text-slate-400 mb-1">Submitted metadata</p>
+        <p class="text-sm text-slate-300">"Feeling fine, no issues. Cleaned this morning."</p>
+      </div>
+    </div>
+
+    <!-- decision panel -->
+    <div class="md:col-span-2 space-y-4">
+      <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-400 mb-3">Decision</p>
+
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <button id="btn-verified" class="decision-btn rounded-lg border border-emerald-700 text-emerald-400 hover:bg-emerald-600/10 py-2 text-xs font-semibold">Verify</button>
+          <button id="btn-redo" class="decision-btn rounded-lg border border-amber-700 text-amber-400 hover:bg-amber-600/10 py-2 text-xs font-semibold">Redo</button>
+          <button id="btn-failed" class="decision-btn rounded-lg border border-red-700 text-red-400 hover:bg-red-600/10 py-2 text-xs font-semibold">Fail</button>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Review notes (optional)</label>
+          <textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-600/60" placeholder="Visible to Riley…"></textarea>
+        </div>
+
+        <!-- punishment picker, shown only when Fail is selected -->
+        <div id="punishment-panel" class="hidden mt-4 border-t border-slate-800 pt-4">
+          <p class="text-xs font-medium text-red-400 mb-2">Attach a punishment (optional)</p>
+
+          <div class="flex gap-2 mb-3 text-xs">
+            <button id="tab-existing" class="punishment-tab flex-1 rounded-md bg-slate-800 py-1.5 font-medium">From catalog</button>
+            <button id="tab-new" class="punishment-tab flex-1 rounded-md text-slate-400 py-1.5 font-medium">Create new</button>
+          </div>
+
+          <div id="panel-existing">
+            <select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 mb-2">
+              <option>500 lines, handwritten</option>
+              <option>No orgasm for 3 extra days</option>
+              <option>Cold shower, 5 minutes, video required</option>
+              <option>Corner time — 20 minutes</option>
+            </select>
+          </div>
+
+          <div id="panel-new" class="hidden space-y-2">
+            <input type="text" placeholder="Title" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+            <textarea rows="2" placeholder="Description" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+            <label class="flex items-center gap-2 text-xs text-slate-400">
+              <input type="checkbox" class="rounded bg-slate-950 border-slate-700" checked /> Save to catalog for future use
+            </label>
+          </div>
+        </div>
+
+        <button class="w-full mt-4 rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+          Submit review
+        </button>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-400 mb-2">Submission history for this code</p>
+        <p class="text-xs text-slate-500">First submission for this verification window — no prior redo.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('.decision-btn').on('click', function () {
+    $('.decision-btn').removeClass('ring-2 ring-offset-2 ring-offset-slate-900');
+    var ring = { 'btn-verified':'ring-emerald-600', 'btn-redo':'ring-amber-600', 'btn-failed':'ring-red-600' }[this.id];
+    $(this).addClass('ring-2 ring-offset-2 ring-offset-slate-900 ' + ring);
+    $('#punishment-panel').toggleClass('hidden', this.id !== 'btn-failed');
+  });
+
+  $('#tab-existing').on('click', function () {
+    $(this).addClass('bg-slate-800 font-medium').removeClass('text-slate-400');
+    $('#tab-new').removeClass('bg-slate-800 font-medium').addClass('text-slate-400');
+    $('#panel-existing').removeClass('hidden');
+    $('#panel-new').addClass('hidden');
+  });
+  $('#tab-new').on('click', function () {
+    $(this).addClass('bg-slate-800 font-medium').removeClass('text-slate-400');
+    $('#tab-existing').removeClass('bg-slate-800 font-medium').addClass('text-slate-400');
+    $('#panel-new').removeClass('hidden');
+    $('#panel-existing').addClass('hidden');
+  });
+</script>
+</body>
+</html>

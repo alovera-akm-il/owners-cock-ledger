@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Submit Proof</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="submissive-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="submissive-dashboard.html" class="text-slate-400 hover:text-slate-200">My Status</a>
+        <a href="submit-proof.html" class="text-slate-100 font-medium">Submit Proof</a>
+        <a href="submissive-history.html" class="text-slate-400 hover:text-slate-200">History</a>
+        <a href="submissive-statistics.html" class="text-slate-400 hover:text-slate-200">Statistics</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">2</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-sky-400 hover:text-sky-300">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-sky-400 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Verification code issued</p><p class="text-xs text-slate-500 mt-0.5">Expires in 15 min · just now</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="submissive-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">R</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-2xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">Submit proof</h1>
+  <p class="text-sm text-slate-400 mb-4">Same form either way — what it's proof <em>of</em> depends on where you got here from</p>
+
+  <div class="flex gap-2 mb-6 text-sm">
+    <button id="mode-verification" class="proof-mode-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Scheduled check-in</button>
+    <button id="mode-punishment" class="proof-mode-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Punishment completion</button>
+  </div>
+
+  <div id="context-verification" class="rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 flex items-center justify-between">
+    <div>
+      <p class="text-xs font-medium text-amber-500 mb-1">Your verification code</p>
+      <p class="text-3xl font-mono tracking-widest text-amber-400">A7QK3D</p>
+      <p class="text-xs text-slate-400 mt-1">Must be visible in your photo. Expires in <span id="countdown" class="font-semibold text-amber-400">09:42</span>.</p>
+    </div>
+    <button class="text-xs font-medium text-slate-400 border border-slate-700 rounded-lg px-3 py-2 hover:border-slate-600">Request new code</button>
+  </div>
+
+  <div id="context-punishment" class="hidden rounded-xl border border-red-700/40 bg-red-500/5 p-5 mb-6">
+    <p class="text-xs font-medium text-red-400 mb-1">Proving completion of</p>
+    <p class="text-lg font-semibold text-slate-100">Cold shower, video required</p>
+    <p class="text-xs text-slate-400 mt-1">Deadline in <span class="font-semibold text-amber-400">18h 42m</span> · miss it and it auto-fails to <span class="text-red-400">"extra day locked"</span></p>
+  </div>
+
+  <form class="space-y-5">
+
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-2">Photo / video</label>
+      <div class="rounded-xl border-2 border-dashed border-slate-700 bg-slate-900 p-8 text-center hover:border-slate-600 cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-slate-600 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/></svg>
+        <p class="text-sm text-slate-400">Drop files here, or click to choose</p>
+        <p class="text-xs text-slate-600 mt-1">JPG, PNG, MP4 · up to 25 MB · up to 3 files</p>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Notes to your Keyholder (optional)</label>
+      <textarea rows="3" placeholder="Anything they should know…" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2.5 text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-600/60"></textarea>
+    </div>
+
+    <button type="button" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+      Submit for review
+    </button>
+    <p class="text-xs text-center text-slate-500">Your Keyholder will mark this verified, redo, or failed. You'll see the outcome in History.</p>
+  </form>
+
+  <hr class="border-slate-800 my-10" />
+
+  <div id="redeem">
+    <h2 class="text-sm font-semibold text-slate-300 mb-3">Have an invite instead?</h2>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <input type="text" placeholder="Invite code" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 sm:col-span-2" />
+      <input type="email" placeholder="Email" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <input type="password" placeholder="Choose a password" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <button class="sm:col-span-2 rounded-lg bg-slate-800 hover:bg-slate-700 py-2 text-sm font-semibold">Redeem invite &amp; create account</button>
+    </div>
+  </div>
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('#mode-verification').on('click', function () {
+    $(this).addClass('bg-slate-800').removeClass('text-slate-400');
+    $('#mode-punishment').removeClass('bg-slate-800').addClass('text-slate-400');
+    $('#context-verification').removeClass('hidden');
+    $('#context-punishment').addClass('hidden');
+  });
+  $('#mode-punishment').on('click', function () {
+    $(this).addClass('bg-slate-800').removeClass('text-slate-400');
+    $('#mode-verification').removeClass('bg-slate-800').addClass('text-slate-400');
+    $('#context-punishment').removeClass('hidden');
+    $('#context-verification').addClass('hidden');
+  });
+</script>
+</body>
+</html>

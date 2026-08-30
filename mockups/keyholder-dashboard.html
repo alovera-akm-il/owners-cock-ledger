@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Keyholder Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-100 font-medium">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Rewards &amp; Punishments</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200 relative">Safety Alerts
+          <span class="absolute -top-2 -right-3 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">1</span>
+        </a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">3</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Punishment deadline in 1 hour</p><p class="text-xs text-slate-500 mt-0.5">"cold shower, video required" · Riley</p></span>
+            </li>
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Proof submitted, awaiting review</p><p class="text-xs text-slate-500 mt-0.5">Jordan · 20 min ago</p></span>
+            </li>
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2 opacity-60">
+              <span class="h-1.5 w-1.5 rounded-full bg-slate-600 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Punishment auto-failed (deadline passed)</p><p class="text-xs text-slate-500 mt-0.5">Sam · yesterday · escalated to "extra day locked"</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- needs your attention: one place for every "a human should look at this" signal -->
+  <div class="mb-6 rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-slate-800">
+      <p class="text-sm font-semibold">Needs your attention <span class="text-red-400">(5)</span></p>
+      <p class="text-[11px] text-slate-500">sorted by urgency, not by when it happened</p>
+    </div>
+    <ul class="divide-y divide-slate-800">
+      <li class="flex items-start gap-3 px-5 py-3.5 bg-red-600/5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-red-400">Safety alert from Riley — unacknowledged</p>
+          <p class="text-xs text-red-300/70 mt-0.5">Raised 8 minutes ago · "Device feels too tight, need to check"</p>
+        </div>
+        <a href="keyholder-safety-alerts.html" class="text-xs font-semibold text-red-300 hover:text-red-200 whitespace-nowrap shrink-0">View →</a>
+      </li>
+      <li class="flex items-start gap-3 px-5 py-3.5">
+        <span class="h-2 w-2 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-slate-200">+6h auto-applied — needs your review</p>
+          <p class="text-xs text-slate-500 mt-0.5">Riley's lock timer, from "extra day locked" · 12 min ago</p>
+        </div>
+        <a href="submissive-detail.html" class="text-xs font-semibold text-amber-400 hover:text-amber-300 whitespace-nowrap shrink-0">Review →</a>
+      </li>
+      <li class="flex items-start gap-3 px-5 py-3.5">
+        <span class="h-2 w-2 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-slate-200">Punishment deadline in 40 minutes</p>
+          <p class="text-xs text-slate-500 mt-0.5">Sam · "500 lines, handwritten"</p>
+        </div>
+        <a href="submissive-detail.html" class="text-xs font-semibold text-amber-400 hover:text-amber-300 whitespace-nowrap shrink-0">View →</a>
+      </li>
+      <li class="flex items-start gap-3 px-5 py-3.5">
+        <span class="h-2 w-2 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-slate-200">Proof submitted, awaiting review</p>
+          <p class="text-xs text-slate-500 mt-0.5">Jordan · "evening check-in" · 20 min ago</p>
+        </div>
+        <a href="submissive-detail.html" class="text-xs font-semibold text-amber-400 hover:text-amber-300 whitespace-nowrap shrink-0">Review →</a>
+      </li>
+      <li class="flex items-start gap-3 px-5 py-3.5">
+        <span class="h-2 w-2 rounded-full bg-sky-500 mt-1.5 shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-slate-200">Sam's lock timer has been paused for 2 days</p>
+          <p class="text-xs text-slate-500 mt-0.5">Paused 2026-08-28 — everything else is running normally, just the countdown is frozen</p>
+        </div>
+        <a href="submissive-detail.html" class="text-xs font-semibold text-sky-400 hover:text-sky-300 whitespace-nowrap shrink-0">View →</a>
+      </li>
+    </ul>
+  </div>
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Submissives</h1>
+      <p class="text-sm text-slate-400 mt-1">Everyone currently linked to you</p>
+    </div>
+    <button class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950 flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      Invite submissive
+    </button>
+  </div>
+
+  <!-- summary stats -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Active submissives</p>
+      <p class="text-2xl font-semibold mt-1">3</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Pending review</p>
+      <p class="text-2xl font-semibold mt-1 text-amber-500">4</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Open punishments</p>
+      <p class="text-2xl font-semibold mt-1 text-red-500">2</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Missed check-ins (7d)</p>
+      <p class="text-2xl font-semibold mt-1">1</p>
+    </div>
+  </div>
+
+  <!-- roster -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
+          <th class="px-5 py-3 font-medium">Submissive</th>
+          <th class="px-5 py-3 font-medium">Lock status</th>
+          <th class="px-5 py-3 font-medium">Last verification</th>
+          <th class="px-5 py-3 font-medium">Pending</th>
+          <th class="px-5 py-3 font-medium">Open items</th>
+          <th class="px-5 py-3 font-medium"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800">
+        <tr class="hover:bg-slate-800/40 cursor-pointer" onclick="window.location='submissive-detail.html'">
+          <td class="px-5 py-4">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">R</div>
+              <div>
+                <p class="font-medium">Riley</p>
+                <p class="text-xs text-slate-500">linked 142 days</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-5 py-4">
+            <span class="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Locked · 6d 4h
+            </span>
+          </td>
+          <td class="px-5 py-4 text-slate-300">Verified · 5h ago</td>
+          <td class="px-5 py-4">
+            <span class="rounded-full bg-amber-600/15 text-amber-500 text-xs font-semibold px-2 py-0.5">2 to review</span>
+          </td>
+          <td class="px-5 py-4 text-slate-400">1 punishment open</td>
+          <td class="px-5 py-4 text-right text-slate-500">→</td>
+        </tr>
+        <tr class="hover:bg-slate-800/40 cursor-pointer" onclick="window.location='submissive-detail.html'">
+          <td class="px-5 py-4">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">J</div>
+              <div>
+                <p class="font-medium">Jordan</p>
+                <p class="text-xs text-slate-500">linked 61 days</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-5 py-4">
+            <span class="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Locked · 1d 2h
+            </span>
+          </td>
+          <td class="px-5 py-4 text-slate-300">Verified · 20h ago</td>
+          <td class="px-5 py-4">
+            <span class="rounded-full bg-amber-600/15 text-amber-500 text-xs font-semibold px-2 py-0.5">1 to review</span>
+          </td>
+          <td class="px-5 py-4 text-slate-500">—</td>
+          <td class="px-5 py-4 text-right text-slate-500">→</td>
+        </tr>
+        <tr class="hover:bg-slate-800/40 cursor-pointer" onclick="window.location='submissive-detail.html'">
+          <td class="px-5 py-4">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">S</div>
+              <div>
+                <p class="font-medium">Sam</p>
+                <p class="text-xs text-slate-500">linked 9 days</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-5 py-4">
+            <span class="inline-flex items-center gap-1.5 text-slate-400 text-xs font-medium">
+              <span class="h-1.5 w-1.5 rounded-full bg-slate-500"></span> Unlocked
+            </span>
+          </td>
+          <td class="px-5 py-4 text-red-400">Missed window · 1d overdue</td>
+          <td class="px-5 py-4">
+            <span class="rounded-full bg-amber-600/15 text-amber-500 text-xs font-semibold px-2 py-0.5">1 to review</span>
+          </td>
+          <td class="px-5 py-4 text-slate-500">—</td>
+          <td class="px-5 py-4 text-right text-slate-500">→</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- cross-roster recent activity feed -->
+  <div class="mt-8">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-slate-300">Recent activity across your roster</h2>
+      <div class="flex items-center gap-1 text-xs">
+        <button class="days-filter rounded-md px-2.5 py-1 font-medium text-slate-950 bg-amber-600" data-days="3">3d</button>
+        <button class="days-filter rounded-md px-2.5 py-1 font-medium text-slate-400 hover:bg-slate-800" data-days="5">5d</button>
+        <button class="days-filter rounded-md px-2.5 py-1 font-medium text-slate-400 hover:bg-slate-800" data-days="7">7d</button>
+        <button class="days-filter rounded-md px-2.5 py-1 font-medium text-slate-400 hover:bg-slate-800" data-days="all">All</button>
+      </div>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">GET /keyholder/proof-submissions?days=<span id="days-label">3</span> — every submissive, newest first</p>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+      <div class="flex items-center gap-4 px-5 py-3 hover:bg-slate-800/30 cursor-pointer" onclick="window.location='proof-review.html'">
+        <div class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold shrink-0">R</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm"><span class="font-medium">Riley</span> <span class="text-slate-500">· scheduled check-in · photo</span></p>
+          <p class="text-xs text-slate-500">5 min ago · code #A7QK3D</p>
+        </div>
+        <span class="text-xs font-semibold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full shrink-0">pending</span>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-3 hover:bg-slate-800/30 cursor-pointer" onclick="window.location='submissive-detail.html'">
+        <div class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold shrink-0">J</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm"><span class="font-medium">Jordan</span> <span class="text-slate-500">· evening check-in · photo</span></p>
+          <p class="text-xs text-slate-500">20h ago · code #H2M9PL</p>
+        </div>
+        <span class="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full shrink-0">verified</span>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-3 hover:bg-slate-800/30 cursor-pointer" onclick="window.location='submissive-detail.html'">
+        <div class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold shrink-0">R</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm"><span class="font-medium">Riley</span> <span class="text-slate-500">· morning check-in · photo</span></p>
+          <p class="text-xs text-slate-500">yesterday · code not visible in frame</p>
+        </div>
+        <span class="text-xs font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full shrink-0">failed</span>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-3 hover:bg-slate-800/30 cursor-pointer" onclick="window.location='submissive-detail.html'">
+        <div class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold shrink-0">S</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm"><span class="font-medium">Sam</span> <span class="text-slate-500">· scheduled check-in</span></p>
+          <p class="text-xs text-slate-500">window expired 1 day ago — no submission received</p>
+        </div>
+        <span class="text-xs font-semibold text-slate-400 bg-slate-700/40 px-2 py-0.5 rounded-full shrink-0">missed</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('.days-filter').on('click', function () {
+    $('.days-filter').removeClass('bg-amber-600 text-slate-950').addClass('text-slate-400');
+    $(this).addClass('bg-amber-600 text-slate-950').removeClass('text-slate-400');
+    $('#days-label').text($(this).data('days'));
+  });
+</script>
+</body>
+</html>

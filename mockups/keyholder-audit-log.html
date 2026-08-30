@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Audit Log</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Rewards &amp; Punishments</a>
+        <a href="keyholder-audit-log.html" class="text-slate-100 font-medium">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">3</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">+6h auto-applied — needs your review</p><p class="text-xs text-slate-500 mt-0.5">Riley's lock timer, from "extra day locked" · 12 min ago</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Audit Log</h1>
+      <p class="text-sm text-slate-400 mt-1">Every state change across your roster — who did it, and how</p>
+    </div>
+  </div>
+
+  <!-- filters -->
+  <div class="flex flex-wrap items-center gap-2 mb-5 text-sm">
+    <select id="filter-submissive" class="bg-slate-900 border border-slate-800 rounded-lg text-xs px-3 py-2 text-slate-200">
+      <option value="all">All submissives</option>
+      <option>Riley</option>
+      <option>Jordan</option>
+      <option>Sam</option>
+    </select>
+    <select id="filter-action" class="bg-slate-900 border border-slate-800 rounded-lg text-xs px-3 py-2 text-slate-200">
+      <option value="all">All actions</option>
+      <option>Verification</option>
+      <option>Rewards &amp; punishments</option>
+      <option>Chastity &amp; timer</option>
+      <option>Safety</option>
+      <option>Profile &amp; link</option>
+      <option>API tokens</option>
+    </select>
+    <div class="flex items-center gap-1 ml-auto">
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-950 bg-amber-600" data-days="3">3d</button>
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800" data-days="7">7d</button>
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800" data-days="30">30d</button>
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800" data-days="all">All</button>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
+          <th class="px-5 py-3 font-medium">When</th>
+          <th class="px-5 py-3 font-medium">Submissive</th>
+          <th class="px-5 py-3 font-medium">Actor</th>
+          <th class="px-5 py-3 font-medium">Action</th>
+          <th class="px-5 py-3 font-medium">Detail</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800">
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">12 min ago</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h.01M15 9h.01M9.5 15a3.5 3.5 0 0 0 5 0"/></svg>
+              System
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="text-amber-400 font-medium">Punishment auto-failed</span>
+            <div class="text-[11px] text-amber-500/90 mt-1 flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span> timer change unreviewed</div>
+          </td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">"cold shower" deadline passed with no submission → escalated to "no orgasm for 3 extra days" (+3d 00h to lock timer)</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">31 min ago</td>
+          <td class="px-5 py-3.5 align-top">Jordan</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">API token · review dashboard bot</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-emerald-400 font-medium">Reviewed proof — verified</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">Evening check-in, on time</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">1h ago</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+              Riley
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-slate-200 font-medium">Submitted punishment completion proof</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">"cold shower, video required" — video attached</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">2h ago</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-sky-400 font-medium">Resumed lock timer</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">Paused 2h 14m — added back on resume, release date moved forward by exactly that much</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">2h ago</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-sky-400 font-medium">Paused lock timer</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">Message shown to Riley: "traveling for work, back Friday — timer resumes then"</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">3h ago</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-slate-200 font-medium">Timer adjusted +1d 00h</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">Manual — no note given</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">6h ago</td>
+          <td class="px-5 py-3.5 align-top">Sam</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-red-400 font-medium">Paused link</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">—</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">yesterday</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+              Riley
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-slate-200 font-medium">Acknowledged punishment</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">"corner time — 20 minutes"</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">yesterday</td>
+          <td class="px-5 py-3.5 align-top text-slate-500">—</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-slate-200 font-medium">Created API token</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">"review dashboard bot" · scopes: read:submissives, read:proof-submissions</td>
+        </tr>
+
+        <tr class="hover:bg-slate-800/30">
+          <td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">2 days ago</td>
+          <td class="px-5 py-3.5 align-top">Riley</td>
+          <td class="px-5 py-3.5 align-top">
+            <span class="inline-flex items-center gap-1.5 text-slate-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Z"/></svg>
+              You
+              <span class="text-[10px] font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span>
+            </span>
+          </td>
+          <td class="px-5 py-3.5 align-top"><span class="text-slate-200 font-medium">Updated private note</span></td>
+          <td class="px-5 py-3.5 align-top text-slate-400 text-xs">Riley's profile — keyholder-only field</td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4 rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-500">
+    <span class="text-slate-400 font-medium">Reading the "Actor" column:</span>
+    "You" with a <span class="bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">session</span> tag means you clicked it yourself; an <span class="bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">API token</span> tag means a script did it on your behalf; <span class="text-slate-300">System</span> means nothing was clicked at all — the deadline sweeper or an escalation did it on its own. Rows flagged <span class="text-amber-500/90">timer change unreviewed</span> are automatic timer extensions still waiting on your confirm-or-adjust — see the submissive's page to resolve them.
+  </div>
+
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('.days-filter').on('click', function () {
+    $('.days-filter').removeClass('bg-amber-600 text-slate-950').addClass('text-slate-400');
+    $(this).addClass('bg-amber-600 text-slate-950').removeClass('text-slate-400');
+  });
+</script>
+</body>
+</html>

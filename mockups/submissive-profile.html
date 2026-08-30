@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — My Profile</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="submissive-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="submissive-dashboard.html" class="text-slate-400 hover:text-slate-200">My Status</a>
+        <a href="submit-proof.html" class="text-slate-400 hover:text-slate-200">Submit Proof</a>
+        <a href="submissive-history.html" class="text-slate-400 hover:text-slate-200">History</a>
+        <a href="submissive-statistics.html" class="text-slate-400 hover:text-slate-200">Statistics</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">2</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-sky-400 hover:text-sky-300">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-sky-400 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Punishment deadline in 1 hour</p><p class="text-xs text-slate-500 mt-0.5">"500 lines, handwritten"</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="submissive-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 ring-2 ring-sky-500/60 flex items-center justify-center text-xs font-semibold">R</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-6 py-8 space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight mb-1">Profile &amp; settings</h1>
+    <p class="text-sm text-slate-400">Your account, and the boundaries you and your Keyholder have on record</p>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-4">Credentials</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+        <input type="email" value="riley@example.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Confirm current password to change email</label>
+        <input type="password" placeholder="Current password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+    </div>
+    <button class="mt-3 text-xs font-semibold text-sky-400 hover:text-sky-300">Save email</button>
+
+    <hr class="border-slate-800 my-5" />
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Current password</label>
+        <input type="password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">New password</label>
+        <input type="password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Confirm new password</label>
+        <input type="password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+    </div>
+    <button class="mt-3 text-xs font-semibold text-sky-400 hover:text-sky-300">Change password</button>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-4">Personal info</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Display name</label>
+        <input type="text" value="Riley" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Timezone</label>
+        <select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option>America/New_York</option>
+          <option>America/Chicago</option>
+          <option>Europe/London</option>
+        </select>
+      </div>
+    </div>
+    <label class="block text-xs font-medium text-slate-400 mb-1.5">Bio</label>
+    <textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <button class="mt-3 text-xs font-semibold text-sky-400 hover:text-sky-300">Save personal info</button>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-1">Safety</p>
+    <p class="text-xs text-slate-500 mb-4">Only you can see or edit these. Your Keyholder can view them (needs to, to respect them) but never edit them.</p>
+    <label class="block text-xs font-medium text-slate-400 mb-1.5">Safeword</label>
+    <input type="text" value="pineapple" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 mb-4" />
+    <label class="block text-xs font-medium text-slate-400 mb-1.5">Emergency contact</label>
+    <textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <button class="mt-3 text-xs font-semibold text-sky-400 hover:text-sky-300">Save safety info</button>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-1">Your boundaries</p>
+    <p class="text-xs text-slate-500 mb-4">Visible to your Keyholder — boundaries only work as a safety mechanism if both sides can see them.</p>
+    <label class="block text-xs font-medium text-red-400 mb-1.5">Hard limits</label>
+    <textarea rows="3" placeholder="Absolute — things your Keyholder must never do, regardless of context." class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 mb-4"></textarea>
+    <label class="block text-xs font-medium text-amber-400 mb-1.5">Soft limits</label>
+    <textarea rows="3" placeholder="Conditional — things that need extra care or negotiation first." class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <button class="mt-3 text-xs font-semibold text-sky-400 hover:text-sky-300">Save boundaries</button>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-1">Your Keyholder's boundaries</p>
+    <p class="text-xs text-slate-500 mb-4">Read-only — set by your Keyholder on their own profile.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <p class="text-xs font-medium text-red-400 mb-1.5">Hard limits</p>
+        <p class="text-sm text-slate-300 bg-slate-950 border border-slate-800 rounded-lg p-3">Nothing involving [example: permanent marks], no scenes without a pre-agreed safeword check-in.</p>
+      </div>
+      <div>
+        <p class="text-xs font-medium text-amber-400 mb-1.5">Soft limits</p>
+        <p class="text-sm text-slate-300 bg-slate-950 border border-slate-800 rounded-lg p-3">Extended denial past 30 days needs a check-in conversation first.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div class="flex items-center justify-between mb-1">
+      <p class="text-sm font-semibold">Push notifications</p>
+      <button id="enable-push-btn" class="rounded-lg bg-sky-500 hover:bg-sky-400 transition-colors px-4 py-2 text-xs font-semibold text-slate-950">Enable on this device</button>
+    </div>
+    <p class="text-xs text-slate-500">For verification codes, review outcomes, punishment deadlines, and rewards. Always backed by the bell icon above regardless of whether push is on.</p>
+  </div>
+
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('#enable-push-btn').on('click', function () {
+    $(this).text('Enabled ✓').prop('disabled', true).removeClass('bg-sky-500 hover:bg-sky-400').addClass('bg-emerald-600 cursor-default');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Sign In</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+  <div class="min-h-full flex items-center justify-center px-4">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-8">
+        <div class="mx-auto h-12 w-12 rounded-xl bg-amber-600 flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+          </svg>
+        </div>
+        <h1 class="text-xl font-semibold tracking-tight">The Ledger</h1>
+        <p class="text-sm text-slate-400 mt-1">Private confinement &amp; verification tracker</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <form class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="email">Email</label>
+            <input id="email" type="email" placeholder="you@example.com"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="password">Password</label>
+            <input id="password" type="password" placeholder="••••••••••"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+
+          <button type="button" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+            Sign in
+          </button>
+
+          <p class="text-xs text-center text-slate-500 pt-1">
+            Have an invite code from your Keyholder?
+            <a href="submit-proof.html#redeem" class="text-amber-500 hover:text-amber-400 font-medium">Redeem it</a>
+          </p>
+        </form>
+      </div>
+
+      <p class="text-center text-[11px] text-slate-600 mt-6">
+        Self-hosted instance &middot; sessions are private to this server &middot; no data leaves this device
+      </p>
+    </div>
+  </div>
+</body>
+</html>

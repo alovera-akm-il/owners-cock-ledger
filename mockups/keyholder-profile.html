@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Keyholder Profile</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Rewards &amp; Punishments</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">3</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Proof submitted, awaiting review</p><p class="text-xs text-slate-500 mt-0.5">Jordan · 20 min ago</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 ring-2 ring-amber-600/60 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">Profile &amp; settings</h1>
+  <p class="text-sm text-slate-400 mb-6">Your account, your boundaries, and automation access</p>
+
+  <div class="flex gap-2 mb-6 text-sm">
+    <button id="tab-profile" class="ph-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Profile</button>
+    <button id="tab-notifications" class="ph-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Notifications</button>
+    <button id="tab-tokens" class="ph-tab rounded-lg text-slate-400 px-4 py-2 font-medium">API Tokens <span class="text-slate-600">(2)</span></button>
+  </div>
+
+  <!-- ============ PROFILE TAB ============ -->
+  <div id="panel-profile" class="space-y-6">
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-sm font-semibold mb-4">Credentials</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+          <input type="email" value="mk@example.com" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Confirm current password to change email</label>
+          <input type="password" placeholder="Current password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+      </div>
+      <button class="mt-3 text-xs font-semibold text-amber-500 hover:text-amber-400">Save email</button>
+
+      <hr class="border-slate-800 my-5" />
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Current password</label>
+          <input type="password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">New password</label>
+          <input type="password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Confirm new password</label>
+          <input type="password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+      </div>
+      <button class="mt-3 text-xs font-semibold text-amber-500 hover:text-amber-400">Change password</button>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-sm font-semibold mb-4">Personal info</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Display name</label>
+          <input type="text" value="MK" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Timezone</label>
+          <select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            <option>America/New_York</option>
+            <option>America/Chicago</option>
+            <option>Europe/London</option>
+          </select>
+        </div>
+      </div>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Bio</label>
+      <textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 mb-4">Been keyholding for about two years. Firm but fair.</textarea>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Contact info <span class="text-slate-600">(never shown to submissives unless you choose to share it elsewhere)</span></label>
+      <textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+      <button class="mt-3 text-xs font-semibold text-amber-500 hover:text-amber-400">Save personal info</button>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-sm font-semibold mb-1">Your boundaries</p>
+      <p class="text-xs text-slate-500 mb-4">Visible to any submissive currently linked to you — boundaries only work as a safety mechanism if both sides can see them.</p>
+      <label class="block text-xs font-medium text-red-400 mb-1.5">Hard limits</label>
+      <textarea rows="3" placeholder="Absolute — things you will never assign or engage in, regardless of context." class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 mb-4"></textarea>
+      <label class="block text-xs font-medium text-amber-400 mb-1.5">Soft limits</label>
+      <textarea rows="3" placeholder="Conditional — things that need extra care, negotiation, or context first." class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+      <button class="mt-3 text-xs font-semibold text-amber-500 hover:text-amber-400">Save boundaries</button>
+    </div>
+  </div>
+
+  <!-- ============ NOTIFICATIONS TAB ============ -->
+  <div id="panel-notifications" class="hidden space-y-6">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-sm font-semibold">Push notifications</p>
+        <button id="enable-push-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-xs font-semibold text-slate-950">Enable on this device</button>
+      </div>
+      <p class="text-xs text-slate-500">Delivered via your browser, even when this tab isn't open. Always backed by the in-app feed below regardless of whether push is on.</p>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-800">
+        <p class="text-sm font-semibold">Registered devices</p>
+      </div>
+      <div class="divide-y divide-slate-800">
+        <div class="flex items-center justify-between px-5 py-3">
+          <div>
+            <p class="text-sm">Chrome on macOS</p>
+            <p class="text-xs text-slate-500">enabled 12 days ago · last notified 3 hours ago</p>
+          </div>
+          <button class="text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-2.5 py-1 transition-colors">Remove</button>
+        </div>
+        <div class="flex items-center justify-between px-5 py-3">
+          <div>
+            <p class="text-sm">Safari on iPhone</p>
+            <p class="text-xs text-slate-500">enabled 40 days ago · last notified 2 days ago</p>
+          </div>
+          <button class="text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-2.5 py-1 transition-colors">Remove</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-800">
+        <p class="text-sm font-semibold">Recent notifications</p>
+        <button class="text-xs font-medium text-amber-500 hover:text-amber-400">Mark all read</button>
+      </div>
+      <ul class="divide-y divide-slate-800 text-sm">
+        <li class="flex items-start gap-3 px-5 py-3">
+          <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+          <div class="flex-1">
+            <p class="font-medium">Proof submitted, awaiting review</p>
+            <p class="text-xs text-slate-500">Jordan · 20 min ago</p>
+          </div>
+        </li>
+        <li class="flex items-start gap-3 px-5 py-3">
+          <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+          <div class="flex-1">
+            <p class="font-medium">Punishment auto-failed (deadline passed)</p>
+            <p class="text-xs text-slate-500">Sam · yesterday · escalated to "extra day locked"</p>
+          </div>
+        </li>
+        <li class="flex items-start gap-3 px-5 py-3 opacity-60">
+          <span class="h-1.5 w-1.5 rounded-full bg-slate-600 mt-1.5 shrink-0"></span>
+          <div class="flex-1">
+            <p class="font-medium">Verification window missed</p>
+            <p class="text-xs text-slate-500">Sam · 2 days ago</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ API TOKENS TAB ============ -->
+  <div id="panel-tokens" class="hidden space-y-6">
+
+    <div class="rounded-xl border border-sky-700/40 bg-sky-500/5 p-4 text-xs text-sky-300">
+      Tokens let scripts act as you via the API — for example, a home-automation bridge or a dashboard bot. A token can never see or touch a submissive you aren't linked to; scopes only narrow which actions it may take within that.
+    </div>
+
+    <div class="flex items-center justify-between">
+      <p class="text-sm font-semibold">Your tokens</p>
+      <button id="new-token-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-xs font-semibold text-slate-950">+ New token</button>
+    </div>
+
+    <!-- create form -->
+    <div id="new-token-form" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Label</label>
+        <input type="text" placeholder="e.g. review dashboard bot" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-2">Scopes</label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700" checked> read:submissives</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700" checked> read:proof-submissions</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> read:proof-attachments</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> review:proof-submissions</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> manage:assignments</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> read:catalog</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> manage:catalog</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> read:audit-log</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> read:safety-alerts</label>
+          <label class="flex items-center gap-2 text-red-400"><input type="checkbox" class="rounded bg-slate-950 border-slate-700"> manage:invites</label>
+        </div>
+        <p class="text-[11px] text-red-400/80 mt-2">manage:invites can create new submissive accounts — grant only to an integration that genuinely needs to.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Expires</label>
+        <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option>30 days</option>
+          <option selected>90 days</option>
+          <option>365 days</option>
+          <option>Never (not recommended)</option>
+        </select>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button id="cancel-token" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+        <button id="create-token" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Create token</button>
+      </div>
+    </div>
+
+    <!-- one-time reveal -->
+    <div id="token-reveal" class="hidden rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-5">
+      <p class="text-xs font-semibold text-emerald-400 mb-2">Token created — copy it now, it won't be shown again</p>
+      <div class="flex items-center gap-2">
+        <code class="flex-1 text-sm bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-emerald-300 overflow-x-auto whitespace-nowrap">lk_9f3a2b_7pQ4mZ1kX8vR2sT6yB0cW5nH3dJ</code>
+        <button id="copy-token" class="text-xs font-semibold text-slate-950 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-3 py-2 whitespace-nowrap">Copy</button>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+      <div class="px-5 py-4">
+        <div class="flex items-center justify-between mb-1">
+          <p class="text-sm font-medium">review dashboard bot</p>
+          <button class="text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-2.5 py-1 transition-colors">Revoke</button>
+        </div>
+        <p class="text-xs text-slate-500 font-mono mb-2">lk_9f3a2b_••••••••••••••••••••••</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">read:submissives</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">read:proof-submissions</span>
+        </div>
+        <p class="text-xs text-slate-500">Created 14 days ago · expires in 76 days · last used 3 hours ago</p>
+      </div>
+      <div class="px-5 py-4 opacity-60">
+        <div class="flex items-center justify-between mb-1">
+          <p class="text-sm font-medium">old home-automation test</p>
+          <span class="text-xs font-semibold text-slate-500">revoked</span>
+        </div>
+        <p class="text-xs text-slate-500 font-mono mb-2">lk_2c8e91_••••••••••••••••••••••</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">manage:chastity</span>
+        </div>
+        <p class="text-xs text-slate-500">Created 60 days ago · revoked 40 days ago · last used 41 days ago</p>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  const tabs = { '#tab-profile': '#panel-profile', '#tab-notifications': '#panel-notifications', '#tab-tokens': '#panel-tokens' };
+  Object.keys(tabs).forEach(function (tabSel) {
+    $(tabSel).on('click', function () {
+      Object.keys(tabs).forEach(function (t) {
+        $(t).toggleClass('bg-slate-800', t === tabSel).toggleClass('text-slate-400', t !== tabSel);
+        $(tabs[t]).toggleClass('hidden', t !== tabSel);
+      });
+    });
+  });
+
+  $('#enable-push-btn').on('click', function () {
+    $(this).text('Enabled ✓').prop('disabled', true).removeClass('bg-amber-600 hover:bg-amber-500').addClass('bg-emerald-600 cursor-default');
+  });
+
+  $('#new-token-btn').on('click', () => { $('#new-token-form').removeClass('hidden'); $('#token-reveal').addClass('hidden'); });
+  $('#cancel-token').on('click', () => $('#new-token-form').addClass('hidden'));
+  $('#create-token').on('click', () => { $('#new-token-form').addClass('hidden'); $('#token-reveal').removeClass('hidden'); });
+  $('#copy-token').on('click', function () {
+    $(this).text('Copied!');
+    setTimeout(() => $(this).text('Copy'), 1500);
+  });
+</script>
+</body>
+</html>
