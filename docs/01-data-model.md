@@ -38,6 +38,9 @@ erDiagram
     USERS ||--o{ AUDIT_LOG : "actor"
     USERS ||--o{ SAFETY_ALERTS : "raised by submissive"
     USERS ||--o{ SESSIONS : "authenticates"
+    USERS ||--o| TWO_FACTOR_CREDENTIALS : "optional"
+    USERS ||--o{ TWO_FACTOR_RECOVERY_CODES : "backup codes"
+    USERS ||--o{ TWO_FACTOR_LOGIN_CHALLENGES : "pending second factor"
     USERS ||--o{ API_TOKENS : "issued to (keyholder)"
     USERS ||--o{ PUSH_SUBSCRIPTIONS : "registered device"
     USERS ||--o{ NOTIFICATIONS : "recipient"
@@ -135,6 +138,52 @@ A row here is deleted (not just marked revoked) once it's both
 `revoked_at IS NOT NULL` and past `expires_at`, on a simple periodic
 cleanup — there's no accountability reason to keep a dead session
 row forever the way there is for e.g. a revoked API token.
+
+### `two_factor_credentials`
+Optional, opt-in, either role. One row per user — setting it up again
+before confirming replaces the pending row rather than erroring,
+since a stalled setup (scanned the QR code, closed the tab) is more
+useful to let someone retry than to make them explicitly cancel first.
+
+| column | type | notes |
+|---|---|---|
+| user_id | TEXT PK/FK -> users.id | |
+| secret | TEXT | base32 TOTP secret. Stored in the clear, unlike a password — the server has to be able to *compute* the current code to check a login attempt against it, so this can't be a one-way hash the way `password_hash` is. See `05-security-and-privacy.md` §2 for what that implies |
+| confirmed_at | INTEGER NULL | NULL = setup started (secret generated, QR code shown) but not yet confirmed with a valid code — 2FA is **not** enforced on login while NULL. Set once `POST /auth/2fa/confirm` validates the first code |
+| created_at | INTEGER | |
+
+### `two_factor_recovery_codes`
+Generated once, all at once, the moment `confirmed_at` is set — the
+same "shown once, only the hash kept" pattern as invite tokens and
+API tokens, since these are exactly that: a set of one-time-use
+backup credentials.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| user_id | TEXT FK -> users.id | |
+| code_hash | TEXT | SHA-256 — same reasoning as `api_tokens.token_hash` (§9): high-entropy generated value, not a human-chosen secret, doesn't need Argon2-style stretching |
+| used_at | INTEGER NULL | a code is consumed (not deleted) on use, same "keep the history" instinct as everywhere else in this schema — a used recovery code still shouldn't work twice, and its `used_at` is itself a useful signal ("someone used a backup code recently") |
+| created_at | INTEGER | |
+
+### `two_factor_login_challenges`
+The gap between "password was correct" and "session issued" when 2FA
+is enabled — a short-lived, single-purpose, server-tracked
+intermediate state, following the same "opaque DB-backed token, not a
+signed stateless one" preference as sessions and API tokens
+(`05-security-and-privacy.md` §2).
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | the opaque token returned to the client as `challenge_token` |
+| user_id | TEXT FK -> users.id | |
+| created_at | INTEGER | |
+| expires_at | INTEGER | short — a few minutes, not a session-length window |
+| attempts | INTEGER DEFAULT 0 | incremented on each wrong code; the row is deleted outright once this hits a small limit (e.g. 5), forcing a fresh login rather than allowing indefinite guessing against one challenge |
+
+A row here is deleted once it's used successfully, expires, or hits
+the attempt limit — it never needs to persist past that, unlike
+`sessions`/`api_tokens` where the historical record itself has value.
 
 ### `invites`
 Keyholders create submissive accounts via invite token rather than
@@ -325,7 +374,11 @@ today rather than something more sophisticated.
 ## 5. Verification policy, codes, and proof
 
 ### `verification_policies`
-One active policy per link; keyholder-authored.
+One active policy per link; keyholder-authored, but never absent —
+a default row (`frequency_kind='on_demand_only'`, 15 min TTL, 10 min
+grace) is created automatically when the link itself is created, so
+there's no undefined window before a Keyholder configures a real
+schedule. See `04-verification-workflow.md` §1.
 
 | column | type | notes |
 |---|---|---|

@@ -15,4 +15,4 @@ Read in order:
 8. [`07-tech-stack.md`](07-tech-stack.md) — concrete crate/tooling choices and project layout.
 9. [`08-punishments-and-deadlines.md`](08-punishments-and-deadlines.md) — escalation ladders, the deadline sweeper, time-extension effects, and the confinement timer.
 10. [`09-notifications.md`](09-notifications.md) — push notification trigger matrix, Web Push delivery, and the in-app feed.
-11. [`10-operations.md`](10-operations.md) — self-service session management, background-task health monitoring, and the backup approach.
+11. [`10-operations.md`](10-operations.md) — self-service session management, two-factor authentication, background-task health monitoring, and the backup approach.

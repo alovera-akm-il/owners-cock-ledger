@@ -76,6 +76,26 @@ that as the primary constraint, ahead of features.
 - API tokens (§9 below) are a **separate** bearer-auth mechanism
   layered on top of this, for Keyholder automation only — they don't
   change anything about session/cookie handling above.
+- **Two-factor authentication** (optional, either role — full design
+  in `10-operations.md` §2) introduces the one credential in this
+  schema that's deliberately stored in the clear rather than hashed:
+  `two_factor_credentials.secret`. This is unavoidable, not an
+  oversight — verifying a TOTP code requires *computing* the current
+  expected value from the secret, which a one-way hash makes
+  impossible. It's flagged here as a first candidate for
+  application-level field encryption (`05-security-and-privacy.md`
+  §5), alongside `keyholder_notes`/`safeword`/`hard_limits`/`soft_limits`,
+  for the same reason those are flagged: sensitive plaintext at rest
+  that a hash can't protect the way `password_hash` protects a
+  password. Recovery codes are the opposite case — high-entropy
+  generated values, not something the server needs to recompute — so
+  `two_factor_recovery_codes.code_hash` is hashed exactly like an API
+  token (SHA-256, no Argon2 needed, §9). The login-flow's second-step
+  endpoint (`POST /auth/2fa/verify`) gets its own attempt-count
+  lockout scoped to the specific challenge (`01-data-model.md` §2),
+  separate from and stricter than the account-level login lockout —
+  brute-forcing a 6-digit code needs tighter throttling than
+  brute-forcing an arbitrary-length password.
 
 ## 3. Authorization
 
@@ -132,14 +152,18 @@ product rules:
   security value. It should still be excluded from ephemeral
   request/process logs per §7, the same as any other stored field
   that isn't meant to be casually grepped.
-- `keyholder_notes` and `safeword`/`emergency_contact` are the two
-  clearest "handle with care" free-text fields; they're modeled as
-  ordinary columns (not encrypted-at-application-layer) in v1, but
-  flagged here as the first candidates if application-level
+- `keyholder_notes`, `safeword`/`hard_limits`/`soft_limits`/
+  `emergency_contact`, and now `two_factor_credentials.secret` (§2)
+  are the clearest "handle with care" plaintext fields; they're
+  modeled as ordinary columns (not encrypted-at-application-layer) in
+  v1, but flagged here as the first candidates if application-level
   field encryption is added later (e.g. via `sqlcipher` instead of
   plain SQLite, or per-field envelope encryption) — noted as a
   future hardening step rather than built now, to avoid overbuilding
-  before the base system exists.
+  before the base system exists. The TOTP secret is arguably the
+  highest-value of that list to encrypt first, precisely because
+  unlike the others it's a live credential (compromise it and 2FA is
+  defeated going forward), not just sensitive personal content.
 - **Amended by Web Push, and worth stating plainly rather than
   quietly walking back**: this architecture previously talked to
   nothing but its own SQLite file and filesystem. Push notifications

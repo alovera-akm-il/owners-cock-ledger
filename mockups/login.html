@@ -7,6 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
 <body class="h-full bg-slate-950 text-slate-100">
@@ -23,7 +24,9 @@
       </div>
 
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-        <form class="space-y-4">
+
+        <!-- step 1: password -->
+        <form id="login-step-password" class="space-y-4">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1.5" for="email">Email</label>
             <input id="email" type="email" placeholder="you@example.com"
@@ -35,7 +38,7 @@
               class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
           </div>
 
-          <button type="button" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+          <button id="login-submit-btn" type="button" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
             Sign in
           </button>
 
@@ -44,6 +47,26 @@
             <a href="submit-proof.html#redeem" class="text-amber-500 hover:text-amber-400 font-medium">Redeem it</a>
           </p>
         </form>
+
+        <!-- step 2: 2FA code (only reached when the account has it enabled) -->
+        <form id="login-step-2fa" class="hidden space-y-4">
+          <div class="text-center mb-1">
+            <p class="text-sm font-medium">Two-factor code required</p>
+            <p class="text-xs text-slate-500 mt-1">Password confirmed. Enter the code from your authenticator app, or a recovery code.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="tfa-code">Code</label>
+            <input id="tfa-code" type="text" inputmode="numeric" placeholder="123456 or XXXX-XXXX" autocomplete="one-time-code"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <button id="tfa-verify-btn" type="button" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+            Verify &amp; sign in
+          </button>
+          <button id="back-to-password-btn" type="button" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-1">
+            &larr; Back
+          </button>
+        </form>
+
       </div>
 
       <p class="text-center text-[11px] text-slate-600 mt-6">
@@ -51,5 +74,20 @@
       </p>
     </div>
   </div>
+
+<script>
+  // demo only: this mockup always routes through the 2FA step after "Sign in"
+  // to show what it looks like for an account that has it enabled — a real
+  // login only shows this step when POST /auth/login actually returns
+  // {requires_2fa: true}.
+  $('#login-submit-btn').on('click', function () {
+    $('#login-step-password').addClass('hidden');
+    $('#login-step-2fa').removeClass('hidden');
+  });
+  $('#back-to-password-btn').on('click', function () {
+    $('#login-step-2fa').addClass('hidden');
+    $('#login-step-password').removeClass('hidden');
+  });
+</script>
 </body>
 </html>

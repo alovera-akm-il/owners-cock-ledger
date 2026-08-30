@@ -63,10 +63,10 @@
   <div id="context-verification" class="rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 flex items-center justify-between">
     <div>
       <p class="text-xs font-medium text-amber-500 mb-1">Your verification code</p>
-      <p class="text-3xl font-mono tracking-widest text-amber-400">A7QK3D</p>
+      <p id="verification-code-display" class="text-3xl font-mono tracking-widest text-amber-400">A7QK3D</p>
       <p class="text-xs text-slate-400 mt-1">Must be visible in your photo. Expires in <span id="countdown" class="font-semibold text-amber-400">09:42</span>.</p>
     </div>
-    <button class="text-xs font-medium text-slate-400 border border-slate-700 rounded-lg px-3 py-2 hover:border-slate-600">Request new code</button>
+    <button id="request-new-code-btn" class="text-xs font-medium text-slate-400 border border-slate-700 rounded-lg px-3 py-2 hover:border-slate-600">Request new code</button>
   </div>
 
   <div id="context-punishment" class="hidden rounded-xl border border-red-700/40 bg-red-500/5 p-5 mb-6">
@@ -114,6 +114,16 @@
   $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('#request-new-code-btn').on('click', function () {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    $('#verification-code-display').text(code);
+    $('#countdown').text('15:00');
+    $(this).text('Requested ✓');
+    setTimeout(() => $(this).text('Request new code'), 1500);
+  });
 
   $('#mode-verification').on('click', function () {
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');

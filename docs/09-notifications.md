@@ -88,6 +88,9 @@ later rather than being an implicit all-or-nothing choice.
 | Safety alert raised | Keyholder | `safety.alert_raised` | Yes — highest urgency in the system, see `04-verification-workflow.md` §5 |
 | Safety alert acknowledged | Submissive | `safety.acknowledged` | Yes — they should know they were heard, quickly |
 | Invite redeemed (new submissive linked) | Keyholder | `link.established` | No |
+| Two-factor authentication enabled | The account holder | `account.2fa_enabled` | Yes — a security-relevant event where the useful failure mode is the real owner noticing something happened that they didn't do, `10-operations.md` §2 |
+| Two-factor authentication disabled | The account holder | `account.2fa_disabled` | Yes — same reasoning, arguably more urgent since this *reduces* protection |
+| Recovery codes regenerated | The account holder | `account.2fa_recovery_codes_regenerated` | Yes |
 
 This table is the place to add a row when a new domain gets built
 (play sessions, `06-future-extensions.md` §1, will need its own rows

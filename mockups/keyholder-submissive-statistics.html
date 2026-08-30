@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Riley's Statistics</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Rewards &amp; Punishments</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <div class="relative">
+        <button id="notif-bell" class="relative h-8 w-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-[10px] flex items-center justify-center">3</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+            <p class="text-sm font-semibold">Notifications</p>
+            <button class="text-xs font-medium text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
+            <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
+              <span><p class="font-medium leading-snug">Proof submitted, awaiting review</p><p class="text-xs text-slate-500 mt-0.5">Riley · 5 min ago</p></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+
+  <a href="submissive-detail.html" class="text-xs text-slate-500 hover:text-slate-300">&larr; Riley</a>
+
+  <div class="flex items-center justify-between mt-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Riley's statistics</h1>
+      <p class="text-sm text-slate-400 mt-1">Exactly what Riley sees on their own statistics page — same numbers, same shape, read-only here</p>
+    </div>
+    <select id="period-select" class="bg-slate-900 border border-slate-800 rounded-lg text-sm px-3 py-2 text-slate-200">
+      <option value="all" selected>All time</option>
+      <option value="365d">Last 12 months</option>
+      <option value="90d">Last 90 days</option>
+      <option value="30d">Last 30 days</option>
+    </select>
+  </div>
+
+  <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">This period</h2>
+
+  <!-- hero: current streak -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-6 mb-4">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <p class="text-sm text-slate-400">Current chastity streak</p>
+        <p class="text-4xl font-bold text-slate-100 mt-1">17 <span class="text-lg font-medium text-slate-400">days</span></p>
+      </div>
+      <div class="h-10 w-10 rounded-full bg-amber-500/10 border border-amber-600/30 flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+      </div>
+    </div>
+    <div class="flex items-center justify-between text-xs mb-1.5">
+      <span class="text-slate-400">17% of personal best (104 days)</span>
+      <span class="text-amber-400 font-medium">87 days to beat it</span>
+    </div>
+    <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+      <div class="h-full bg-amber-500 rounded-full" style="width: 17%"></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Consistency</p>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <p class="text-3xl font-bold text-slate-100">21<span class="text-lg text-slate-400">%</span></p>
+      <p class="text-xs text-slate-500 mt-1">Time spent locked, this period</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Best period</p>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      </div>
+      <p class="text-3xl font-bold text-slate-100">3 <span class="text-lg text-slate-400">months</span></p>
+      <p class="text-xs text-slate-500 mt-1">Longest continuous locked stretch</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Session lengths</p>
+      <dl class="text-sm space-y-2.5">
+        <div class="flex items-center justify-between">
+          <dt class="text-slate-400 flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5m0 14-4-4m4 4 4-4"/></svg> Shortest</dt>
+          <dd class="font-medium">2 hours</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-slate-400 flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0-14 4 4m-4-4-4 4"/></svg> Longest</dt>
+          <dd class="font-medium">3mo 13d</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-slate-400 flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg> Average</dt>
+          <dd class="font-medium">1mo 19d</dd>
+        </div>
+      </dl>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Verification compliance</p>
+      <dl class="text-sm space-y-2.5">
+        <div class="flex items-center justify-between">
+          <dt class="text-emerald-400 flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Verified</dt>
+          <dd class="font-medium">142</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-red-400 flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> Failed</dt>
+          <dd class="font-medium">9</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-slate-400 flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg> Missed window</dt>
+          <dd class="font-medium">3</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Punishments</p>
+      <dl class="text-sm space-y-2.5">
+        <div class="flex items-center justify-between"><dt class="text-slate-400">Assigned</dt><dd class="font-medium">18</dd></div>
+        <div class="flex items-center justify-between"><dt class="text-emerald-400">Completed</dt><dd class="font-medium">14</dd></div>
+        <div class="flex items-center justify-between"><dt class="text-red-400">Failed</dt><dd class="font-medium">4</dd></div>
+        <div class="flex items-center justify-between"><dt class="text-amber-400">Escalated from those</dt><dd class="font-medium">3</dd></div>
+      </dl>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Rewards &amp; timer</p>
+      <dl class="text-sm space-y-2.5">
+        <div class="flex items-center justify-between"><dt class="text-slate-400">Rewards given</dt><dd class="font-medium">11</dd></div>
+        <div class="flex items-center justify-between">
+          <dt class="text-amber-400">Added by punishments</dt>
+          <dd class="font-mono font-semibold text-amber-400">4d 03h</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-emerald-400">Removed by you</dt>
+          <dd class="font-mono font-semibold text-emerald-400">0d 12h</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Global (all time, regardless of filter)</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="rounded-xl border border-amber-700/30 bg-amber-500/5 p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-xs font-semibold uppercase tracking-wide text-amber-500">Longest session ever</p>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v3a5 5 0 0 1-10 0V4Z"/><path d="M17 5h2a2 2 0 0 1 0 4h-.5M7 5H5a2 2 0 0 0 0 4h.5"/></svg>
+      </div>
+      <p class="text-3xl font-bold text-slate-100">104 <span class="text-lg text-slate-400">days</span></p>
+      <p class="text-xs text-slate-500 mt-1">Riley's personal best, all time</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Total locked (lifetime)</p>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+      </div>
+      <p class="text-3xl font-bold text-slate-100">364 <span class="text-lg text-slate-400">days</span></p>
+      <p class="text-xs text-slate-500 mt-1">Cumulative across every session</p>
+    </div>
+  </div>
+
+  <div class="mt-6 rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-500">
+    Same computed numbers Riley sees on their own Statistics page — one shared shape, not a separate Keyholder-only rollup, so there's one agreed-on set of numbers rather than two that could disagree.
+  </div>
+
+</main>
+
+<script>
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+</script>
+</body>
+</html>

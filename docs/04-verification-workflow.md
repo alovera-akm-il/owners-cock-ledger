@@ -7,8 +7,26 @@ matter for the guarantees the system is supposed to provide.
 
 ## 1. Setting the policy
 
-A Keyholder sets one `verification_policies` row per link
-(`PUT /keyholder/submissives/{id}/verification-policy`):
+A brand-new link never starts with *no* policy — `POST
+/auth/invites/redeem` (`03-api-design.md` §1) creates a default
+`verification_policies` row in the same transaction as the link
+itself: `frequency_kind='on_demand_only'`, `code_ttl_seconds=900`
+(15 min), `grace_period_seconds=600` (10 min). This closes what was
+previously an undefined window — between a submissive's account
+existing and the Keyholder getting around to configuring a schedule,
+there was no answer for "what happens if they try to prove something
+right now." `on_demand_only` is the least presumptuous default
+available (`04-verification-workflow.md` §1 below already treats it
+as "no scheduled prompts, code only on request") — it doesn't guess
+at a schedule the Keyholder hasn't specified, but it does mean the
+submissive can always request a code and use the app immediately,
+rather than the feature being silently inert until someone visits a
+settings screen. A Keyholder who wants a real schedule still has to
+set one deliberately; this only removes the accidental "nothing
+happens and there's no way to tell why" state.
+
+A Keyholder sets (or replaces the default) `verification_policies`
+row per link (`PUT /keyholder/submissives/{id}/verification-policy`):
 
 - `frequency_kind = interval_hours`, e.g. every 24h.
 - `frequency_kind = fixed_times_daily`, e.g. 09:00 and 21:00 local

@@ -27,6 +27,14 @@ reasoning so implementation doesn't have to re-derive it.
   `argon2` for these; see `05-security-and-privacy.md` §9 for why a
   fast hash is the right (and faster, at auth time) choice for an
   already-high-entropy CSPRNG token versus a human-chosen password.
+  Recovery codes (`10-operations.md` §2) hash the same way, for the
+  same reason.
+- **TOTP**: the `totp-rs` crate (RFC 6238) for generating/verifying
+  codes and building the `otpauth://` provisioning URI; QR rendering
+  is client-side (any small JS QR library, or a server-rendered PNG
+  via the `qrcode` crate if avoiding a frontend dependency is
+  preferred) — the server never needs to render an image, only hand
+  back the URI/secret.
 - **Session storage**: `sessions` (`01-data-model.md` §2, security
   rationale in `05-security-and-privacy.md` §2) plus a small
   middleware layer resolving the session cookie to `(user_id, role)`
@@ -60,7 +68,7 @@ reasoning so implementation doesn't have to re-derive it.
      a healthy one instead of assuming silence means everything's fine.
 - **Backup**: a CLI subcommand on the same binary
   (`owners-cock-ledger backup --out <dir>`), not a background task or
-  HTTP endpoint — `10-operations.md` §3 has the full reasoning
+  HTTP endpoint — `10-operations.md` §4 has the full reasoning
   (deployer controls timing via cron/systemd, not the app). Uses
   SQLite's backup API for an online-safe DB copy plus a filesystem
   copy of the blob directory.

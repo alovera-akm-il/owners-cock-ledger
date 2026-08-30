@@ -1,10 +1,11 @@
-# Operations: Sessions, Health, and Backups
+# Operations: Sessions, Two-Factor Auth, Health, and Backups
 
-Three previously-thin areas, addressed together because they're all
+Four previously-thin areas, addressed together because they're all
 "keeping the deployed instance trustworthy over time" rather than
 core domain behavior: letting a user manage their own login sessions,
-making it possible to tell from the outside whether the server is
-actually doing its job, and not losing data.
+letting them add a second factor to login itself, making it possible
+to tell from the outside whether the server is actually doing its
+job, and not losing data.
 
 ## 1. Self-service session management
 
@@ -32,7 +33,59 @@ None of this is reachable via API token (§9 in `03-api-design.md`) —
 session management is inherently about interactive login sessions;
 an API token has nothing analogous to manage.
 
-## 2. Background task health
+## 2. Two-factor authentication
+
+Optional, opt-in, available to either role — this was flagged early
+as a gap (password-only auth for content this sensitive) and left for
+later; this is that later. TOTP (the standard "6-digit code from an
+authenticator app" scheme, RFC 6238) rather than SMS — SMS requires
+an outbound SMS provider (a third-party dependency this architecture
+has otherwise avoided, `05-security-and-privacy.md` §5) and is
+generally considered weaker (SIM-swap risk) for comparable effort.
+
+**Setup is a two-step commit, not instant**, to avoid a broken
+half-state: `POST /auth/2fa/setup` generates a secret and shows it as
+a QR code, but `two_factor_credentials.confirmed_at` stays `NULL` —
+2FA is **not yet enforced on login** — until `POST /auth/2fa/confirm`
+proves the user actually captured the secret correctly by entering a
+real code back. Without this two-step shape, a user who fat-fingers
+the QR scan (or whose authenticator app clock is off) could lock
+themselves out on the very next login with no way back in.
+
+**Recovery codes exist for exactly that "next login" risk anyway** —
+ten single-use codes issued the moment setup is confirmed, shown once
+(`05-security-and-privacy.md` §2), hashed at rest like an API token.
+Losing the authenticator device is a real, common failure mode for
+TOTP; without a recovery path, that failure mode is a full account
+lockout with no admin-recoverable path other than direct DB surgery.
+
+**Disabling requires the password *and* a code**, not password alone
+(`03-api-design.md` §1) — deliberately more friction than enabling
+does. The threat this defends against is specific: a session that's
+already been hijacked (which bypasses the password check entirely)
+quietly turning 2FA back off so the real owner's next password change
+doesn't actually lock the attacker out. Requiring a live code means
+the attacker also needs the authenticator itself, not just an open
+tab.
+
+**Login flow**: `POST /auth/login` behaves exactly as before when the
+account has no confirmed 2FA. When it does, a correct password
+returns a `two_factor_login_challenges` row's token instead of a
+session (`03-api-design.md` §1) — the password was necessary but not
+sufficient. `POST /auth/2fa/verify` completes the login with either a
+TOTP code or a recovery code; either is accepted at that endpoint,
+since from the login flow's perspective they serve the identical
+purpose (prove possession of the second factor).
+
+**Every enable/disable/recovery-regeneration writes an `audit_log`
+entry** and sends the account holder a notification
+(`09-notifications.md`) — these are exactly the kind of
+security-relevant event where the useful failure mode is "the real
+owner notices something happened that they didn't do," same
+motivating logic as the account-enumeration and session-revocation
+protections elsewhere in this document set.
+
+## 3. Background task health
 
 Two Tokio interval tasks now carry real system guarantees:
 verification code issuance (`04-verification-workflow.md` §2) and the
@@ -77,7 +130,7 @@ enforce consequences.
   monitoring they point at `/health` — this architecture provides the
   signal, not the alerting pipeline on top of it.
 
-## 3. Backups
+## 4. Backups
 
 Not a new background job. Deliberately not one, in fact: an
 always-on internal backup scheduler would mean the application

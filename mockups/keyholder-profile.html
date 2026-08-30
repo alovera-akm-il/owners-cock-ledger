@@ -59,6 +59,7 @@
     <button id="tab-profile" class="ph-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Profile</button>
     <button id="tab-notifications" class="ph-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Notifications</button>
     <button id="tab-tokens" class="ph-tab rounded-lg text-slate-400 px-4 py-2 font-medium">API Tokens <span class="text-slate-600">(2)</span></button>
+    <button id="tab-sessions" class="ph-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Sessions <span class="text-slate-600">(3)</span></button>
   </div>
 
   <!-- ============ PROFILE TAB ============ -->
@@ -95,6 +96,72 @@
         </div>
       </div>
       <button class="mt-3 text-xs font-semibold text-amber-500 hover:text-amber-400">Change password</button>
+      <p class="text-[11px] text-slate-500 mt-2">Changing your password automatically logs out every session but this one — see the Sessions tab.</p>
+    </div>
+
+    <!-- ============ TWO-FACTOR AUTH ============ -->
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-sm font-semibold">Two-factor authentication</p>
+        <span id="tfa-status-badge" class="text-[11px] font-semibold text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">Off</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-4">An authenticator app code required at login, in addition to your password.</p>
+
+      <!-- state 1: off -->
+      <div id="tfa-state-off">
+        <button id="tfa-start-setup-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Enable 2FA</button>
+      </div>
+
+      <!-- state 2: setup in progress -->
+      <div id="tfa-state-setup" class="hidden space-y-3">
+        <div class="flex gap-4 items-start">
+          <div class="h-28 w-28 rounded-lg bg-slate-200 flex items-center justify-center text-slate-950 text-[10px] font-medium text-center p-2 shrink-0">QR code<br>placeholder</div>
+          <div>
+            <p class="text-xs text-slate-400 mb-1">Scan with your authenticator app, or enter this key manually:</p>
+            <code class="text-xs bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-slate-300 block w-fit">JBSW Y3DP EHPK 3PXP</code>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Enter the 6-digit code it shows</label>
+          <input type="text" inputmode="numeric" maxlength="6" placeholder="123456" class="w-32 bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 font-mono tracking-widest" />
+        </div>
+        <div class="flex gap-2">
+          <button id="tfa-cancel-setup-btn" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+          <button id="tfa-confirm-setup-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Confirm &amp; enable</button>
+        </div>
+      </div>
+
+      <!-- state 3: just confirmed, show recovery codes once -->
+      <div id="tfa-state-recovery" class="hidden space-y-3">
+        <p class="text-xs font-semibold text-emerald-400">2FA enabled — save these recovery codes now, they won't be shown again</p>
+        <div class="grid grid-cols-2 gap-1.5 font-mono text-xs bg-slate-950 border border-slate-800 rounded-lg p-3 text-slate-300">
+          <span>7K2M-9QRT</span><span>P4XL-6VBN</span>
+          <span>3HGD-8ZWC</span><span>Q1FS-5MYK</span>
+          <span>6TNB-2LXR</span><span>9CVP-4JHQ</span>
+          <span>5WKD-7GMT</span><span>2RXF-8NBL</span>
+          <span>8YQZ-1PVC</span><span>4LMS-6TDK</span>
+        </div>
+        <p class="text-xs text-slate-500">Each code works once, if you lose access to your authenticator app. Store them somewhere safe — not on this device alone.</p>
+        <button id="tfa-saved-codes-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">I've saved these</button>
+      </div>
+
+      <!-- state 4: enabled, steady state -->
+      <div id="tfa-state-on" class="hidden">
+        <p class="text-xs text-slate-400 mb-3">8 of 10 recovery codes remaining.</p>
+        <div class="flex flex-wrap gap-2">
+          <button id="tfa-regenerate-btn" class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-3 py-1.5 transition-colors">Regenerate recovery codes</button>
+          <button id="tfa-open-disable-btn" class="text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-3 py-1.5 transition-colors">Disable 2FA</button>
+        </div>
+        <div id="tfa-disable-form" class="hidden mt-3 pt-3 border-t border-slate-800 space-y-2 max-w-sm">
+          <p class="text-xs text-slate-400">Disabling requires both your password and a current code — a valid session alone isn't enough.</p>
+          <input type="password" placeholder="Current password" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+          <input type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" class="w-32 bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 font-mono tracking-widest" />
+          <div class="flex gap-2">
+            <button id="tfa-cancel-disable-btn" class="text-xs font-medium text-slate-400 px-2 py-1.5">Cancel</button>
+            <button id="tfa-confirm-disable-btn" class="text-xs font-semibold text-slate-950 bg-red-500 hover:bg-red-400 rounded-lg px-3 py-1.5">Disable 2FA</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -279,6 +346,40 @@
     </div>
   </div>
 
+  <!-- ============ SESSIONS TAB ============ -->
+  <div id="panel-sessions" class="hidden space-y-6">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-center justify-between">
+      <p class="text-xs text-slate-400">Every device currently logged into your account with a live session.</p>
+      <button id="logout-others-btn" class="text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-3 py-1.5 whitespace-nowrap transition-colors">Log out everywhere else</button>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+      <div class="flex items-center justify-between px-5 py-4">
+        <div>
+          <p class="text-sm font-medium">Chrome on macOS <span class="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded ml-1 align-middle">this device</span></p>
+          <p class="text-xs text-slate-500 mt-0.5">Signed in 12 days ago · last active just now</p>
+        </div>
+        <button class="text-xs font-medium text-slate-500 border border-slate-800 rounded-lg px-2.5 py-1 cursor-not-allowed" disabled title="Can't revoke the session you're currently using">Revoke</button>
+      </div>
+      <div class="flex items-center justify-between px-5 py-4">
+        <div>
+          <p class="text-sm font-medium">Safari on iPhone</p>
+          <p class="text-xs text-slate-500 mt-0.5">Signed in 5 days ago · last active 3 hours ago</p>
+        </div>
+        <button class="revoke-session-btn text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-2.5 py-1 transition-colors">Revoke</button>
+      </div>
+      <div class="flex items-center justify-between px-5 py-4">
+        <div>
+          <p class="text-sm font-medium">Firefox on Windows</p>
+          <p class="text-xs text-slate-500 mt-0.5">Signed in 38 days ago · last active 2 days ago</p>
+        </div>
+        <button class="revoke-session-btn text-xs font-semibold text-red-400 border border-red-800 hover:bg-red-500/10 rounded-lg px-2.5 py-1 transition-colors">Revoke</button>
+      </div>
+    </div>
+
+    <p class="text-xs text-slate-500">Changing your password automatically logs out every session but this one.</p>
+  </div>
+
 </main>
 
 <script>
@@ -286,7 +387,7 @@
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
 
-  const tabs = { '#tab-profile': '#panel-profile', '#tab-notifications': '#panel-notifications', '#tab-tokens': '#panel-tokens' };
+  const tabs = { '#tab-profile': '#panel-profile', '#tab-notifications': '#panel-notifications', '#tab-tokens': '#panel-tokens', '#tab-sessions': '#panel-sessions' };
   Object.keys(tabs).forEach(function (tabSel) {
     $(tabSel).on('click', function () {
       Object.keys(tabs).forEach(function (t) {
@@ -294,6 +395,29 @@
         $(tabs[t]).toggleClass('hidden', t !== tabSel);
       });
     });
+  });
+
+  function tfaShow(stateId) {
+    $('#tfa-state-off, #tfa-state-setup, #tfa-state-recovery, #tfa-state-on').addClass('hidden');
+    $('#' + stateId).removeClass('hidden');
+  }
+  $('#tfa-start-setup-btn').on('click', () => tfaShow('tfa-state-setup'));
+  $('#tfa-cancel-setup-btn').on('click', () => tfaShow('tfa-state-off'));
+  $('#tfa-confirm-setup-btn').on('click', () => tfaShow('tfa-state-recovery'));
+  $('#tfa-saved-codes-btn').on('click', function () {
+    tfaShow('tfa-state-on');
+    $('#tfa-status-badge').text('On').removeClass('text-slate-500 bg-slate-800').addClass('text-emerald-400 bg-emerald-500/10');
+  });
+  $('#tfa-regenerate-btn').on('click', function () {
+    $(this).text('Codes regenerated ✓');
+    setTimeout(() => $(this).text('Regenerate recovery codes'), 1500);
+  });
+  $('#tfa-open-disable-btn').on('click', () => $('#tfa-disable-form').removeClass('hidden'));
+  $('#tfa-cancel-disable-btn').on('click', () => $('#tfa-disable-form').addClass('hidden'));
+  $('#tfa-confirm-disable-btn').on('click', function () {
+    tfaShow('tfa-state-off');
+    $('#tfa-disable-form').addClass('hidden');
+    $('#tfa-status-badge').text('Off').removeClass('text-emerald-400 bg-emerald-500/10').addClass('text-slate-500 bg-slate-800');
   });
 
   $('#enable-push-btn').on('click', function () {
@@ -306,6 +430,13 @@
   $('#copy-token').on('click', function () {
     $(this).text('Copied!');
     setTimeout(() => $(this).text('Copy'), 1500);
+  });
+
+  $('.revoke-session-btn').on('click', function () {
+    $(this).closest('.flex.items-center.justify-between').fadeOut(150);
+  });
+  $('#logout-others-btn').on('click', function () {
+    $('.revoke-session-btn').each(function () { $(this).closest('.flex.items-center.justify-between').fadeOut(150); });
   });
 </script>
 </body>
