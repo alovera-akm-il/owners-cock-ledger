@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Play Session Templates</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="keyholder-toy-catalog.html" class="text-slate-400 hover:text-slate-200">Toys</a>
+        <a href="checkin-templates.html" class="text-slate-400 hover:text-slate-200">Check-ins</a>
+        <a href="play-session-templates.html" class="text-slate-100 font-medium">Play Sessions</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Play Session Templates</h1>
+      <p class="text-sm text-slate-400 mt-1">Reusable shapes — pick real toys and times when you assign one</p>
+    </div>
+    <div class="flex gap-2">
+      <button id="assign-btn" class="rounded-lg border border-slate-700 hover:border-slate-600 px-4 py-2 text-sm font-medium text-slate-200">Assign a session</button>
+      <button id="new-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">+ New template</button>
+    </div>
+  </div>
+
+  <!-- assign session panel -->
+  <div id="assign-form" class="hidden rounded-xl border border-sky-700/40 bg-sky-500/5 p-5 mb-6 space-y-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-sky-400">Assign a session</p>
+    <div class="grid grid-cols-2 gap-3">
+      <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option>Riley</option><option>Sam</option><option>Jordan</option>
+      </select>
+      <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option>Estim session — standard</option>
+        <option>Sensory deprivation scene</option>
+        <option>Impact play — warm-up to heavy</option>
+        <option value="">Ad-hoc, no template</option>
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
+        <input type="radio" name="log-mode" value="live" checked> Start live now
+      </label>
+      <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
+        <input type="radio" name="log-mode" value="retro"> Log something that already happened
+      </label>
+    </div>
+    <div id="retro-fields" class="hidden grid grid-cols-2 gap-3">
+      <input type="datetime-local" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <input type="datetime-local" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Toys from Riley's catalog</label>
+      <div class="flex flex-wrap gap-2">
+        <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs cursor-pointer has-[:checked]:border-amber-600"><input type="checkbox" checked> Estim box — basic kit</label>
+        <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs cursor-pointer has-[:checked]:border-amber-600"><input type="checkbox"> Holy Trainer V4</label>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button id="cancel-assign" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button onclick="window.location='play-session-detail.html'" class="text-xs font-semibold text-slate-950 bg-sky-500 hover:bg-sky-400 rounded-lg px-4 py-2">Create session</button>
+    </div>
+  </div>
+
+  <!-- new/edit template form -->
+  <div id="new-form" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
+    <p id="form-heading" class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
+    <input type="text" placeholder="Title" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <textarea rows="2" placeholder="Setup notes — prep, read before starting" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <input type="text" placeholder="Suggested toy categories, comma separated (e.g. Estim, restraint)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Planned duration</label>
+        <div class="flex gap-2">
+          <input type="number" value="60" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+          <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"><option>minutes</option><option>hours</option></select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Mid-session check-in</label>
+        <select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option value="">None</option>
+          <option selected>Estim mid-session check-in</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Check-in interval</label>
+      <div class="flex gap-2 max-w-xs">
+        <input type="number" value="15" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"><option>minutes</option></select>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-1.5">A 60-minute session at a 15-minute interval generates 4 scheduled check-in slots up front.</p>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button id="cancel-new" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
+    </div>
+  </div>
+
+  <div id="template-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Estim session — standard</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Check contact gel before starting, ramp intensity slowly.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Estim</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">60 min planned</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">check-in every 15 min</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 8×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">Edit</button>
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Sensory deprivation scene</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Blindfold + noise-cancelling headphones. Check in verbally every 10 minutes even without the app.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Restraint, sensory</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">45 min planned</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">no scheduled check-in template</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 3×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">Edit</button>
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Impact play — warm-up to heavy</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Always start light, watch skin color, never repeat strikes on the same spot.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Impact</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">30 min planned</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">check-in every 10 min</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 5×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-6">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Recent sessions</p>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+      <a href="play-session-detail.html" class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">
+        <div>
+          <p class="text-sm font-medium">Estim session — standard <span class="text-slate-500 font-normal">· Riley</span></p>
+          <p class="text-xs text-slate-500">Started 12 min ago</p>
+        </div>
+        <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">in progress</span>
+      </a>
+      <a href="play-session-detail.html" class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">
+        <div>
+          <p class="text-sm font-medium">Impact play — warm-up to heavy <span class="text-slate-500 font-normal">· Sam</span></p>
+          <p class="text-xs text-slate-500">Ended yesterday, 21:40</p>
+        </div>
+        <span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">awaiting judgement</span>
+      </a>
+      <a href="play-session-detail.html" class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">
+        <div>
+          <p class="text-sm font-medium">Sensory deprivation scene <span class="text-slate-500 font-normal">· Riley</span></p>
+          <p class="text-xs text-slate-500">Completed 3 days ago</p>
+        </div>
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">completed</span>
+      </a>
+    </div>
+  </div>
+</main>
+
+<script>
+  $('#assign-btn').on('click', () => $('#assign-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  $('#cancel-assign').on('click', () => $('#assign-form').addClass('hidden'));
+  $('input[name="log-mode"]').on('change', function () {
+    $('#retro-fields').toggleClass('hidden', $('input[name="log-mode"]:checked').val() !== 'retro');
+  });
+
+  $('#new-btn').on('click', function () {
+    $('#form-heading').text('New template');
+    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('.edit-template-btn').on('click', function () {
+    $('#form-heading').text('Editing template');
+    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+</script>
+</body>
+</html>

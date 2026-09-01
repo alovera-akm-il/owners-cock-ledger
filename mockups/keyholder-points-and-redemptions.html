@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Points &amp; Redemptions</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="keyholder-toy-catalog.html" class="text-slate-400 hover:text-slate-200">Toys</a>
+        <a href="checkin-templates.html" class="text-slate-400 hover:text-slate-200">Check-ins</a>
+        <a href="play-session-templates.html" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">Points &amp; Redemptions</h1>
+  <p class="text-sm text-slate-400 mb-6">Opt-in per submissive — off unless you turn it on for a specific link</p>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium">Riley</p>
+        <span class="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">points on</span>
+      </div>
+      <p class="text-2xl font-semibold text-amber-400 mt-2">42 <span class="text-xs text-slate-500 font-normal">pts</span></p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium">Sam</p>
+        <span class="text-[10px] font-medium text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">points off</span>
+      </div>
+      <p class="text-2xl font-semibold text-slate-600 mt-2">— <button class="enable-points-btn text-xs font-medium text-amber-500 hover:text-amber-400 ml-1">enable</button></p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium">Jordan</p>
+        <span class="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">points on</span>
+      </div>
+      <p class="text-2xl font-semibold text-amber-400 mt-2">7 <span class="text-xs text-slate-500 font-normal">pts</span></p>
+    </div>
+  </div>
+
+  <h2 class="text-sm font-semibold text-slate-300 mb-3">Pending redemption requests</h2>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800 mb-8">
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Riley wants to redeem "Extra 15 min video call"</p>
+        <p class="text-xs text-slate-500 mt-0.5">Costs 20 pts · has 42 pts · requested 3 hours ago</p>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button class="deny-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5">Deny</button>
+        <button class="approve-btn text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5">Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="text-sm font-semibold text-slate-300 mb-3">Riley's ledger</h2>
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden mb-4">
+    <table class="w-full text-sm">
+      <tbody class="divide-y divide-slate-800">
+        <tr>
+          <td class="px-5 py-3 text-slate-300">Overnight cage check-in — task completed</td>
+          <td class="px-5 py-3 text-slate-500 text-xs">2 hours ago</td>
+          <td class="px-5 py-3 text-right font-mono text-emerald-400">+5</td>
+        </tr>
+        <tr>
+          <td class="px-5 py-3 text-slate-300">Clean and lubricate the device — task completed</td>
+          <td class="px-5 py-3 text-slate-500 text-xs">yesterday</td>
+          <td class="px-5 py-3 text-right font-mono text-emerald-400">+3</td>
+        </tr>
+        <tr>
+          <td class="px-5 py-3 text-slate-300">Scheduled verification — verified</td>
+          <td class="px-5 py-3 text-slate-500 text-xs">yesterday</td>
+          <td class="px-5 py-3 text-right font-mono text-emerald-400">+1</td>
+        </tr>
+        <tr>
+          <td class="px-5 py-3 text-slate-300">Manual adjustment — "good attitude this week"</td>
+          <td class="px-5 py-3 text-slate-500 text-xs">4 days ago</td>
+          <td class="px-5 py-3 text-right font-mono text-emerald-400">+5</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-center gap-3">
+    <input id="adjust-notes" type="text" placeholder="Reason for manual adjustment" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <input id="adjust-value" type="number" placeholder="±pts" class="w-28 bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <button id="adjust-btn" class="text-xs font-semibold text-slate-950 bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2">Apply</button>
+  </div>
+</main>
+
+<script>
+  $('.approve-btn, .deny-btn').on('click', function () {
+    $(this).closest('.flex').fadeOut(200);
+  });
+  $('.enable-points-btn').on('click', function () {
+    $(this).closest('.rounded-xl').find('span').removeClass('text-slate-500 bg-slate-800').addClass('text-emerald-400 bg-emerald-500/10').text('points on');
+    $(this).closest('p').html('0 <span class="text-xs text-slate-500 font-normal">pts</span>').removeClass('text-slate-600').addClass('text-amber-400');
+  });
+  $('#adjust-btn').on('click', function () {
+    const notes = $('#adjust-notes').val() || 'Manual adjustment';
+    const val = parseInt($('#adjust-value').val() || '0', 10);
+    if (!val) return;
+    const sign = val > 0 ? '+' : '';
+    $('table tbody').prepend(`<tr><td class="px-5 py-3 text-slate-300">Manual adjustment — "${notes}"</td><td class="px-5 py-3 text-slate-500 text-xs">just now</td><td class="px-5 py-3 text-right font-mono ${val > 0 ? 'text-emerald-400' : 'text-red-400'}">${sign}${val}</td></tr>`);
+    $('#adjust-notes, #adjust-value').val('');
+  });
+</script>
+</body>
+</html>

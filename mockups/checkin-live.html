@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Live Check-in</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>
+  body{font-family:'Inter',sans-serif;}
+  @keyframes pulse-ring { 0%{box-shadow:0 0 0 0 rgba(52,211,153,.5);} 100%{box-shadow:0 0 0 8px rgba(52,211,153,0);} }
+  .live-dot{animation:pulse-ring 1.5s infinite;}
+  @keyframes flash { 0%{background-color:rgba(52,211,153,.25);} 100%{background-color:transparent;} }
+  .just-updated{animation:flash 1.2s ease-out;}
+</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      The Ledger
+    </a>
+    <a href="play-session-detail.html" class="text-xs text-slate-400 hover:text-slate-200">&larr; Back to play session</a>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-2">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Estim mid-session check-in</h1>
+      <p class="text-sm text-slate-400 mt-1">Live for the duration of the play session — either of you edits, both of you see it land immediately</p>
+    </div>
+    <span class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-600/30 rounded-full px-3 py-1.5">
+      <span class="h-2 w-2 rounded-full bg-emerald-400 live-dot"></span> Live
+    </span>
+  </div>
+  <p class="text-xs text-slate-500 mb-6">This mockup shows both people's screens side by side and simulates the update happening. In the real app, each person only sees their own page — the point is that they'd both be looking at this same content at the same time.</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- Keyholder pane -->
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wide text-amber-500 mb-2">Keyholder's screen</p>
+      <div class="checkin-pane rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+        <div class="color-banner bg-emerald-600/20 border-b border-emerald-600/40 px-5 py-3 flex items-center justify-between">
+          <span class="color-label text-sm font-semibold text-emerald-400">GREEN — SAFE / OK</span>
+          <div class="flex gap-1.5">
+            <button class="color-btn h-6 w-6 rounded-full bg-emerald-500 ring-2 ring-emerald-300/50" data-color="green"></button>
+            <button class="color-btn h-6 w-6 rounded-full bg-amber-500 opacity-50 hover:opacity-100" data-color="yellow"></button>
+            <button class="color-btn h-6 w-6 rounded-full bg-red-500 opacity-50 hover:opacity-100" data-color="red"></button>
+          </div>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="field-arousal">
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-medium text-slate-400">Arousal level</label>
+              <span class="value-display text-sm font-mono text-amber-400">4 / 10</span>
+            </div>
+            <input type="range" min="0" max="10" value="4" class="w-full accent-amber-500 slider-arousal" />
+          </div>
+          <div class="field-comfort">
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-medium text-slate-400">Comfort level</label>
+              <span class="value-display text-sm font-mono text-amber-400">4 / 5</span>
+            </div>
+            <input type="range" min="0" max="5" value="4" class="w-full accent-amber-500 slider-comfort" />
+            <div class="flex justify-between text-[10px] text-slate-600 mt-0.5"><span>0 = overwhelmed</span><span>5 = perfect</span></div>
+          </div>
+          <div class="field-safeword flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span class="text-xs font-medium text-slate-400">Safeword invoked</span>
+            <span class="value-display text-xs font-semibold text-slate-300">No</span>
+          </div>
+          <div class="field-notes">
+            <label class="text-xs font-medium text-slate-400 block mb-1">Notes</label>
+            <p class="value-display text-sm text-slate-300 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 min-h-[2.5rem]">Feeling good, keep going</p>
+          </div>
+          <p class="updated-by text-[11px] text-slate-500">Last updated by Riley · <span class="ago">just now</span></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submissive pane -->
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wide text-sky-400 mb-2">Riley's screen</p>
+      <div class="checkin-pane rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+        <div class="color-banner bg-emerald-600/20 border-b border-emerald-600/40 px-5 py-3 flex items-center justify-between">
+          <span class="color-label text-sm font-semibold text-emerald-400">GREEN — SAFE / OK</span>
+          <div class="flex gap-1.5">
+            <button class="color-btn h-6 w-6 rounded-full bg-emerald-500 ring-2 ring-emerald-300/50" data-color="green"></button>
+            <button class="color-btn h-6 w-6 rounded-full bg-amber-500 opacity-50 hover:opacity-100" data-color="yellow"></button>
+            <button class="color-btn h-6 w-6 rounded-full bg-red-500 opacity-50 hover:opacity-100" data-color="red"></button>
+          </div>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="field-arousal">
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-medium text-slate-400">Arousal level</label>
+              <span class="value-display text-sm font-mono text-amber-400">4 / 10</span>
+            </div>
+            <input type="range" min="0" max="10" value="4" class="w-full accent-amber-500 slider-arousal" />
+          </div>
+          <div class="field-comfort">
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-medium text-slate-400">Comfort level</label>
+              <span class="value-display text-sm font-mono text-amber-400">4 / 5</span>
+            </div>
+            <input type="range" min="0" max="5" value="4" class="w-full accent-amber-500 slider-comfort" />
+            <div class="flex justify-between text-[10px] text-slate-600 mt-0.5"><span>0 = overwhelmed</span><span>5 = perfect</span></div>
+          </div>
+          <div class="field-safeword flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span class="text-xs font-medium text-slate-400">Safeword invoked</span>
+            <span class="value-display text-xs font-semibold text-slate-300">No</span>
+          </div>
+          <div class="field-notes">
+            <label class="text-xs font-medium text-slate-400 block mb-1">Notes</label>
+            <p class="value-display text-sm text-slate-300 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 min-h-[2.5rem]">Feeling good, keep going</p>
+          </div>
+          <p class="updated-by text-[11px] text-slate-500">Last updated by Riley · <span class="ago">just now</span></p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- demo control panel -->
+  <div class="mt-8 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Demo controls — simulates Riley editing on their device</p>
+    <div class="flex flex-wrap gap-2">
+      <button id="sim-arousal" class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5">Bump arousal to 7</button>
+      <button id="sim-yellow" class="text-xs font-medium text-amber-400 border border-amber-700/50 hover:bg-amber-500/10 rounded-lg px-3 py-1.5">Mark YELLOW — near limit</button>
+      <button id="sim-red" class="text-xs font-medium text-red-400 border border-red-700/50 hover:bg-red-500/10 rounded-lg px-3 py-1.5">Mark RED — immediate stop</button>
+      <button id="sim-reset" class="text-xs font-medium text-slate-400 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5">Reset to GREEN</button>
+    </div>
+    <div id="log" class="mt-4 space-y-1 text-xs text-slate-500 font-mono"></div>
+  </div>
+
+  <div id="escalation-note" class="hidden mt-4 rounded-lg border border-red-700/50 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+    ⚠ This template has <strong>auto-escalate on RED</strong> turned on — a real RED here would also create a safety alert automatically, not just this notification.
+  </div>
+
+  <p class="text-xs text-slate-500 mt-6">Standalone and task-attached check-ins don't get this live treatment — this exists specifically for the "someone is watching it happen" case of an in-progress play session. See <a href="play-session-detail.html" class="underline underline-offset-2 hover:text-slate-400">the play session</a> this check-in belongs to.</p>
+</main>
+
+<script>
+  function setColor(color) {
+    const map = {
+      green: { bg: 'bg-emerald-600/20', border: 'border-emerald-600/40', text: 'text-emerald-400', label: 'GREEN — SAFE / OK' },
+      yellow: { bg: 'bg-amber-600/20', border: 'border-amber-600/40', text: 'text-amber-400', label: 'YELLOW — NEAR LIMIT' },
+      red: { bg: 'bg-red-600/20', border: 'border-red-600/40', text: 'text-red-400', label: 'RED — IMMEDIATE STOP' },
+    };
+    const c = map[color];
+    $('.color-banner').removeClass('bg-emerald-600/20 border-emerald-600/40 bg-amber-600/20 border-amber-600/40 bg-red-600/20 border-red-600/40')
+      .addClass(c.bg + ' ' + c.border);
+    $('.color-label').removeClass('text-emerald-400 text-amber-400 text-red-400').addClass(c.text).text(c.label);
+    $('.color-btn').removeClass('ring-2 ring-emerald-300/50 ring-amber-300/50 ring-red-300/50 opacity-50').css('opacity', .5);
+    $(`.color-btn[data-color="${color}"]`).css('opacity', 1).addClass('ring-2 ring-' + (color === 'green' ? 'emerald' : color === 'yellow' ? 'amber' : 'red') + '-300/50');
+    flash();
+    log('Color set to ' + color.toUpperCase());
+    if (color === 'red') {
+      $('#escalation-note').removeClass('hidden');
+      log('→ safety alert auto-raised (raised_via: system)');
+    } else {
+      $('#escalation-note').addClass('hidden');
+    }
+  }
+
+  function flash() {
+    $('.checkin-pane').addClass('just-updated');
+    setTimeout(() => $('.checkin-pane').removeClass('just-updated'), 1200);
+    $('.ago').text('just now');
+  }
+
+  function log(msg) {
+    const time = new Date().toLocaleTimeString();
+    $('#log').prepend(`<p>[${time}] ${msg}</p>`);
+  }
+
+  $('#sim-arousal').on('click', function () {
+    $('.slider-arousal').val(7);
+    $('.field-arousal .value-display').text('7 / 10');
+    flash();
+    log('Riley updated arousal level → 7');
+  });
+  $('#sim-yellow').on('click', () => setColor('yellow'));
+  $('#sim-red').on('click', () => setColor('red'));
+  $('#sim-reset').on('click', () => setColor('green'));
+
+  $('.color-btn').on('click', function () { setColor($(this).data('color')); });
+
+  log('Connected — watching this session live');
+</script>
+</body>
+</html>

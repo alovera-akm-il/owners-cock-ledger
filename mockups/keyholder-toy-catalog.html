@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Toy Catalog</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="keyholder-toy-catalog.html" class="text-slate-100 font-medium">Toys</a>
+        <a href="checkin-templates.html" class="text-slate-400 hover:text-slate-200">Check-ins</a>
+        <a href="play-session-templates.html" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-2">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Toy Catalog</h1>
+      <p class="text-sm text-slate-400 mt-1">Riley's inventory · either of you can add, only you can delete</p>
+    </div>
+    <button id="new-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">+ Add toy</button>
+  </div>
+
+  <div class="flex items-center gap-3 mb-6">
+    <select id="submissive-select" class="bg-slate-900 border border-slate-800 rounded-lg text-sm px-3 py-1.5 text-slate-300">
+      <option>Riley's catalog</option>
+      <option>Sam's catalog</option>
+      <option>Jordan's catalog</option>
+    </select>
+    <label class="flex items-center gap-1.5 text-xs text-slate-500">
+      <input id="show-retired" type="checkbox"> Show retired
+    </label>
+  </div>
+
+  <!-- pending retirement request -->
+  <div id="pending-request" class="rounded-xl border border-amber-600/40 bg-amber-500/5 p-4 mb-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="h-9 w-9 rounded-full bg-amber-500/15 border border-amber-600/30 flex items-center justify-center shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"/></svg>
+      </div>
+      <div>
+        <p class="text-sm font-medium text-amber-400">Riley requested removal of "Nylon rope, 10m"</p>
+        <p class="text-xs text-slate-400 mt-0.5">Requested 2 days ago — still visible and usable until you approve or decline</p>
+      </div>
+    </div>
+    <div class="flex gap-2 shrink-0">
+      <button id="decline-removal-btn" class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5">Decline</button>
+      <button id="approve-removal-btn" class="text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5">Approve &amp; retire</button>
+    </div>
+  </div>
+
+  <!-- add/edit form -->
+  <div id="new-form" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
+    <p id="form-heading" class="text-xs font-semibold uppercase tracking-wide text-amber-500">Add toy</p>
+    <div class="grid grid-cols-2 gap-3">
+      <input type="text" placeholder="Name" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <input type="text" placeholder="Category (e.g. Vibrator, Chastity, Impact)" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    </div>
+    <div class="grid grid-cols-3 gap-3">
+      <input type="text" placeholder="Material" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <input type="text" placeholder="Brand" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <input type="text" placeholder="Color" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <input type="text" placeholder="Size notes (length, diameter, etc.)" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="">Compatible device (optional)</option>
+        <option>Holy Trainer V4 — steel</option>
+      </select>
+    </div>
+    <input type="text" placeholder="Storage location" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <textarea rows="2" placeholder="Care instructions" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <textarea rows="2" placeholder="Usage notes (e.g. requires extra lubricant, check battery before use)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <input type="text" placeholder="Tags, comma separated (e.g. travel-friendly, quiet)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-2">Photo</label>
+      <div class="rounded-lg border-2 border-dashed border-slate-700 bg-slate-950 p-4 text-center text-xs text-slate-500 hover:border-slate-600 cursor-pointer">Click to add one or more photos</div>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button id="cancel-new" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save toy</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-medium">Holy Trainer V4</p>
+          <span class="text-[10px] text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded shrink-0">by Keyholder</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">Chastity · Steel · Holy Trainer</p>
+        <p class="text-xs text-slate-500">Medium ring, standard cage length</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">bedside drawer</span>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button class="flex-1 text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2 py-1.5">Edit</button>
+          <button class="retire-btn text-xs font-medium text-red-400 border border-red-800/60 hover:bg-red-500/10 rounded-lg px-2 py-1.5">Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/></svg>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-medium">Silicone cock ring</p>
+          <span class="text-[10px] text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded shrink-0">by Keyholder</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">Chastity accessory · Silicone</p>
+        <p class="text-xs text-slate-500">Medium, 45mm</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">compatible with Holy Trainer V4</span>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button class="flex-1 text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2 py-1.5">Edit</button>
+          <button class="retire-btn text-xs font-medium text-red-400 border border-red-800/60 hover:bg-red-500/10 rounded-lg px-2 py-1.5">Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="2" width="10" height="20" rx="5"/></svg>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-medium">Bullet vibrator</p>
+          <span class="text-[10px] text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded shrink-0">by Riley</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">Vibrator · Silicone · We-Vibe</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">travel-friendly</span>
+          <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">quiet</span>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button class="flex-1 text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2 py-1.5">Edit</button>
+          <button class="retire-btn text-xs font-medium text-red-400 border border-red-800/60 hover:bg-red-500/10 rounded-lg px-2 py-1.5">Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v16M4 4h11a3 3 0 0 1 0 6H4m0 0h9a3 3 0 0 1 0 6H4"/></svg>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-medium">Leather flogger</p>
+          <span class="text-[10px] text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded shrink-0">by Keyholder</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">Impact · Leather</p>
+        <p class="text-xs text-slate-500">Usage: warm up before heavier strokes</p>
+        <div class="flex gap-2 mt-3">
+          <button class="flex-1 text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2 py-1.5">Edit</button>
+          <button class="retire-btn text-xs font-medium text-red-400 border border-red-800/60 hover:bg-red-500/10 rounded-lg px-2 py-1.5">Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-medium">Estim box — basic kit</p>
+          <span class="text-[10px] text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded shrink-0">by Keyholder</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">Estim</p>
+        <p class="text-xs text-slate-500">Usage: check contact gel before every session</p>
+        <div class="flex gap-2 mt-3">
+          <button class="flex-1 text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2 py-1.5">Edit</button>
+          <button class="retire-btn text-xs font-medium text-red-400 border border-red-800/60 hover:bg-red-500/10 rounded-lg px-2 py-1.5">Retire</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-amber-700/40 bg-amber-500/5 overflow-hidden">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v16M4 4h11a3 3 0 0 1 0 6H4m0 0h9a3 3 0 0 1 0 6H4"/></svg>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between">
+          <p class="text-sm font-medium">Nylon rope, 10m</p>
+          <span class="text-[10px] text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded shrink-0">by Riley</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5">Bondage · Nylon</p>
+        <span class="inline-block mt-2 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">removal requested</span>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden opacity-50">
+      <div class="h-32 bg-slate-800 flex items-center justify-center text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="2" width="10" height="20" rx="5"/></svg>
+      </div>
+      <div class="p-4">
+        <p class="text-sm font-medium">Old plug — cracked</p>
+        <p class="text-xs text-slate-500 mt-0.5">Plug · Silicone</p>
+        <span class="inline-block mt-2 text-[10px] font-semibold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">retired by you, 3 months ago</span>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="text-xs text-slate-500 mt-6">Riley can add and edit their own entries, but can only request removal — retiring one outright always requires your approval, the same as every other consequential change in this app.</p>
+</main>
+
+<script>
+  $('#new-btn').on('click', function () {
+    $('#form-heading').text('Add toy');
+    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('.rounded-xl button:contains("Edit")').on('click', function () {
+    $('#form-heading').text('Editing toy');
+    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+
+  $('.retire-btn').on('click', function () {
+    if (confirm('Retire this toy? It stays visible in past play-session history but drops out of the active catalog.')) {
+      $(this).closest('.rounded-xl').fadeTo(200, 0.5);
+    }
+  });
+
+  $('#approve-removal-btn').on('click', function () { $('#pending-request').fadeOut(200); });
+  $('#decline-removal-btn').on('click', function () { $('#pending-request').fadeOut(200); });
+
+  $('#show-retired').on('change', function () {
+    // demo only — in the real app this re-queries with ?include_retired=true
+  });
+</script>
+</body>
+</html>

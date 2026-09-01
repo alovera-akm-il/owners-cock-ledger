@@ -22,6 +22,8 @@
       <div class="hidden sm:flex items-center gap-6 text-sm">
         <a href="submissive-dashboard.html" class="text-slate-400 hover:text-slate-200">My Status</a>
         <a href="submit-proof.html" class="text-slate-100 font-medium">Submit Proof</a>
+        <a href="submissive-toy-catalog.html" class="text-slate-400 hover:text-slate-200">My Toys</a>
+        <a href="submissive-rewards.html" class="text-slate-400 hover:text-slate-200">Rewards &amp; Points</a>
         <a href="submissive-history.html" class="text-slate-400 hover:text-slate-200">History</a>
         <a href="submissive-statistics.html" class="text-slate-400 hover:text-slate-200">Statistics</a>
       </div>
@@ -57,7 +59,7 @@
 
   <div class="flex gap-2 mb-6 text-sm">
     <button id="mode-verification" class="proof-mode-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Scheduled check-in</button>
-    <button id="mode-punishment" class="proof-mode-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Punishment completion</button>
+    <button id="mode-task" class="proof-mode-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Task completion</button>
   </div>
 
   <div id="context-verification" class="rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 flex items-center justify-between">
@@ -69,20 +71,39 @@
     <button id="request-new-code-btn" class="text-xs font-medium text-slate-400 border border-slate-700 rounded-lg px-3 py-2 hover:border-slate-600">Request new code</button>
   </div>
 
-  <div id="context-punishment" class="hidden rounded-xl border border-red-700/40 bg-red-500/5 p-5 mb-6">
+  <div id="context-task" class="hidden rounded-xl border border-red-700/40 bg-red-500/5 p-5 mb-6">
     <p class="text-xs font-medium text-red-400 mb-1">Proving completion of</p>
     <p class="text-lg font-semibold text-slate-100">Cold shower, video required</p>
     <p class="text-xs text-slate-400 mt-1">Deadline in <span class="font-semibold text-amber-400">18h 42m</span> · miss it and it auto-fails to <span class="text-red-400">"extra day locked"</span></p>
+    <p class="text-xs text-slate-500 mt-1">Accepts: <span class="text-slate-300">video only</span> — set by whoever created this task</p>
   </div>
 
   <form class="space-y-5">
 
     <div>
-      <label class="block text-xs font-medium text-slate-400 mb-2">Photo / video</label>
-      <div class="rounded-xl border-2 border-dashed border-slate-700 bg-slate-900 p-8 text-center hover:border-slate-600 cursor-pointer">
+      <label class="block text-xs font-medium text-slate-400 mb-2">Proof type</label>
+      <div class="flex gap-2 mb-3">
+        <button type="button" id="media-photo" class="media-tab rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium">Photo</button>
+        <button type="button" id="media-video" class="media-tab rounded-lg text-slate-400 px-3 py-1.5 text-xs font-medium">Video</button>
+        <button type="button" id="media-voice" class="media-tab rounded-lg text-slate-400 px-3 py-1.5 text-xs font-medium">Voice recording</button>
+      </div>
+
+      <div id="upload-photo" class="rounded-xl border-2 border-dashed border-slate-700 bg-slate-900 p-8 text-center hover:border-slate-600 cursor-pointer">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-slate-600 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/></svg>
-        <p class="text-sm text-slate-400">Drop files here, or click to choose</p>
-        <p class="text-xs text-slate-600 mt-1">JPG, PNG, MP4 · up to 25 MB · up to 3 files</p>
+        <p class="text-sm text-slate-400">Drop a photo here, or click to choose</p>
+        <p class="text-xs text-slate-600 mt-1">JPG, PNG · up to 25 MB · up to 3 files</p>
+      </div>
+
+      <div id="upload-video" class="hidden rounded-xl border-2 border-dashed border-slate-700 bg-slate-900 p-8 text-center hover:border-slate-600 cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-slate-600 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m10 8 6 4-6 4V8Z"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg>
+        <p class="text-sm text-slate-400">Drop a video here, or click to choose</p>
+        <p class="text-xs text-slate-600 mt-1">MP4, MOV · up to 100 MB · 1 file</p>
+      </div>
+
+      <div id="upload-voice" class="hidden rounded-xl border-2 border-dashed border-slate-700 bg-slate-900 p-8 text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-slate-600 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>
+        <button id="record-btn" type="button" class="mt-1 rounded-lg bg-red-600 hover:bg-red-500 transition-colors px-4 py-2 text-xs font-semibold text-slate-950">● Start recording</button>
+        <p id="record-status" class="text-xs text-slate-500 mt-2">Up to 2 minutes, capped for storage — plenty for a short voice note</p>
       </div>
     </div>
 
@@ -127,15 +148,38 @@
 
   $('#mode-verification').on('click', function () {
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');
-    $('#mode-punishment').removeClass('bg-slate-800').addClass('text-slate-400');
+    $('#mode-task').removeClass('bg-slate-800').addClass('text-slate-400');
     $('#context-verification').removeClass('hidden');
-    $('#context-punishment').addClass('hidden');
+    $('#context-task').addClass('hidden');
   });
-  $('#mode-punishment').on('click', function () {
+  $('#mode-task').on('click', function () {
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');
     $('#mode-verification').removeClass('bg-slate-800').addClass('text-slate-400');
-    $('#context-punishment').removeClass('hidden');
+    $('#context-task').removeClass('hidden');
     $('#context-verification').addClass('hidden');
+    selectMedia('video'); // this task's proof_media_types only allows video
+  });
+
+  function selectMedia(kind) {
+    $('.media-tab').removeClass('bg-slate-800').addClass('text-slate-400');
+    $('#media-' + kind).addClass('bg-slate-800').removeClass('text-slate-400');
+    $('#upload-photo, #upload-video, #upload-voice').addClass('hidden');
+    $('#upload-' + kind).removeClass('hidden');
+  }
+  $('#media-photo').on('click', () => selectMedia('photo'));
+  $('#media-video').on('click', () => selectMedia('video'));
+  $('#media-voice').on('click', () => selectMedia('voice'));
+
+  let recording = false;
+  $('#record-btn').on('click', function () {
+    recording = !recording;
+    if (recording) {
+      $(this).text('■ Stop recording').removeClass('bg-red-600 hover:bg-red-500').addClass('bg-slate-700 hover:bg-slate-600 text-slate-100');
+      $('#record-status').html('Recording… <span class="text-red-400 font-mono">0:04</span>');
+    } else {
+      $(this).text('● Re-record').removeClass('bg-slate-700 hover:bg-slate-600 text-slate-100').addClass('bg-red-600 hover:bg-red-500');
+      $('#record-status').html('✓ Recorded — <span class="text-slate-300 font-mono">0:07</span> · tap to re-record');
+    }
   });
 </script>
 </body>

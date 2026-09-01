@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>The Ledger — Rewards &amp; Punishments</title>
+<title>The Ledger — Tasks, Rewards &amp; Punishments</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -21,7 +21,10 @@
       </a>
       <div class="hidden sm:flex items-center gap-6 text-sm">
         <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
-        <a href="catalog.html" class="text-slate-100 font-medium">Rewards &amp; Punishments</a>
+        <a href="catalog.html" class="text-slate-100 font-medium">Catalog</a>
+        <a href="keyholder-toy-catalog.html" class="text-slate-400 hover:text-slate-200">Toys</a>
+        <a href="checkin-templates.html" class="text-slate-400 hover:text-slate-200">Check-ins</a>
+        <a href="play-session-templates.html" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
         <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
         <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
       </div>
@@ -41,7 +44,7 @@
           <ul class="max-h-80 overflow-y-auto divide-y divide-slate-800 text-sm">
             <li class="px-4 py-3 hover:bg-slate-800/40 cursor-pointer flex gap-2">
               <span class="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0"></span>
-              <span><p class="font-medium leading-snug">Punishment deadline in 1 hour</p><p class="text-xs text-slate-500 mt-0.5">"cold shower, video required" · Riley</p></span>
+              <span><p class="font-medium leading-snug">Task deadline in 1 hour</p><p class="text-xs text-slate-500 mt-0.5">"cold shower, video required" · Riley</p></span>
             </li>
           </ul>
         </div>
@@ -54,15 +57,16 @@
 <main class="max-w-5xl mx-auto px-6 py-8">
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Rewards &amp; Punishments</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">Tasks, Rewards &amp; Punishments</h1>
       <p class="text-sm text-slate-400 mt-1">Your reusable catalog — shared across every submissive linked to you</p>
     </div>
     <button id="new-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">+ New template</button>
   </div>
 
   <div class="flex gap-2 mb-6 text-sm">
-    <button id="tab-punishments" class="cat-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Punishments <span class="text-slate-500">(5)</span></button>
-    <button id="tab-rewards" class="cat-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Rewards <span class="text-slate-600">(3)</span></button>
+    <button id="tab-tasks" class="cat-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Tasks <span class="text-slate-500">(5)</span></button>
+    <button id="tab-punishments" class="cat-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Punishments <span class="text-slate-600">(3)</span></button>
+    <button id="tab-rewards" class="cat-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Rewards <span class="text-slate-600">(4)</span></button>
   </div>
 
   <!-- template form: shared by "+ New template" and every row's "Edit" (hidden by default) -->
@@ -71,27 +75,16 @@
     <div class="grid grid-cols-2 gap-3">
       <input id="form-title" type="text" placeholder="Title" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
       <select id="new-kind" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="task">Task</option>
         <option value="punishment">Punishment</option>
         <option value="reward">Reward</option>
       </select>
     </div>
     <textarea id="form-description" rows="2" placeholder="Description" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
 
-    <!-- punishment-only fields -->
-    <div id="punishment-fields" class="border-t border-amber-700/30 pt-4 space-y-4">
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-2">What does completing this require?</label>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
-            <input type="radio" name="effect-kind" value="task" checked class="effect-kind-radio"> Task (submissive does something)
-          </label>
-          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
-            <input type="radio" name="effect-kind" value="time_extension" class="effect-kind-radio"> Time extension only (no task)
-          </label>
-        </div>
-      </div>
-
-      <div id="task-fields" class="grid grid-cols-2 gap-3">
+    <!-- task-only fields -->
+    <div id="task-fields" class="border-t border-amber-700/30 pt-4 space-y-4">
+      <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-medium text-slate-400 mb-1.5">Completion type</label>
           <select id="form-completion-type" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
@@ -111,7 +104,66 @@
         </div>
       </div>
 
-      <div id="time-extension-fields" class="hidden">
+      <div id="proof-media-fields" class="hidden">
+        <label class="block text-xs font-medium text-slate-400 mb-2">Accepted proof media (one or more)</label>
+        <div class="flex gap-2">
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="checkbox" class="proof-media-check" value="photo" checked> Photo
+          </label>
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="checkbox" class="proof-media-check" value="video"> Video
+          </label>
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="checkbox" class="proof-media-check" value="voice"> Voice recording
+          </label>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">On success, automatically</label>
+          <select id="form-on-success" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            <option value="">Nothing — I'll decide manually</option>
+            <option>Choose tonight's movie</option>
+            <option>Extra 15 min video call</option>
+          </select>
+          <p class="text-[11px] text-slate-500 mt-1.5">Grants the chosen reward the moment this task is verified complete.</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">If it fails or the deadline passes</label>
+          <select id="form-on-failure" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            <option value="">Nothing — I'll decide manually</option>
+            <option>Extra day locked</option>
+            <option>No orgasm for 3 extra days</option>
+            <option>500 lines, handwritten</option>
+          </select>
+          <p class="text-[11px] text-slate-500 mt-1.5">Automatically assigns the chosen consequence — can point at another task or straight at a punishment. Chains can go several links deep.</p>
+        </div>
+      </div>
+
+      <div>
+        <label class="flex items-center gap-2 text-xs font-medium text-slate-400 mb-1.5">
+          <input id="form-points-enabled" type="checkbox"> Award points on completion
+        </label>
+        <input id="form-points-value" type="number" placeholder="e.g. 5" disabled class="w-32 bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-500 disabled:opacity-40" />
+        <p class="text-[11px] text-slate-500 mt-1.5">Only visible to submissives you've turned points tracking on for. See <a href="submissive-detail.html" class="underline underline-offset-2 hover:text-slate-400">link settings</a>.</p>
+      </div>
+    </div>
+
+    <!-- punishment-only fields -->
+    <div id="punishment-fields" class="hidden border-t border-amber-700/30 pt-4 space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-2">What happens when this is assigned?</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="radio" name="punishment-effect" value="grant" checked class="punishment-effect-radio"> Just a record — nothing else automatic
+          </label>
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="radio" name="punishment-effect" value="time_extension" class="punishment-effect-radio"> Time extension — adds to the lock timer
+          </label>
+        </div>
+      </div>
+      <div id="punishment-timeext-fields" class="hidden">
         <label class="block text-xs font-medium text-slate-400 mb-1.5">Time added to the lock timer</label>
         <div class="flex gap-2 max-w-xs">
           <input id="form-timeext-value" type="number" value="6" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
@@ -123,16 +175,43 @@
         <p class="text-[11px] text-slate-500 mt-1.5">Defaults to 6 hours — change it to whatever fits. Applied immediately when assigned, nothing for the submissive to acknowledge or prove.</p>
         <p class="text-[11px] text-amber-500/90 mt-1">If this is ever reached via automatic escalation rather than a direct assignment, you'll get a notification to confirm or adjust the amount before it's considered settled.</p>
       </div>
+      <p class="text-[11px] text-slate-500">Need the submissive to actually <em>do</em> something as the consequence? Create a Task instead, and point another task's "if it fails" at this — or just assign the task directly with severity in mind.</p>
+    </div>
 
+    <!-- reward-only fields -->
+    <div id="reward-fields" class="hidden border-t border-amber-700/30 pt-4 space-y-4">
       <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">If this fails or the deadline passes</label>
-        <select id="form-escalation" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-          <option value="">No automatic escalation — I'll decide manually</option>
-          <option>500 lines, handwritten</option>
-          <option>Extra day locked</option>
-          <option>No orgasm for 3 extra days</option>
-        </select>
-        <p class="text-[11px] text-slate-500 mt-1.5">Automatically assigns the chosen punishment the moment this one fails — chains can go several links deep.</p>
+        <label class="block text-xs font-medium text-slate-400 mb-2">What happens when this is granted?</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="radio" name="reward-effect" value="grant" checked class="reward-effect-radio"> Just a record — nothing else automatic
+          </label>
+          <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-amber-600">
+            <input type="radio" name="reward-effect" value="time_reduction" class="reward-effect-radio"> Time reduction — removes from the lock timer
+          </label>
+        </div>
+      </div>
+      <div id="reward-timered-fields" class="hidden">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Time removed from the lock timer</label>
+        <div class="flex gap-2 max-w-xs">
+          <input id="form-timered-value" type="number" value="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+          <select id="form-timered-unit" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            <option selected>hours</option>
+            <option>days</option>
+          </select>
+        </div>
+        <p class="text-[11px] text-amber-500/90 mt-1">Same review-on-apply flag as an automatic time extension when this is reached via a task's "on success" rather than a direct grant.</p>
+      </div>
+      <div>
+        <label class="flex items-center gap-2 text-xs font-medium text-slate-400 mb-1.5">
+          <input id="form-points-cost-enabled" type="checkbox"> Let the submissive redeem this themselves with points
+        </label>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-500">Cost:</span>
+          <input id="form-points-cost-value" type="number" placeholder="e.g. 20" disabled class="w-32 bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-500 disabled:opacity-40" />
+          <span class="text-xs text-slate-500">points</span>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-1.5">Creates a pending request for you to approve or deny — never grants it automatically.</p>
       </div>
     </div>
 
@@ -142,13 +221,61 @@
     </div>
   </div>
 
-  <div id="punishments-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+  <!-- TASKS -->
+  <div id="tasks-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Overnight chastity cage check-in</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Morning photo proof, paired with the cage check-in template.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full">Proof required · photo</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">12h deadline</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+5 pts</span>
+          <span class="text-[11px] text-emerald-400/90">✓ succeeds into: Choose tonight's movie</span>
+          <span class="text-[11px] text-red-400/90">↳ fails into: Extra day locked</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 14×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Cold shower, 5 minutes, video required</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Assigned as a consequence, not proactively — but it's the same template either way.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full">Proof required · video</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">24h deadline</span>
+          <span class="text-[11px] text-red-400/90">↳ fails into: Extra day locked</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 2×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Clean and lubricate the device</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Routine maintenance task, purely proactive — no failure path at all.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full">Proof required · photo, video</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">6h deadline</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">+3 pts</span>
+          <span class="text-[11px] text-slate-500">no automatic escalation either way</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 9×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
+      </div>
+    </div>
     <div class="flex items-center justify-between px-5 py-4">
       <div>
         <p class="text-sm font-medium">500 lines, handwritten</p>
-        <p class="text-xs text-slate-500 mt-0.5 mb-2">"I will not skip verification windows." Photographed and submitted as proof.</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">"I will not skip verification windows."</p>
         <div class="flex flex-wrap items-center gap-1.5">
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Task</span>
           <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Acknowledge only</span>
           <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">24h deadline</span>
           <span class="text-[11px] text-slate-500">no automatic escalation</span>
@@ -156,25 +283,27 @@
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 6×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"500 lines, handwritten","kind":"punishment","description":"\"I will not skip verification windows.\" Photographed and submitted as proof.","effectKind":"task","completionType":"Acknowledge only","deadlineValue":24,"deadlineUnit":"hours","escalation":""}'>Edit</button>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
-    <div class="flex items-center justify-between px-5 py-4">
+    <div class="flex items-center justify-between px-5 py-4 opacity-50">
       <div>
-        <p class="text-sm font-medium">Cold shower, 5 minutes, video required</p>
-        <p class="text-xs text-slate-500 mt-0.5 mb-2">Submitted as its own proof item within 24h.</p>
+        <p class="text-sm font-medium">Corner time — 20 minutes</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Deactivated — kept for history on past assignments. Still usable as an escalation target already wired up elsewhere.</p>
         <div class="flex flex-wrap items-center gap-1.5">
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Task</span>
-          <span class="text-[11px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full">Proof required</span>
-          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">24h deadline</span>
-          <span class="text-[11px] text-red-400/90">↳ escalates to: Extra day locked</span>
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Acknowledge only</span>
+          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">12h deadline</span>
         </div>
       </div>
       <div class="flex items-center gap-3 shrink-0">
-        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 2×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"Cold shower, 5 minutes, video required","kind":"punishment","description":"Submitted as its own proof item within 24h.","effectKind":"task","completionType":"Proof required","deadlineValue":24,"deadlineUnit":"hours","escalation":"Extra day locked"}'>Edit</button>
+        <span class="text-[11px] font-medium text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">used 9×</span>
+        <button class="text-xs font-semibold text-amber-500 border border-amber-700/50 hover:bg-amber-500/10 rounded-lg px-2.5 py-1 transition-colors">Reactivate</button>
       </div>
     </div>
+  </div>
+
+  <!-- PUNISHMENTS -->
+  <div id="punishments-list" class="hidden rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
     <div class="flex items-center justify-between px-5 py-4">
       <div>
         <p class="text-sm font-medium">Extra day locked</p>
@@ -193,7 +322,7 @@
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 3×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"Extra day locked","kind":"punishment","description":"The usual escalation leaf — applied immediately, nothing to acknowledge.","effectKind":"time_extension","timeextValue":1,"timeextUnit":"days","escalation":""}'>Edit</button>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
     <div class="flex items-center justify-between px-5 py-4">
@@ -213,60 +342,89 @@
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 4×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"No orgasm for 3 extra days","kind":"punishment","description":"Extends the current denial period directly; logged on the timer’s own adjustment history.","effectKind":"time_extension","timeextValue":3,"timeextUnit":"days","escalation":""}'>Edit</button>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
-    <div class="flex items-center justify-between px-5 py-4 opacity-50">
+    <div class="flex items-center justify-between px-5 py-4">
       <div>
-        <p class="text-sm font-medium">Corner time — 20 minutes</p>
-        <p class="text-xs text-slate-500 mt-0.5 mb-2">Deactivated — kept for history on past assignments. Still usable as an escalation target already wired up elsewhere.</p>
-        <div class="flex flex-wrap items-center gap-1.5">
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Task</span>
-          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Acknowledge only</span>
-          <span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">12h deadline</span>
+        <p class="text-sm font-medium">Formal reprimand</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Just a logged record — no timer effect, nothing to complete.</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Record only</span>
         </div>
       </div>
       <div class="flex items-center gap-3 shrink-0">
-        <span class="text-[11px] font-medium text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">used 9×</span>
-        <button class="text-xs font-semibold text-amber-500 border border-amber-700/50 hover:bg-amber-500/10 rounded-lg px-2.5 py-1 transition-colors">Reactivate</button>
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 4×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
   </div>
 
+  <!-- REWARDS -->
   <div id="rewards-list" class="hidden rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
     <div class="flex items-center justify-between px-5 py-4">
       <div>
         <p class="text-sm font-medium">Choose tonight's movie</p>
-        <p class="text-xs text-slate-500 mt-0.5">Small, frequent reward for a clean week of on-time verifications.</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Small, frequent reward for a clean week of on-time verifications.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Record only</span>
+        </div>
       </div>
       <div class="flex items-center gap-3">
         <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 5×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"Choose tonight’s movie","kind":"reward","description":"Small, frequent reward for a clean week of on-time verifications."}'>Edit</button>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
     <div class="flex items-center justify-between px-5 py-4">
       <div>
         <p class="text-sm font-medium">One-day unlock, supervised</p>
-        <p class="text-xs text-slate-500 mt-0.5">Reserved for milestone streaks (30+ days).</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Reserved for milestone streaks (30+ days).</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Record only</span>
+        </div>
       </div>
       <div class="flex items-center gap-3">
         <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 1×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"One-day unlock, supervised","kind":"reward","description":"Reserved for milestone streaks (30+ days)."}'>Edit</button>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
     <div class="flex items-center justify-between px-5 py-4">
       <div>
         <p class="text-sm font-medium">Extra 15 min video call</p>
-        <p class="text-xs text-slate-500 mt-0.5">—</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Also self-redeemable — Riley can spend points on this directly.</p>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Record only</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">redeemable · 20 pts</span>
+        </div>
       </div>
       <div class="flex items-center gap-3">
         <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 3×</span>
-        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-template='{"title":"Extra 15 min video call","kind":"reward","description":""}'>Edit</button>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-5 py-4">
+      <div>
+        <p class="text-sm font-medium">Remove device for 2 hours early</p>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Direct mirror image of a time-extension punishment.</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-[11px] bg-amber-600/15 text-amber-500 px-2 py-0.5 rounded-full">Time reduction</span>
+          <div class="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 border border-amber-700/40 px-2.5 py-1">
+            <span class="text-[9px] uppercase tracking-wide text-amber-500 font-semibold">removes</span>
+            <div class="flex items-center gap-0.5 font-mono font-bold text-xs text-amber-400 tabular-nums">
+              <span>00</span><span class="text-slate-700">:</span><span>02</span><span class="text-slate-700">:</span><span>00</span>
+            </div>
+            <span class="text-[9px] text-slate-500">d:h:m</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">used 2×</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors">Edit</button>
       </div>
     </div>
   </div>
 
-  <p class="text-xs text-slate-500 mt-4">Submissives can see titles and descriptions of active templates (read-only) unless catalog visibility is turned off for their link.</p>
+  <p class="text-xs text-slate-500 mt-4">Submissives can see titles and descriptions of active templates (read-only) unless catalog visibility is turned off for their link. Redeemable rewards show up for them on the <a href="submissive-rewards.html" class="underline underline-offset-2 hover:text-slate-400">Rewards &amp; Points</a> page.</p>
 </main>
 
 <script>
@@ -274,78 +432,83 @@
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
 
+  function syncKindFields() {
+    const kind = $('#new-kind').val();
+    $('#task-fields').toggleClass('hidden', kind !== 'task');
+    $('#punishment-fields').toggleClass('hidden', kind !== 'punishment');
+    $('#reward-fields').toggleClass('hidden', kind !== 'reward');
+  }
+
   function resetTemplateForm() {
     $('#form-title').val('');
     $('#form-description').val('');
-    $('#new-kind').val('punishment');
-    $('input[name="effect-kind"][value="task"]').prop('checked', true);
+    $('#new-kind').val('task');
     $('#form-completion-type').val('Acknowledge only');
+    $('.proof-media-check').prop('checked', false);
+    $('.proof-media-check[value="photo"]').prop('checked', true);
     $('#form-deadline-value').val(24);
     $('#form-deadline-unit').val('hours');
+    $('#form-on-success').val('');
+    $('#form-on-failure').val('');
+    $('#form-points-enabled').prop('checked', false);
+    $('#form-points-value').val('').prop('disabled', true);
+    $('input[name="punishment-effect"][value="grant"]').prop('checked', true);
     $('#form-timeext-value').val(6);
     $('#form-timeext-unit').val('hours');
-    $('#form-escalation').val('');
+    $('input[name="reward-effect"][value="grant"]').prop('checked', true);
+    $('#form-timered-value').val(2);
+    $('#form-timered-unit').val('hours');
+    $('#form-points-cost-enabled').prop('checked', false);
+    $('#form-points-cost-value').val('').prop('disabled', true);
+    $('#proof-media-fields').addClass('hidden');
+    $('#punishment-timeext-fields').addClass('hidden');
+    $('#reward-timered-fields').addClass('hidden');
   }
 
-  function openTemplateForm(mode, data) {
-    data = data || {};
+  function openTemplateForm(mode) {
     if (mode === 'edit') {
-      $('#form-heading').text('Editing: ' + data.title);
+      $('#form-heading').text('Editing template');
       $('#form-save-btn').text('Save changes');
-      $('#form-title').val(data.title || '');
-      $('#form-description').val(data.description || '');
-      $('#new-kind').val(data.kind || 'punishment');
-      if (data.kind === 'punishment') {
-        const effectKind = data.effectKind || 'task';
-        $('input[name="effect-kind"][value="' + effectKind + '"]').prop('checked', true);
-        $('#form-completion-type').val(data.completionType || 'Acknowledge only');
-        $('#form-deadline-value').val(data.deadlineValue || 24);
-        $('#form-deadline-unit').val(data.deadlineUnit || 'hours');
-        $('#form-timeext-value').val(data.timeextValue || 6);
-        $('#form-timeext-unit').val(data.timeextUnit || 'hours');
-        $('#form-escalation').val(data.escalation || '');
-      }
     } else {
       $('#form-heading').text('New template');
       $('#form-save-btn').text('Save template');
       resetTemplateForm();
     }
-    // sync the conditional field visibility to whatever we just set
-    $('#punishment-fields').toggleClass('hidden', $('#new-kind').val() !== 'punishment');
-    const isTask = $('input[name="effect-kind"]:checked').val() !== 'time_extension';
-    $('#task-fields').toggleClass('hidden', !isTask);
-    $('#time-extension-fields').toggleClass('hidden', isTask);
-
+    syncKindFields();
     $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   $('#new-btn').on('click', () => openTemplateForm('new'));
-  $('.edit-template-btn').on('click', function () {
-    openTemplateForm('edit', $(this).data('template'));
-  });
+  $('.edit-template-btn').on('click', function () { openTemplateForm('edit'); });
   $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
 
-  $('#new-kind').on('change', function () {
-    $('#punishment-fields').toggleClass('hidden', $(this).val() !== 'punishment');
+  $('#new-kind').on('change', syncKindFields);
+
+  $('#form-completion-type').on('change', function () {
+    $('#proof-media-fields').toggleClass('hidden', $(this).val() !== 'Proof required');
   });
-  $('.effect-kind-radio').on('change', function () {
-    const isTask = $('input[name="effect-kind"]:checked').val() === 'task';
-    $('#task-fields').toggleClass('hidden', !isTask);
-    $('#time-extension-fields').toggleClass('hidden', isTask);
+  $('#form-points-enabled').on('change', function () {
+    $('#form-points-value').prop('disabled', !this.checked);
+  });
+  $('.punishment-effect-radio').on('change', function () {
+    $('#punishment-timeext-fields').toggleClass('hidden', $('input[name="punishment-effect"]:checked').val() !== 'time_extension');
+  });
+  $('.reward-effect-radio').on('change', function () {
+    $('#reward-timered-fields').toggleClass('hidden', $('input[name="reward-effect"]:checked').val() !== 'time_reduction');
+  });
+  $('#form-points-cost-enabled').on('change', function () {
+    $('#form-points-cost-value').prop('disabled', !this.checked);
   });
 
-  $('#tab-punishments').on('click', function () {
-    $(this).addClass('bg-slate-800').removeClass('text-slate-400');
-    $('#tab-rewards').removeClass('bg-slate-800').addClass('text-slate-400');
-    $('#punishments-list').removeClass('hidden');
-    $('#rewards-list').addClass('hidden');
-  });
-  $('#tab-rewards').on('click', function () {
-    $(this).addClass('bg-slate-800').removeClass('text-slate-400');
-    $('#tab-punishments').removeClass('bg-slate-800').addClass('text-slate-400');
-    $('#rewards-list').removeClass('hidden');
-    $('#punishments-list').addClass('hidden');
-  });
+  function selectTab(name) {
+    $('.cat-tab').removeClass('bg-slate-800').addClass('text-slate-400');
+    $('#tab-' + name).addClass('bg-slate-800').removeClass('text-slate-400');
+    $('#tasks-list, #punishments-list, #rewards-list').addClass('hidden');
+    $('#' + name + '-list').removeClass('hidden');
+  }
+  $('#tab-tasks').on('click', () => selectTab('tasks'));
+  $('#tab-punishments').on('click', () => selectTab('punishments'));
+  $('#tab-rewards').on('click', () => selectTab('rewards'));
 </script>
 </body>
 </html>

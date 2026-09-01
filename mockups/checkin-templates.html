@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Check-in Templates</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="keyholder-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="keyholder-dashboard.html" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="catalog.html" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="keyholder-toy-catalog.html" class="text-slate-400 hover:text-slate-200">Toys</a>
+        <a href="checkin-templates.html" class="text-slate-100 font-medium">Check-ins</a>
+        <a href="play-session-templates.html" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="keyholder-audit-log.html" class="text-slate-400 hover:text-slate-200">Audit Log</a>
+        <a href="keyholder-safety-alerts.html" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="keyholder-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">MK</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Check-in Templates</h1>
+      <p class="text-sm text-slate-400 mt-1">You author these; either of you can fill one in once it's attached to a task or session</p>
+    </div>
+    <button id="new-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">+ New template</button>
+  </div>
+
+  <!-- new/edit form -->
+  <div id="new-form" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
+    <p id="form-heading" class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
+    <input id="form-title" type="text" placeholder="Title (e.g. Morning chastity cage check-in)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <textarea id="form-description" rows="2" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+
+    <div class="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5">
+      <p class="text-xs font-medium text-slate-300 mb-1">Color <span class="text-slate-500 font-normal">— always included, every check-in has this</span></p>
+      <div class="flex gap-2 text-[11px]">
+        <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Green — SAFE/OK</span>
+        <span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Yellow — Near limit</span>
+        <span class="px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">Red — immediate stop</span>
+      </div>
+    </div>
+
+    <label class="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 cursor-pointer has-[:checked]:border-red-700/60 has-[:checked]:bg-red-500/5">
+      <input id="form-auto-escalate" type="checkbox" class="mt-0.5">
+      <span>
+        <span class="text-sm font-medium text-slate-200">Auto-raise a safety alert on RED</span>
+        <span class="block text-xs text-slate-500 mt-0.5">Off by default. Turn this on only for a template where RED genuinely means "stop right now" — it'll skip the notification and go straight to the same escalation a manual safety alert triggers.</span>
+      </span>
+    </label>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-xs font-medium text-slate-400">Custom fields</p>
+        <button id="add-field-btn" type="button" class="text-xs font-medium text-amber-500 hover:text-amber-400">+ Add field</button>
+      </div>
+      <div id="fields-list" class="space-y-3"></div>
+    </div>
+
+    <div class="flex justify-end gap-2">
+      <button id="cancel-new" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
+    </div>
+  </div>
+
+  <div id="template-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <div class="px-5 py-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <p class="text-sm font-medium">Morning chastity cage check-in</p>
+          <p class="text-xs text-slate-500 mt-0.5">Paired with the overnight cage photo-proof task</p>
+        </div>
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full shrink-0">used 47×</span>
+      </div>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Skin status (select)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Cage comfort (scale 1–5)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Incidents (text)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Sleep quality (text)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Device (select · from catalog)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Duration (number · hours)</span>
+      </div>
+      <div class="flex items-center justify-between mt-3">
+        <span class="text-[11px] text-slate-500">Auto-escalation on RED: off</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">Edit</button>
+      </div>
+    </div>
+
+    <div class="px-5 py-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <p class="text-sm font-medium">Estim mid-session check-in</p>
+          <p class="text-xs text-slate-500 mt-0.5">Attached to Estim play-session templates, every 15 minutes</p>
+        </div>
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full shrink-0">used 22×</span>
+      </div>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Arousal level (scale 0–10)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Comfort level (scale 0–5)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Safeword invoked (yes/no)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Notes (text)</span>
+      </div>
+      <div class="flex items-center justify-between mt-3">
+        <span class="text-[11px] font-medium text-red-400">Auto-escalation on RED: on</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">Edit</button>
+      </div>
+    </div>
+
+    <div class="px-5 py-4">
+      <div class="flex items-start justify-between mb-2">
+        <div>
+          <p class="text-sm font-medium">General wellbeing check</p>
+          <p class="text-xs text-slate-500 mt-0.5">Standalone, on-demand — not tied to any task or session</p>
+        </div>
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full shrink-0">used 9×</span>
+      </div>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Mood (select)</span>
+        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">Notes (text)</span>
+      </div>
+      <div class="flex items-center justify-between mt-3">
+        <span class="text-[11px] text-slate-500">Auto-escalation on RED: off</span>
+        <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-500 mt-4">See a live one in action: <a href="checkin-live.html" class="underline underline-offset-2 hover:text-slate-400">Estim mid-session check-in demo →</a></p>
+</main>
+
+<script>
+  const FIELD_TYPES = ['scale', 'select', 'number', 'text', 'boolean'];
+
+  function fieldRow(data) {
+    data = data || {};
+    const row = $(`
+      <div class="field-row rounded-lg border border-slate-800 bg-slate-950 p-3 space-y-2">
+        <div class="grid grid-cols-3 gap-2">
+          <input class="field-label bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" placeholder="Label (e.g. Skin status)" />
+          <select class="field-type bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            ${FIELD_TYPES.map(t => `<option value="${t}">${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}
+          </select>
+          <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="checkbox" class="field-required"> Required</label>
+        </div>
+        <div class="field-config"></div>
+        <button type="button" class="remove-field-btn text-[11px] text-slate-500 hover:text-red-400">Remove field</button>
+      </div>
+    `);
+    row.find('.field-label').val(data.label || '');
+    row.find('.field-type').val(data.type || 'text');
+    row.find('.field-required').prop('checked', !!data.required);
+    row.find('.remove-field-btn').on('click', () => row.remove());
+    row.find('.field-type').on('change', function () { renderConfig(row, $(this).val()); });
+    renderConfig(row, data.type || 'text', data);
+    return row;
+  }
+
+  function renderConfig(row, type, data) {
+    data = data || {};
+    let html = '';
+    if (type === 'scale') {
+      html = `<div class="grid grid-cols-4 gap-2">
+        <input type="number" placeholder="Min" value="${data.min ?? 1}" class="bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <input type="number" placeholder="Max" value="${data.max ?? 5}" class="bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <input type="text" placeholder="Label at min (e.g. barely feel it)" value="${data.minLabel ?? ''}" class="col-span-1 bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <input type="text" placeholder="Label at max (e.g. painful)" value="${data.maxLabel ?? ''}" class="bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+      </div>
+      <p class="text-[11px] text-slate-500 mt-1">You decide which end means what — 0 can mean "bad" on one field and "good" on another.</p>`;
+    } else if (type === 'select') {
+      html = `<div class="space-y-1.5">
+        <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="radio" name="select-src-${Math.random()}" class="select-source" value="static" checked> Fixed list of options</label>
+        <input type="text" placeholder="Options, comma separated" class="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="radio" name="select-src-${Math.random()}" class="select-source" value="devices"> Pull from Riley's chastity devices automatically</label>
+      </div>`;
+    } else if (type === 'number') {
+      html = `<input type="text" placeholder="Unit (e.g. hours)" class="w-40 bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />`;
+    } else if (type === 'boolean') {
+      html = `<p class="text-[11px] text-slate-500">Shown as a yes/no toggle.</p>`;
+    } else {
+      html = `<p class="text-[11px] text-slate-500">Free text entry.</p>`;
+    }
+    row.find('.field-config').html(html);
+  }
+
+  function resetFields(preset) {
+    $('#fields-list').empty();
+    (preset || [{ label: '', type: 'text' }]).forEach(f => $('#fields-list').append(fieldRow(f)));
+  }
+
+  $('#add-field-btn').on('click', () => $('#fields-list').append(fieldRow()));
+
+  $('#new-btn').on('click', function () {
+    $('#form-heading').text('New template');
+    $('#form-title').val('');
+    $('#form-description').val('');
+    $('#form-auto-escalate').prop('checked', false);
+    resetFields();
+    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  $('.edit-template-btn').on('click', function () {
+    $('#form-heading').text('Editing template');
+    resetFields([
+      { label: 'Skin status', type: 'select' },
+      { label: 'Cage comfort', type: 'scale', min: 1, max: 5, minLabel: 'barely feel it', maxLabel: 'painful' },
+      { label: 'Incidents', type: 'text' },
+    ]);
+    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+
+  resetFields();
+</script>
+</body>
+</html>
