@@ -75,17 +75,33 @@
         <option value="">Ad-hoc, no template</option>
       </select>
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
-        <input type="radio" name="log-mode" value="live" checked> Start live now
+        <input type="radio" name="log-mode" value="scheduled" checked> Schedule for later
+      </label>
+      <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
+        <input type="radio" name="log-mode" value="live"> Start live now
       </label>
       <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
         <input type="radio" name="log-mode" value="retro"> Log something that already happened
       </label>
     </div>
+    <div id="scheduled-fields" class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Planned start <span class="text-slate-600 font-normal">(optional — a time to aim for, not a lock)</span></label>
+        <input type="datetime-local" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <p class="text-[11px] text-slate-500 self-end pb-2">Either of you can hit "Start now" whenever you're actually ready — this doesn't need to match exactly, it's just what shows up as "scheduled for."</p>
+    </div>
     <div id="retro-fields" class="hidden grid grid-cols-2 gap-3">
-      <input type="datetime-local" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
-      <input type="datetime-local" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Started at</label>
+        <input type="datetime-local" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Ended at</label>
+        <input type="datetime-local" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
     </div>
     <div>
       <label class="block text-xs font-medium text-slate-400 mb-1.5">Toys from Riley's catalog</label>
@@ -96,7 +112,7 @@
     </div>
     <div class="flex justify-end gap-2">
       <button id="cancel-assign" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
-      <button onclick="window.location='play-session-detail.html'" class="text-xs font-semibold text-slate-950 bg-sky-500 hover:bg-sky-400 rounded-lg px-4 py-2">Create session</button>
+      <button id="assign-submit-btn" onclick="window.location='play-session-detail.html'" class="text-xs font-semibold text-slate-950 bg-sky-500 hover:bg-sky-400 rounded-lg px-4 py-2">Schedule session</button>
     </div>
   </div>
 
@@ -189,6 +205,13 @@
     <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
       <a href="play-session-detail.html" class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">
         <div>
+          <p class="text-sm font-medium">Sensory deprivation scene <span class="text-slate-500 font-normal">· Riley</span></p>
+          <p class="text-xs text-slate-500">Scheduled for tonight, 9:00 PM</p>
+        </div>
+        <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">scheduled</span>
+      </a>
+      <a href="play-session-detail.html" class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">
+        <div>
           <p class="text-sm font-medium">Estim session — standard <span class="text-slate-500 font-normal">· Riley</span></p>
           <p class="text-xs text-slate-500">Started 12 min ago</p>
         </div>
@@ -226,8 +249,13 @@
   });
   $('#assign-btn').on('click', () => $('#assign-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' }));
   $('#cancel-assign').on('click', () => $('#assign-form').addClass('hidden'));
+
+  const ASSIGN_BUTTON_LABEL = { scheduled: 'Schedule session', live: 'Start session now', retro: 'Log session' };
   $('input[name="log-mode"]').on('change', function () {
-    $('#retro-fields').toggleClass('hidden', $('input[name="log-mode"]:checked').val() !== 'retro');
+    const mode = $('input[name="log-mode"]:checked').val();
+    $('#scheduled-fields').toggleClass('hidden', mode !== 'scheduled');
+    $('#retro-fields').toggleClass('hidden', mode !== 'retro');
+    $('#assign-submit-btn').text(ASSIGN_BUTTON_LABEL[mode]);
   });
 
   $('#new-btn').on('click', function () {
