@@ -215,6 +215,25 @@ at creation time and nobody can sign up unassigned.
 | used_at | INTEGER NULL | |
 | used_by_user_id | TEXT NULL FK -> users.id | |
 
+### `password_reset_tokens`
+Same shape as `invites` — a single-use, hashed-at-rest, short-lived
+token — but backing account recovery rather than account creation.
+The only way one gets issued is `owners-cock-ledger admin
+reset-password <email>` (`10-operations.md` §5); there is deliberately
+no HTTP endpoint that creates one, since with no outbound email
+system, a self-service "request a reset" endpoint would just be a way
+to probe which emails have accounts, for a flow that can't even
+deliver its own token anywhere.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| user_id | TEXT FK -> users.id | |
+| token_hash | TEXT | SHA-256, same reasoning as `api_tokens.token_hash` (§9) |
+| created_at | INTEGER | |
+| expires_at | INTEGER | short — on the order of 1 hour, since it's handed to the account holder immediately over whatever channel the admin already has open, not emailed or held |
+| consumed_at | INTEGER NULL | |
+
 ## 3. Keyholder ↔ submissive relationship
 
 ### `keyholder_submissive_links`
@@ -733,10 +752,22 @@ nullable for exactly this reason (a `system`-attributed row has no
 human who clicked anything), but `audit_log` — the one table whose
 entire job is recording who did what — was never updated to match,
 even though the sweeper was always documented as writing an entry
-here (`08-punishments-and-deadlines.md` §3). A NULL actor is the
-signal on its own; there's no separate `detail.auth = "system"`
-marker needed the way session-vs-token entries carry one, since "no
-actor at all" is unambiguous in a way "which kind of actor" isn't.
+here (`08-punishments-and-deadlines.md` §3).
+
+**Revised**: a NULL actor was originally treated as unambiguous on
+its own, on the theory that the sweeper was the only thing that could
+write one. That stopped being true once `owners-cock-ledger admin`
+commands existed (`10-operations.md` §5) — a force-password-reset or
+a force-end-link is also actor-less in the `users.id` sense (there's
+no application account behind it) but is a deliberate human decision
+made outside the app, not an automated tick, and conflating the two
+would hide a person's action behind the same signal used for "nobody
+did this, the schedule did." Every NULL-actor row now sets
+`detail.actor_type` to either `"system"` (the sweeper) or
+`"admin_cli"` (an admin command), the same distinguishing-automated-
+from-human instinct as `assigned_via`/`reviewed_via`/`raised_via`
+elsewhere in this schema, just applied one level up at the audit-log
+layer instead of on the domain row itself.
 
 ## 9. API tokens (Keyholder automation)
 

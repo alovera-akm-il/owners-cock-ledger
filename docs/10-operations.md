@@ -56,8 +56,9 @@ themselves out on the very next login with no way back in.
 ten single-use codes issued the moment setup is confirmed, shown once
 (`05-security-and-privacy.md` §2), hashed at rest like an API token.
 Losing the authenticator device is a real, common failure mode for
-TOTP; without a recovery path, that failure mode is a full account
-lockout with no admin-recoverable path other than direct DB surgery.
+TOTP; without a recovery path, that failure mode would be a full
+account lockout. If the recovery codes are *also* exhausted or lost,
+`admin disable-2fa` (§5 below) is the actual last resort.
 
 **Disabling requires the password *and* a code**, not password alone
 (`03-api-design.md` §1) — deliberately more friction than enabling
@@ -163,3 +164,115 @@ infrastructure-shaped answer:
   backups are the deployer's responsibility; this section is what
   makes doing it easy and correct rather than a bespoke script every
   deployer has to write themselves.
+
+## 5. Admin CLI: forced account recovery
+
+Every other doc's mention of "an admin can fix this via direct DB
+access" (`05-security-and-privacy.md` §2, `02-roles-and-permissions.md`
+§5, `06-future-extensions.md` §2) was always true but never actually
+designed — genuinely a gap, not a deliberate omission, and one that
+matters more than it looks: this system has no outbound email, so
+there is no self-service "forgot password" flow at all
+(`05-security-and-privacy.md` §2). A forgotten password or a lost 2FA
+device with exhausted recovery codes was, until now, a real, undesigned
+dead end. This section is that design.
+
+### Trust model: why no extra in-app auth layer
+
+`owners-cock-ledger admin <verb>` subcommands run locally on the
+server host, as the same OS user the server process runs as — the
+same access level already required to open the SQLite file directly.
+For the self-hosted, LAN-only deployment this system assumes
+(`05-security-and-privacy.md` §1), that access is the actual security
+boundary, not a second authentication layer bolted onto the CLI.
+Requiring the CLI to separately log in would be theater: anyone who
+can run it already has unmediated read/write access to every table it
+would touch. What the CLI adds over raw SQL isn't a permission check —
+it's correctness (the right transaction, the right side effects, the
+right audit trail) and a record that something happened at all,
+which hand-written SQL against a live database gives none of.
+
+This is also why none of the commands below are reachable from any
+HTTP endpoint, even a `keyholder`-scoped one, and never will be —
+exposing them over the network (LAN or otherwise) would turn "you
+need to be on the box" into "you need to be on the network," which is
+a materially bigger trust boundary than this design accepts anywhere
+else.
+
+### Commands
+
+| Command | Effect |
+|---|---|
+| `admin reset-password <email>` | Issues a single-use password-reset token for the account (see below); prints it once to stdout. Does **not** set a password itself — the account holder still chooses their own. |
+| `admin disable-2fa <email>` | Force-clears `two_factor_credentials` and every `two_factor_recovery_codes` row for the account — the actual last resort for the lost-device-and-exhausted-recovery-codes case (§2 above). Doesn't touch the password; run `reset-password` too if both are needed. |
+| `admin unlock-account <email>` | Clears `failed_login_count` and `locked_until` immediately. A convenience, not a necessity — the account already self-unlocks once `locked_until` passes; this is for "I know it's really them, don't make them wait." |
+| `admin force-end-link <link_id>` | Already specified in `06-future-extensions.md` §2 — grouped here as a sibling command, not redesigned. |
+
+Every command above (backup excluded — it's read-only against live
+data) shares three behaviors:
+
+- **Confirmation required.** Prints what it's about to do and the
+  target account's email, and requires typing the email back to
+  proceed — the same "type the name to confirm" friction used for
+  any other action this consequential elsewhere in software, absent
+  from this app until now only because nothing this destructive was
+  CLI-reachable yet. A `--yes` flag skips the prompt for scripted use.
+- **Audit-logged like any other action.** Writes a normal `audit_log`
+  row (`01-data-model.md` §8) scoped to the affected account/link, not
+  a silent side channel — see the actor-marking fix below.
+- **Never touches the app's HTTP surface.** Pure CLI, operating
+  directly against the database the running server also uses — SQLite
+  in WAL mode tolerates this concurrently, the same property the
+  backup subcommand already relies on (§4 above).
+
+### Password reset: token, not a set password
+
+`reset-password` deliberately doesn't let the admin choose or see the
+account's new password — it issues a **single-use reset token** the
+admin relays to the account holder through whatever out-of-band
+channel they already have open (LAN chat, walking over, a phone call),
+who then sets their own new password with it. This mirrors invite
+redemption (`03-api-design.md` §1) rather than inventing a new shape:
+
+#### `password_reset_tokens` (new table, `01-data-model.md` §2)
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| user_id | TEXT FK -> users.id | |
+| token_hash | TEXT | SHA-256 at rest, same reasoning as API tokens (`05-security-and-privacy.md` §9) — high-entropy CSPRNG value, no slow hash needed |
+| created_at | INTEGER | |
+| expires_at | INTEGER | short — on the order of 1 hour, since it's meant to be handed over immediately, not emailed or held |
+| consumed_at | INTEGER NULL | single-use |
+
+#### `POST /auth/password-reset/redeem` (new endpoint, `03-api-design.md` §1)
+
+Public, requires a valid/unexpired/unconsumed token — `{token,
+new_password}`. Sets `password_hash`, consumes the token, and
+**revokes every other existing session for this account in the same
+transaction**, exactly like `POST /auth/password/change` already
+does. That last part matters here specifically: a password reset is
+often needed *because* something's wrong (a shared device, a
+suspicion the account's compromised), so old sessions — including
+whatever caused the reset to be needed — shouldn't quietly survive it.
+
+No email-enumeration concern beyond what invite redemption already
+accepts: the token itself is the proof of legitimacy, not the email
+address, and the token was never guessable or requestable by anyone
+without CLI access in the first place.
+
+### Audit log: distinguishing an admin from the sweeper
+
+`01-data-model.md` §8 previously argued `audit_log.actor_user_id`
+being `NULL` was unambiguous on its own — true when the *only* thing
+that could write a `NULL`-actor row was the deadline sweeper
+(`08-punishments-and-deadlines.md` §3). It no longer is, now that an
+admin-CLI action is a second, genuinely different `NULL`-actor case (a
+deliberate human decision made outside the app, not an automated
+system tick) — conflating the two would hide a person's action behind
+the same signal used for "nobody did this, the schedule did." Every
+`NULL`-actor row now sets `detail.actor_type` to either `"system"`
+(the sweeper) or `"admin_cli"` (one of the commands above), closing
+that gap the same way `assigned_via`/`reviewed_via`/`raised_via`
+already distinguish automated from human action everywhere else in
+this schema.

@@ -122,10 +122,11 @@ There is deliberately no `DELETE` on `keyholder_submissive_links`.
   visible to the new Keyholder.
 - Only a Keyholder can end a link via the API in v1. A submissive
   wanting out of a dynamic where the Keyholder is unresponsive is a
-  real scenario but is treated as an out-of-band/support action
-  (e.g. a server-admin CLI operation) rather than a self-service
-  endpoint in this iteration — see `06-future-extensions.md` for
-  making this self-service later.
+  real scenario, handled by the end-request/escalation flow in
+  `06-future-extensions.md` §2, whose actual last resort is
+  `owners-cock-ledger admin force-end-link` (`10-operations.md` §5) —
+  not a self-service endpoint, but a real named command rather than
+  a hand-waved "out-of-band action."
 
 ## 5. Scenarios considered while designing the matrix
 

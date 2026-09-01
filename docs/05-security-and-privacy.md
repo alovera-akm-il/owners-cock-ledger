@@ -61,10 +61,10 @@ that as the primary constraint, ahead of features.
   in addition to the session cookie.
 - No password reset via unauthenticated email flow in v1 (there's no
   outbound email system in this architecture at all) — password reset
-  is an authenticated "change password" action, or a server-admin
-  operation (direct DB/CLI) for a genuinely locked-out account. This
-  is a deliberate scope cut, called out in
-  `06-future-extensions.md`.
+  is an authenticated "change password" action for anyone who can
+  still log in, or `owners-cock-ledger admin reset-password` for a
+  genuinely locked-out account (`10-operations.md` §5) — a real,
+  designed command, not a hand-waved "direct DB access" anymore.
 - Changing the account **email** (the login identifier) requires
   re-entering the current password in the same request
   (`POST /auth/email/change`, `03-api-design.md` §1), even though the

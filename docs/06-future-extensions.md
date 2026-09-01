@@ -199,8 +199,8 @@ unacknowledged sets `end_request_escalated_at`, after which:
   than hand-waved):** the real escape hatch for a Keyholder who never
   responds at all is a server-admin CLI operation —
   `owners-cock-ledger admin force-end-link <link_id>` — that ends the
-  link unilaterally, the same operational tier already documented for
-  a genuinely locked-out account (`10-operations.md`). This is worth
+  link unilaterally, grouped as a sibling of the other admin recovery
+  commands (`10-operations.md` §5). This is worth
   actually building alongside the rest of this feature, not leaving
   implicit, since it's the actual answer to "the Keyholder
   disappeared for good," not just a footnote.

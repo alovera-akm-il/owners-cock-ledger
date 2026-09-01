@@ -139,7 +139,9 @@ half of `mockups/submit-proof.html`.
 ### Phase 4 — Automation & self-service ops
 
 API tokens (`01-data-model.md` §9), two-factor authentication, session
-self-management, the backup CLI, background-task health monitoring
+self-management, the backup CLI, the `admin` CLI recovery commands
+(force password reset, force-disable-2FA, force-unlock, force-end-link
+— `10-operations.md` §5), background-task health monitoring
 (`10-operations.md`). Lower urgency than it looks — nothing later
 structurally depends on this phase, so it's the right place to absorb
 schedule slip if one is needed.
