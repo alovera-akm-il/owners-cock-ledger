@@ -984,7 +984,8 @@ beyond the always-present color.
 | template_id | TEXT FK -> checkin_templates.id | |
 | position | INTEGER | display/entry order |
 | field_key | TEXT | short stable identifier, e.g. `skin_status` — referenced from `checkins.field_values` |
-| label | TEXT | display text, e.g. "Skin status" |
+| label | TEXT | short display text, e.g. "Skin status" — the prompt itself |
+| description | TEXT NULL | longer optional help text shown under the label to whoever's filling the field in, e.g. "Look for redness, chafing, or pressure marks, not just how it feels" — distinct from `checkin_templates.description` (which describes the template as a whole, not one field). See `13-checkins.md` §2 |
 | field_type | TEXT CHECK IN ('scale','select','number','text','boolean') | see `13-checkins.md` §2 for the shape of `config` per type |
 | config | TEXT (JSON) | e.g. `{"min":1,"max":5,"min_label":"barely feel it","max_label":"painful"}` for a `scale`; `{"options":[...]}` or `{"source":"devices"}` for a `select`; `{"unit":"hours"}` for a `number` |
 | required | INTEGER (bool) | |

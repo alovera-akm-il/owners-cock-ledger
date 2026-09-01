@@ -161,11 +161,13 @@
           </select>
           <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="checkbox" class="field-required"> Required</label>
         </div>
+        <input class="field-description bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-300 w-full" placeholder="Description shown under the label when filling this in (optional) — e.g. &quot;1 = barely feel it, 5 = actively painful&quot;" />
         <div class="field-config"></div>
         <button type="button" class="remove-field-btn text-[11px] text-slate-500 hover:text-red-400">Remove field</button>
       </div>
     `);
     row.find('.field-label').val(data.label || '');
+    row.find('.field-description').val(data.description || '');
     row.find('.field-type').val(data.type || 'text');
     row.find('.field-required').prop('checked', !!data.required);
     row.find('.remove-field-btn').on('click', () => row.remove());
@@ -220,9 +222,9 @@
   $('.edit-template-btn').on('click', function () {
     $('#form-heading').text('Editing template');
     resetFields([
-      { label: 'Skin status', type: 'select' },
-      { label: 'Cage comfort', type: 'scale', min: 1, max: 5, minLabel: 'barely feel it', maxLabel: 'painful' },
-      { label: 'Incidents', type: 'text' },
+      { label: 'Skin status', type: 'select', description: 'Look at the skin under and around the cage, not just how it feels' },
+      { label: 'Cage comfort', type: 'scale', min: 1, max: 5, minLabel: 'barely feel it', maxLabel: 'painful', description: '1 = barely feel it, 5 = painful — anything above 3 should probably also be RED' },
+      { label: 'Incidents', type: 'text', description: 'Any pressure points, nocturnal erections, or discomfort — even minor' },
     ]);
     $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   });

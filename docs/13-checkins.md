@@ -48,19 +48,43 @@ how it's presented and validated:
 submitted without it — a template can mix required and optional
 fields (e.g. color and skin status required, incidents optional).
 
+### `label` vs. `description`
+
+Every field has a short `label` (the prompt itself — "Cage comfort")
+and an optional longer `description` shown underneath it to whoever's
+filling the field in. This is a deliberate two-tier split, not
+redundant with the template-level `checkin_templates.description`
+(which describes what the *whole template* is for, e.g. "Paired with
+the overnight cage photo-proof task") — a field's `description` is
+scoped to that one field, and exists because a label alone often
+can't carry enough context to answer consistently:
+
+- A bare "Cage comfort" label with a 1–5 scale doesn't say what a 3
+  actually means to the person answering it. `description: "1 =
+  barely feel it during normal movement, 5 = actively painful — tell
+  your Keyholder immediately if you're near this end"` does.
+- A submissive filling this in at 6am, half-asleep, benefits from not
+  having to remember or guess what a field was originally meant to
+  capture — the description is right there every time, not something
+  explained once when the template was set up and then forgotten.
+
+`description` is optional per field — a self-explanatory field like
+"Duration (hours)" doesn't need one, while anything with a scale, a
+judgment call, or safety implications usually should.
+
 ### Worked example: the morning cage check-in from the request
 
 The example given maps directly onto this system:
 
-| field_key | label | field_type | config |
-|---|---|---|---|
-| *(built-in)* | Color | — | green/yellow/red |
-| `skin_status` | Skin status | `select` | `{"options":["normal","mild redness","chafing","swelling","open skin"]}` |
-| `cage_comfort` | Cage comfort | `scale` | `{"min":1,"max":5,"min_label":"barely feel it","max_label":"painful"}` |
-| `incidents` | Incidents | `text` | `{}` |
-| `sleep_quality` | Sleep quality | `text` | `{}` |
-| `device` | Device | `select` | `{"source":"devices"}` |
-| `duration` | Duration | `number` | `{"unit":"hours"}` |
+| field_key | label | description | field_type | config |
+|---|---|---|---|---|
+| *(built-in)* | Color | — | — | green/yellow/red |
+| `skin_status` | Skin status | "Look at the skin under and around the cage, not just how it feels" | `select` | `{"options":["normal","mild redness","chafing","swelling","open skin"]}` |
+| `cage_comfort` | Cage comfort | "1 = barely feel it, 5 = painful — anything above 3 should probably also be RED" | `scale` | `{"min":1,"max":5,"min_label":"barely feel it","max_label":"painful"}` |
+| `incidents` | Incidents | "Any pressure points, nocturnal erections, or discomfort — even minor" | `text` | `{}` |
+| `sleep_quality` | Sleep quality | — | `text` | `{}` |
+| `device` | Device | — | `select` | `{"source":"devices"}` |
+| `duration` | Duration | — | `number` | `{"unit":"hours"}` |
 
 This template's `related_confinement_session_id` links it to the
 overnight cage-wearing period it's checking in on, and it's the

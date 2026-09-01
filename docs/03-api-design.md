@@ -265,7 +265,7 @@ Backs `01-data-model.md` §14; full field-type and real-time design in
 | Method & path | Role | Notes |
 |---|---|---|
 | `GET /keyholder/checkin-templates` | keyholder | own templates, with their `checkin_template_fields` |
-| `POST /keyholder/checkin-templates` | keyholder | `{title, description?, auto_escalate_on_red?, fields: [{field_key, label, field_type, config, required}]}` — `auto_escalate_on_red` defaults false; see `13-checkins.md` §6 for what turning it on does |
+| `POST /keyholder/checkin-templates` | keyholder | `{title, description?, auto_escalate_on_red?, fields: [{field_key, label, description?, field_type, config, required}]}` — `auto_escalate_on_red` defaults false, see `13-checkins.md` §6 for what turning it on does; each field's own optional `description` is help text shown under its `label` when filling it in, see `13-checkins.md` §2 |
 | `PATCH /keyholder/checkin-templates/{id}` | keyholder\* | edit title/description/fields, or deactivate. Editing fields never rewrites `field_values` already recorded on past `checkins` rows. |
 | `GET /submissive/checkin-templates` | submissive | read-only, subject to `catalog_visible_to_submissive` |
 | `POST /keyholder/submissives/{id}/checkins` / `POST /submissive/checkins` | keyholder\*/submissive | `{template_id, color, field_values: {...}, related_confinement_session_id?, related_assignment_id?, related_play_session_id?}` — either role may create one for their own link |

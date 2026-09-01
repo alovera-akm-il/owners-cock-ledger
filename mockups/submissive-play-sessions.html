@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Play Sessions</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="submissive-dashboard.html">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        The Ledger
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="submissive-dashboard.html" class="text-slate-400 hover:text-slate-200">My Status</a>
+        <a href="submit-proof.html" class="text-slate-400 hover:text-slate-200">Submit Proof</a>
+        <a href="submissive-toy-catalog.html" class="text-slate-400 hover:text-slate-200">My Toys</a>
+        <a href="submissive-play-sessions.html" class="text-slate-100 font-medium">Play Sessions</a>
+        <a href="submissive-rewards.html" class="text-slate-400 hover:text-slate-200">Rewards &amp; Points</a>
+        <a href="submissive-history.html" class="text-slate-400 hover:text-slate-200">History</a>
+        <a href="submissive-statistics.html" class="text-slate-400 hover:text-slate-200">Statistics</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
+      <a href="submissive-profile.html" title="Profile &amp; settings" class="h-8 w-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-xs font-semibold">R</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">Play Sessions</h1>
+  <p class="text-sm text-slate-400 mb-6">Your Keyholder assigns these — you can start and end one yourself, and log check-ins along the way. Templates are managed by them; you can see what a template asks for once it's attached to a session.</p>
+
+  <div class="rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-4 mb-6 flex items-center justify-between">
+    <div>
+      <p class="text-sm font-medium text-emerald-400">Estim session — standard is live now</p>
+      <p class="text-xs text-slate-400 mt-0.5">Started 12 minutes ago · check-in due at +45 min</p>
+    </div>
+    <a href="submissive-play-session-detail.html" class="text-xs font-semibold text-slate-950 bg-emerald-500 hover:bg-emerald-400 rounded-lg px-3 py-1.5 whitespace-nowrap">Open →</a>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <a href="submissive-play-session-detail.html" class="flex items-center justify-between px-5 py-4 hover:bg-slate-800/40">
+      <div>
+        <p class="text-sm font-medium">Estim session — standard</p>
+        <p class="text-xs text-slate-500 mt-0.5">Started 12 min ago</p>
+      </div>
+      <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">in progress</span>
+    </a>
+    <a href="submissive-play-session-detail.html" class="flex items-center justify-between px-5 py-4 hover:bg-slate-800/40">
+      <div>
+        <p class="text-sm font-medium">Sensory deprivation scene</p>
+        <p class="text-xs text-slate-500 mt-0.5">Scheduled for tonight</p>
+      </div>
+      <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">scheduled</span>
+    </a>
+    <a href="submissive-play-session-detail.html" class="flex items-center justify-between px-5 py-4 hover:bg-slate-800/40">
+      <div>
+        <p class="text-sm font-medium">Impact play — warm-up to heavy</p>
+        <p class="text-xs text-slate-500 mt-0.5">Ended yesterday, 21:40</p>
+      </div>
+      <span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">awaiting judgement</span>
+    </a>
+    <a href="submissive-play-session-detail.html" class="flex items-center justify-between px-5 py-4 hover:bg-slate-800/40">
+      <div>
+        <p class="text-sm font-medium">Sensory deprivation scene</p>
+        <p class="text-xs text-slate-500 mt-0.5">Completed 3 days ago</p>
+      </div>
+      <span class="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">completed</span>
+    </a>
+  </div>
+</main>
+</body>
+</html>

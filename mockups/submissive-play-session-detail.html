@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Play Session</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="submissive-dashboard.html">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      The Ledger
+    </a>
+    <a href="submissive-play-sessions.html" class="text-xs text-slate-400 hover:text-slate-200">&larr; Play Sessions</a>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+
+  <!-- demo state switcher, not part of the real UI -->
+  <div class="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-slate-700 bg-slate-900/50 px-4 py-3">
+    <span class="text-[11px] text-slate-500 mr-1">Demo — jump to state:</span>
+    <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="scheduled">Scheduled</button>
+    <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="in_progress">In progress</button>
+    <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="pending_judgement">Pending judgement</button>
+    <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="completed">Completed</button>
+  </div>
+
+  <div class="flex items-start justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Estim session — standard</h1>
+      <p class="text-sm text-slate-400 mt-1">Assigned by your Keyholder · from template "Estim session — standard"</p>
+    </div>
+    <span id="status-badge" class="text-xs font-semibold px-3 py-1.5 rounded-full shrink-0"></span>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-400 mb-3">Setup notes</p>
+        <p class="text-sm text-slate-300">Check contact gel before starting, ramp intensity slowly.</p>
+        <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-800 text-sm">
+          <div><p class="text-xs text-slate-500 mb-0.5">Planned duration</p><p class="font-medium">60 min</p></div>
+          <div id="started-at-block"><p class="text-xs text-slate-500 mb-0.5">Started</p><p class="font-medium">—</p></div>
+          <div id="ended-at-block"><p class="text-xs text-slate-500 mb-0.5">Ended</p><p class="font-medium">—</p></div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-400 mb-3">Toys used</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg">Estim box — basic kit</span>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-medium text-slate-400">Mid-session check-ins <span class="text-slate-600">— every 15 min</span></p>
+          <span class="text-[11px] text-slate-500">2 of 4 done</span>
+        </div>
+        <div class="space-y-2">
+          <a href="checkin-live.html" class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700">
+            <span class="text-sm text-slate-300">Slot 1 · +15 min</span>
+            <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">green ✓</span>
+          </a>
+          <a href="checkin-live.html" class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700">
+            <span class="text-sm text-slate-300">Slot 2 · +30 min</span>
+            <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">green ✓</span>
+          </a>
+          <div id="slot-3-live" class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-amber-700/40">
+            <span class="text-sm text-slate-300">Slot 3 · +45 min</span>
+            <a href="checkin-live.html" class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full hover:bg-amber-500/20">due now — fill it in →</a>
+          </div>
+          <div id="slot-4-pending" class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800 opacity-50">
+            <span class="text-sm text-slate-400">Slot 4 · +60 min</span>
+            <span class="text-[11px] text-slate-500">not due yet</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- waiting for judgement -->
+      <div id="waiting-panel" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
+        <p class="text-sm font-medium text-amber-400 mb-1">Waiting on your Keyholder</p>
+        <p class="text-sm text-slate-300">The session's over — they'll review it and let you know if anything's been granted or applied. You don't need to do anything else here.</p>
+      </div>
+
+      <!-- completed: read-only judgement -->
+      <div id="completed-summary" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-400 mb-2">Your Keyholder's judgement</p>
+        <p class="text-sm text-slate-300 mb-3">Great session, arousal built steadily, comfort stayed high the whole way through. Ended right on the planned duration.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-lg">Reward: Choose tonight's movie</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="space-y-4">
+      <div id="actions-scheduled" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-2">
+        <p class="text-xs font-medium text-slate-400 mb-1">Not started yet</p>
+        <button class="w-full rounded-lg bg-sky-500 hover:bg-sky-400 py-2 text-sm font-semibold text-slate-950">Start now</button>
+        <p class="text-[11px] text-slate-500 mt-1">Only your Keyholder can cancel a scheduled session.</p>
+      </div>
+      <div id="actions-in-progress" class="hidden rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-5 space-y-2">
+        <p class="text-xs font-medium text-emerald-400 mb-1">Live now</p>
+        <p class="text-xs text-slate-400 mb-2">Elapsed: <span class="font-mono text-slate-200">00:41:12</span></p>
+        <button class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 py-2 text-sm font-semibold text-slate-950">End session</button>
+      </div>
+      <div id="actions-pending" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
+        <p class="text-xs font-medium text-amber-400">Awaiting judgement</p>
+        <p class="text-xs text-slate-400 mt-1">Nothing to do on your end right now.</p>
+      </div>
+      <div id="actions-completed" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-300">Session complete</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const STATES = {
+    scheduled: { badge: ['Scheduled', 'bg-slate-800 text-slate-300'], started: '—', ended: '—', waiting: false, completedSummary: false },
+    in_progress: { badge: ['In progress', 'bg-emerald-500/10 text-emerald-400'], started: 'Today, 21:02', ended: '—', waiting: false, completedSummary: false },
+    pending_judgement: { badge: ['Pending judgement', 'bg-amber-500/10 text-amber-400'], started: 'Today, 21:02', ended: 'Today, 22:03', waiting: true, completedSummary: false },
+    completed: { badge: ['Completed', 'bg-slate-800 text-slate-400'], started: 'Today, 21:02', ended: 'Today, 22:03', waiting: false, completedSummary: true },
+  };
+
+  function setState(name) {
+    const s = STATES[name];
+    $('#status-badge').removeClass().addClass('text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 ' + s.badge[1]).text(s.badge[0]);
+    $('#started-at-block p.font-medium').text(s.started);
+    $('#ended-at-block p.font-medium').text(s.ended);
+    $('#waiting-panel').toggleClass('hidden', !s.waiting);
+    $('#completed-summary').toggleClass('hidden', !s.completedSummary);
+    $('#actions-scheduled, #actions-in-progress, #actions-pending, #actions-completed').addClass('hidden');
+    $('#actions-' + name.replace('pending_judgement', 'pending').replace('in_progress', 'in-progress')).removeClass('hidden');
+    $('.state-btn').removeClass('bg-slate-800').addClass('text-slate-400');
+    $(`.state-btn[data-state="${name}"]`).addClass('bg-slate-800').removeClass('text-slate-400');
+  }
+
+  $('.state-btn').on('click', function () { setState($(this).data('state')); });
+
+  setState('in_progress');
+</script>
+</body>
+</html>
