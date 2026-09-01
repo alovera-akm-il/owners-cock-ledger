@@ -222,31 +222,48 @@ CDN dependency anywhere, full stop, not just for Tailwind/jQuery:
   checks as the API, not just hidden nav links.
 - **Motion**: functional, not decorative — every animation exists to
   communicate a state change, direct attention, or confirm an action
-  landed, never as flourish. Three patterns, reused everywhere rather
-  than invented per page (`mockups/app.css` is the reference
-  implementation the real frontend's stylesheet should port
-  directly):
+  landed, never as flourish. A handful of reusable patterns, applied
+  wherever they genuinely fit rather than left as one-off polish on a
+  couple of pages (`mockups/app.css` is the reference implementation
+  the real frontend's stylesheet should port directly):
   - **Flash on change** — a value that just updated (a new ledger
     row, a status badge moving to a new state after an action) gets a
     brief background highlight, not a silent snap. The default for
-    "something changed as a direct result of what you just did."
+    "something changed as a direct result of what you just did," and
+    also what a "Saved" confirmation on a form uses instead of the
+    form just silently closing.
   - **Urgent pulse** — reserved specifically for something needing a
-    human's attention *right now*: an unacknowledged safety alert, a
-    live/recording indicator. Deliberately rare, so it keeps that
-    meaning — never used for routine "here's something new," only for
-    the handful of genuinely urgent or live signals in the whole app.
+    human's attention *right now*: an unacknowledged safety alert.
+    Deliberately rare, so it keeps that meaning — never used for
+    routine "here's something new."
+  - **Live pulse** — the calmer sibling, for "this is happening right
+    now" rather than "look now": an in-progress play session's badge,
+    a live-check-in streaming indicator. Same mechanic as the urgent
+    pulse, calmer color, so the two don't compete for the same
+    attention.
   - **Panel fade** — swapping which panel is visible (e.g. a play
     session's state-dependent action panel) gets a short cross-fade
     instead of an instant `hidden`-class snap, so a state transition
     reads as a change rather than a glitch.
-  All three collapse to nothing under `prefers-reduced-motion:
-  reduce` — a real accessibility consideration, not an afterthought.
-  Explicitly **not** done anywhere: entrance animation on page load,
-  hover bounce/scale micro-interactions, or any animation that exists
-  purely for visual flair — consistent with this app's restrained,
-  utilitarian tone rather than a consumer-app feel. Ordinary
-  hover/focus color transitions (Tailwind's `transition-colors`) are
-  the one exception, already the baseline on every interactive
+  - **Slide-in** — a new item entering a list the user just added to
+    (a new custom field in a check-in template builder) arrives
+    rather than just appearing — used only for the deliberate
+    "add one" action, never for a form's initial population, so it
+    doesn't turn into page-load entrance animation by accident.
+  Every one of these collapses to nothing under
+  `prefers-reduced-motion: reduce` — a real accessibility
+  consideration, not an afterthought. Applied broadly: every "Save"
+  button that used to just sit there gets a brief inline confirmation
+  (button text, or a flash) instead of doing nothing, matching the
+  "confirm an action landed" half of the policy — this closed a real
+  gap, not just an animation nicety, since several forms previously
+  had no feedback at all on submit. Explicitly **not** done anywhere:
+  entrance animation on page load, hover bounce/scale
+  micro-interactions, or any animation that exists purely for visual
+  flair — consistent with this app's restrained, utilitarian tone
+  rather than a consumer-app feel. Ordinary hover/focus color
+  transitions (Tailwind's `transition-colors`) are the one exception,
+  already the baseline on every interactive
   element and not considered part of this "motion" category — they're
   standard affordance, not a communicated event.
 

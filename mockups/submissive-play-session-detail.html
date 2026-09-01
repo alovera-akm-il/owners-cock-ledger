@@ -133,7 +133,7 @@
 <script>
   const STATES = {
     scheduled: { badge: ['Scheduled', 'bg-slate-800 text-slate-300'], started: '—', ended: '—', waiting: false, completedSummary: false },
-    in_progress: { badge: ['In progress', 'bg-emerald-500/10 text-emerald-400'], started: 'Today, 21:02', ended: '—', waiting: false, completedSummary: false },
+    in_progress: { badge: ['In progress', 'bg-emerald-500/10 text-emerald-400'], started: 'Today, 21:02', ended: '—', waiting: false, completedSummary: false, live: true },
     pending_judgement: { badge: ['Pending judgement', 'bg-amber-500/10 text-amber-400'], started: 'Today, 21:02', ended: 'Today, 22:03', waiting: true, completedSummary: false },
     completed: { badge: ['Completed', 'bg-slate-800 text-slate-400'], started: 'Today, 21:02', ended: 'Today, 22:03', waiting: false, completedSummary: true },
     cancelled: { badge: ['Cancelled', 'bg-slate-800 text-slate-500'], started: '—', ended: '—', waiting: false, completedSummary: false },
@@ -147,7 +147,8 @@
 
   function setState(name) {
     const s = STATES[name];
-    $('#status-badge').removeClass().addClass('text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 ' + s.badge[1]).text(s.badge[0]);
+    const dot = s.live ? '<span class="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-live"></span>' : '';
+    $('#status-badge').removeClass().addClass('text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 inline-flex items-center gap-1.5 ' + s.badge[1]).html(dot + s.badge[0]);
     replay($('#status-badge'), 'flash-updated');
     $('#started-at-block p.font-medium').text(s.started);
     $('#ended-at-block p.font-medium').text(s.ended);

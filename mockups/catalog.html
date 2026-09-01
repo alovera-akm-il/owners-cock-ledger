@@ -6,6 +6,7 @@
 <title>The Ledger — Tasks, Rewards &amp; Punishments</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -504,6 +505,17 @@
   $('#new-btn').on('click', () => openTemplateForm('new'));
   $('.edit-template-btn').on('click', function () { openTemplateForm('edit'); });
   $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+
+  $('#form-save-btn').on('click', function () {
+    const btn = $(this), original = btn.text();
+    btn.prop('disabled', true).text('Saved ✓');
+    setTimeout(() => {
+      $('#new-form').fadeOut(200, function () {
+        $(this).addClass('hidden').show();
+        btn.prop('disabled', false).text(original);
+      });
+    }, 700);
+  });
 
   $('#new-kind').on('change', syncKindFields);
 

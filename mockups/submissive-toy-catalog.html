@@ -6,6 +6,7 @@
 <title>The Ledger — My Toys</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -72,7 +73,7 @@
     <input type="text" placeholder="Tags, comma separated" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
     <div class="flex justify-end gap-2">
       <button id="cancel-new" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
-      <button class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save toy</button>
+      <button id="save-toy-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save toy</button>
     </div>
   </div>
 
@@ -133,6 +134,16 @@
     $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+  $('#save-toy-btn').on('click', function () {
+    const btn = $(this), original = btn.text();
+    btn.prop('disabled', true).text('Saved ✓');
+    setTimeout(() => {
+      $('#new-form').fadeOut(200, function () {
+        $(this).addClass('hidden').show();
+        btn.prop('disabled', false).text(original);
+      });
+    }, 700);
+  });
   $('.request-removal-btn').on('click', function () {
     $(this).closest('.rounded-xl').removeClass('border-slate-800 bg-slate-900').addClass('border-amber-700/40 bg-amber-500/5');
     $(this).parent().remove();

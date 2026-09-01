@@ -6,6 +6,7 @@
 <title>The Ledger — Riley</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <script src="countdown.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
@@ -188,7 +189,7 @@
           <input type="text" placeholder="Note (optional, visible to Riley)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
           <div class="flex justify-end gap-2">
             <button id="cancel-adjust-timer" class="text-xs font-medium text-slate-400 px-2 py-1.5">Cancel</button>
-            <button class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-1.5">Apply</button>
+            <button id="apply-adjust-timer" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-1.5">Apply</button>
           </div>
         </div>
 
@@ -310,7 +311,7 @@
 
           <div class="flex justify-end gap-2 pt-1">
             <button id="policy-cancel-btn" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
-            <button class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save policy</button>
+            <button id="policy-save-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save policy</button>
           </div>
         </div>
       </div>
@@ -324,7 +325,7 @@
       <div class="rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
         <p class="text-xs font-medium text-amber-500 mb-2">Private notes (Keyholder only — never shown to Riley)</p>
         <textarea rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-600/60" placeholder="Add a private note…">Doing well with the every-24h schedule. Consider tightening to twice daily next month.</textarea>
-        <button class="mt-2 text-xs font-semibold text-amber-500 hover:text-amber-400">Save note</button>
+        <button class="save-inline-btn mt-2 text-xs font-semibold text-amber-500 hover:text-amber-400">Save note</button>
       </div>
     </div>
 
@@ -652,6 +653,16 @@
 
   $('#adjust-timer-btn').on('click', () => $('#adjust-timer-form').removeClass('hidden'));
   $('#cancel-adjust-timer').on('click', () => $('#adjust-timer-form').addClass('hidden'));
+  $('#apply-adjust-timer').on('click', function () {
+    const btn = $(this), original = btn.text();
+    btn.prop('disabled', true).text('Applied ✓');
+    setTimeout(() => {
+      $('#adjust-timer-form').fadeOut(200, function () {
+        $(this).addClass('hidden').show();
+        btn.prop('disabled', false).text(original);
+      });
+    }, 700);
+  });
 
   $('#review-keep-btn').on('click', () => $('#review-needed-banner').slideUp(150));
   $('#review-adjust-btn').on('click', function () {
@@ -669,6 +680,17 @@
   }
   $('#edit-policy-btn, #policy-edit-toggle').on('click', openPolicyEdit);
   $('#policy-cancel-btn').on('click', closePolicyEdit);
+  $('#policy-save-btn').on('click', function () {
+    const btn = $(this), original = btn.text();
+    btn.prop('disabled', true).text('Saved ✓');
+    setTimeout(() => { btn.prop('disabled', false).text(original); closePolicyEdit(); }, 700);
+  });
+
+  $('.save-inline-btn').on('click', function () {
+    const btn = $(this), original = btn.text();
+    btn.text('Saved ✓');
+    setTimeout(() => btn.text(original), 1500);
+  });
 
   $('.freq-kind-radio').on('change', function () {
     $('.freq-subfield').addClass('hidden');
