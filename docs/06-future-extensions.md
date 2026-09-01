@@ -269,9 +269,16 @@ delivery layer on top of it (`01-data-model.md` §10,
 `03-api-design.md` §13). What's still explicitly *not* built, and
 left as genuinely future:
 
-- **Email digest / SMS delivery** — could be added as another
-  consumer of the same `notifications` rows, same as Web Push is; not
-  designed further since nothing in scope needs it yet.
+- **Email as a `notifications` delivery channel (digests) / SMS** —
+  distinct from password-reset email, which *is* now designed
+  (`05-security-and-privacy.md` §11, `10-operations.md` §5): that's a
+  one-off transactional send outside the notification system
+  entirely, not a consumer of `notifications` rows. A digest channel
+  ("email me a daily summary") is still genuinely undesigned — but
+  once password reset exists, the SMTP relay/credential/crate is
+  already there, so adding a digest later is "a new email template
+  and a trigger," not "add email support from scratch." SMS remains
+  fully deferred, no transport exists for it at all.
 - **Per-notification-type preferences** (push me for safety alerts
   only, feed-only for the rest) — v1 is all-or-nothing per device;
   see `09-notifications.md` §6.

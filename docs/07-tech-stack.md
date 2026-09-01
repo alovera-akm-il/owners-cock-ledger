@@ -106,6 +106,29 @@ reasoning so implementation doesn't have to re-derive it.
   secret (`05-security-and-privacy.md` §10), not regenerated per
   restart (that would invalidate every existing subscription's
   sender verification).
+- **Outbound email (password reset)**: the `lettre` crate, async
+  transport (`AsyncSmtpTransport` over Tokio) speaking plain SMTP AUTH
+  over implicit TLS to whatever relay the deployer configures — no
+  provider-specific SDK, since any standard mailbox with app-password
+  support (Fastmail, and most others) works identically through this
+  one path. Configured entirely via environment variables, all
+  optional as a group — unset any of them and outbound email is
+  simply off, per `05-security-and-privacy.md` §11:
+  - `SMTP_RELAY_HOST` / `SMTP_RELAY_PORT` — e.g. `smtp.fastmail.com` / `465`.
+  - `SMTP_USERNAME` / `SMTP_APP_PASSWORD` — the relay account's login
+    and app-scoped password, handled as a secret like the VAPID key.
+  - `SMTP_FROM_ADDRESS` — defaults to `SMTP_USERNAME` if unset; lets a
+    deployer send from a subaddress or alias instead of the bare
+    mailbox address.
+  - `PUBLIC_BASE_URL` — the server's own externally-reachable URL,
+    needed to build a clickable reset link in the email body. Nothing
+    prior to this needed the app to know its own public address
+    (invite tokens are handed over directly, not linked), so this is
+    the first config surface of its kind.
+  Sending itself runs inside a `tokio::spawn`ed task off the request
+  path, never awaited before responding — see
+  `05-security-and-privacy.md` §11 for why that's a security property
+  here, not just a performance one.
 
 ## 2. Data layer
 

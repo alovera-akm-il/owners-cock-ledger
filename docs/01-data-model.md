@@ -218,20 +218,24 @@ at creation time and nobody can sign up unassigned.
 ### `password_reset_tokens`
 Same shape as `invites` — a single-use, hashed-at-rest, short-lived
 token — but backing account recovery rather than account creation.
-The only way one gets issued is `owners-cock-ledger admin
-reset-password <email>` (`10-operations.md` §5); there is deliberately
-no HTTP endpoint that creates one, since with no outbound email
-system, a self-service "request a reset" endpoint would just be a way
-to probe which emails have accounts, for a flow that can't even
-deliver its own token anywhere.
+Two issuance paths now exist, distinguished by `requested_via`:
+`owners-cock-ledger admin reset-password <email>`
+(`10-operations.md` §5, always available, no configuration needed),
+and, if the deployer has configured an outbound SMTP relay
+(`05-security-and-privacy.md` §11), self-service via
+`POST /auth/password-reset/request` (`03-api-design.md` §1). Both
+converge on the same table and the same redeem endpoint — the
+account holder always sets their own new password either way, the
+only difference is who triggered the token's creation.
 
 | column | type | notes |
 |---|---|---|
 | id | TEXT PK | |
 | user_id | TEXT FK -> users.id | |
 | token_hash | TEXT | SHA-256, same reasoning as `api_tokens.token_hash` (§9) |
+| requested_via | TEXT CHECK IN ('admin_cli','self_service') | which path created this row — visible to a Keyholder reviewing their own account's audit trail, same instinct as `assigned_via`/`reviewed_via` elsewhere in this schema |
 | created_at | INTEGER | |
-| expires_at | INTEGER | short — on the order of 1 hour, since it's handed to the account holder immediately over whatever channel the admin already has open, not emailed or held |
+| expires_at | INTEGER | short — on the order of 1 hour either way: handed to the account holder immediately over whatever channel the admin already has open for `admin_cli`, or delivered by email within seconds for `self_service` — neither case benefits from a longer window |
 | consumed_at | INTEGER NULL | |
 
 ## 3. Keyholder ↔ submissive relationship

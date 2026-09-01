@@ -170,12 +170,16 @@ infrastructure-shaped answer:
 Every other doc's mention of "an admin can fix this via direct DB
 access" (`05-security-and-privacy.md` §2, `02-roles-and-permissions.md`
 §5, `06-future-extensions.md` §2) was always true but never actually
-designed — genuinely a gap, not a deliberate omission, and one that
-matters more than it looks: this system has no outbound email, so
-there is no self-service "forgot password" flow at all
-(`05-security-and-privacy.md` §2). A forgotten password or a lost 2FA
-device with exhausted recovery codes was, until now, a real, undesigned
-dead end. This section is that design.
+designed — genuinely a gap, not a deliberate omission. This section is
+that design: the commands below are the **always-available** recovery
+path, independent of any configuration. A deployer who additionally
+opts into outbound email (`05-security-and-privacy.md` §11) gets a
+second, self-service path for password reset specifically
+(`POST /auth/password-reset/request`) — the two are not alternatives
+to choose between, they coexist: self-service for the common case,
+`admin reset-password` as the fallback that always works even with no
+email configured, a failed send, or a submissive who'd rather ask
+their Keyholder than wait on an email.
 
 ### Trust model: why no extra in-app auth layer
 
@@ -197,7 +201,11 @@ HTTP endpoint, even a `keyholder`-scoped one, and never will be —
 exposing them over the network (LAN or otherwise) would turn "you
 need to be on the box" into "you need to be on the network," which is
 a materially bigger trust boundary than this design accepts anywhere
-else.
+else. `POST /auth/password-reset/request` isn't an exception to this —
+it's a separate mechanism entirely (a public endpoint that emails a
+token, `05-security-and-privacy.md` §11), not `admin reset-password`
+made network-reachable; the CLI command still only ever runs on the
+box.
 
 ### Commands
 
@@ -228,22 +236,17 @@ data) shares three behaviors:
 ### Password reset: token, not a set password
 
 `reset-password` deliberately doesn't let the admin choose or see the
-account's new password — it issues a **single-use reset token** the
-admin relays to the account holder through whatever out-of-band
-channel they already have open (LAN chat, walking over, a phone call),
-who then sets their own new password with it. This mirrors invite
-redemption (`03-api-design.md` §1) rather than inventing a new shape:
-
-#### `password_reset_tokens` (new table, `01-data-model.md` §2)
-
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | |
-| user_id | TEXT FK -> users.id | |
-| token_hash | TEXT | SHA-256 at rest, same reasoning as API tokens (`05-security-and-privacy.md` §9) — high-entropy CSPRNG value, no slow hash needed |
-| created_at | INTEGER | |
-| expires_at | INTEGER | short — on the order of 1 hour, since it's meant to be handed over immediately, not emailed or held |
-| consumed_at | INTEGER NULL | single-use |
+account's new password — it issues a **single-use reset token**
+(`requested_via='admin_cli'`) the admin relays to the account holder
+through whatever out-of-band channel they already have open (LAN
+chat, walking over, a phone call), who then sets their own new
+password with it. This mirrors invite redemption (`03-api-design.md`
+§1) rather than inventing a new shape — and it's the same table and
+the same redeem endpoint that `POST /auth/password-reset/request`
+(`requested_via='self_service'`, `05-security-and-privacy.md` §11)
+also writes into, when a deployer has opted into outbound email.
+Schema is `password_reset_tokens`, defined once in
+`01-data-model.md` §2 rather than repeated here.
 
 #### `POST /auth/password-reset/redeem` (new endpoint, `03-api-design.md` §1)
 
@@ -258,8 +261,13 @@ whatever caused the reset to be needed — shouldn't quietly survive it.
 
 No email-enumeration concern beyond what invite redemption already
 accepts: the token itself is the proof of legitimacy, not the email
-address, and the token was never guessable or requestable by anyone
-without CLI access in the first place.
+address. A `requested_via='admin_cli'` token is never guessable or
+requestable without CLI access; a `requested_via='self_service'` one
+is requestable by anyone who knows the email, but that request's
+response and timing are identical whether or not the account exists
+(`05-security-and-privacy.md` §11) — the redeem step doesn't need to
+re-derive that guarantee, it inherits it from how the token was
+issued.
 
 ### Audit log: distinguishing an admin from the sweeper
 

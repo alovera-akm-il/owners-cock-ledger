@@ -59,12 +59,15 @@ that as the primary constraint, ahead of features.
 - CSRF: since auth is cookie-based, all state-changing endpoints
   require a CSRF token (double-submit cookie or synchronizer token)
   in addition to the session cookie.
-- No password reset via unauthenticated email flow in v1 (there's no
-  outbound email system in this architecture at all) — password reset
-  is an authenticated "change password" action for anyone who can
-  still log in, or `owners-cock-ledger admin reset-password` for a
-  genuinely locked-out account (`10-operations.md` §5) — a real,
-  designed command, not a hand-waved "direct DB access" anymore.
+- Password reset for someone who can still log in is the ordinary
+  authenticated "change password" action. For a locked-out account,
+  two paths now exist: `owners-cock-ledger admin reset-password`
+  (`10-operations.md` §5, always available, no configuration needed)
+  and, if the deployer has opted into outbound email (§11 below),
+  self-service via `POST /auth/password-reset/request`. Outbound
+  email is not part of the base architecture — it's the one opt-in
+  addition that changes "there's no email system at all" from an
+  absolute statement to a deployer choice.
 - Changing the account **email** (the login identifier) requires
   re-entering the current password in the same request
   (`POST /auth/email/change`, `03-api-design.md` §1), even though the
@@ -204,9 +207,11 @@ product rules:
   relay the user's browser uses (e.g. Google's for Chrome, Mozilla's
   for Firefox), because that relay, not this server, is what wakes the
   browser. This is a structural property of the Web Push standard,
-  not a design choice this app is making casually, and it's the one
-  exception to "no third-party network calls" in the whole
-  architecture. Two things keep it from being a real privacy
+  not a design choice this app is making casually, and it's one of
+  two exceptions to "no third-party network calls" in the whole
+  architecture — outbound email (§11) is the other, added later and
+  under the same standard: opt-in, deployer-configured, never a
+  default. Two things keep push specifically from being a real privacy
   regression: (1) the payload is end-to-end encrypted (RFC 8291) — the
   relay operator sees only routing metadata (destination endpoint,
   rough payload size/timing), never notification content, which is
@@ -375,3 +380,56 @@ specifically *security* (as opposed to delivery mechanics) properties:
   adds a delivery mechanism, not a new way for either role to see
   data about the other beyond what the rest of the API already
   permits.
+
+## 11. Outbound email (password reset)
+
+Second and last exception to "no third-party network calls"
+(§5), added specifically to give self-hosted, LAN-only deployments a
+real self-service password-reset path — `admin reset-password`
+(`10-operations.md` §5) always works, but requires whoever's locked
+out to reach the person running the server. Entirely opt-in: unset
+the SMTP config and this capability doesn't exist, `admin
+reset-password` remains the only path, exactly as before this section
+was designed.
+
+- **Relay, not a mail server.** The deployer supplies credentials for
+  an existing mailbox (an app-scoped password, e.g. Fastmail's
+  per-integration app passwords) and the daemon submits mail through
+  it via standard SMTP AUTH over TLS
+  (`07-tech-stack.md` for the crate/config specifics) — it never runs
+  its own SMTP server or accepts inbound mail. This is also the
+  *correct* answer for a LAN-only host specifically, not just the
+  easy one: a home connection has no outbound-port-25 access and no
+  sender reputation of its own, so directly sending mail would mostly
+  get silently dropped by the recipient's provider. Relaying through
+  an established mailbox's own SPF/DKIM/DMARC is what makes the mail
+  actually arrive.
+- **The relay credential is a server secret**, handled exactly like
+  the VAPID private key (§10) — env var or secrets file, never in the
+  DB, never in version control, never logged (§7).
+- **Timing can't leak account existence.** `POST
+  /auth/password-reset/request` (`03-api-design.md` §1) responds with
+  the same generic message immediately, before the email lookup or
+  send even happens — the actual work runs in a background task after
+  the response is already gone. This is the same threat
+  `POST /auth/login`'s dummy-hash timing-equalization (§2) defends
+  against, solved here structurally instead: there's no "do the slow
+  thing only if it's worth doing" branch for an attacker's timing
+  measurement to distinguish, because the response never waits on the
+  slow thing at all.
+- **Rate-limited per-IP and per-email**, same posture as login (§2) —
+  otherwise this is both a spam vector (mail-bombing someone's real
+  inbox with reset links they didn't request) and a resource-
+  exhaustion vector against the relay account's own sending limits.
+- **Content minimization.** The email body carries only the reset
+  link and its expiry — no account status, no Keyholder/submissive
+  context, nothing that would out the nature of the app to someone
+  glancing at a notification preview. The sender name is "The Ledger"
+  (already a deliberately neutral product name, `00-overview.md`),
+  which is enough for the recipient to trust it isn't phishing without
+  the subject or body saying anything more specific.
+- **Failure is invisible to the caller, not to the operator.** If the
+  relay rejects the send (bad credentials, the account's own rate
+  limit, a network blip), that's logged for whoever runs the server to
+  notice — the public endpoint's response never changes either way,
+  by the same discipline as the rest of this section.
