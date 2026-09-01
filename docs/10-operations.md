@@ -211,8 +211,21 @@ box.
 
 ### Commands
 
+Every account in this system after the first is created via invite
+(`invites`, `01-data-model.md` §2) — but an invite can only be issued
+by an existing Keyholder, which means invite-only signup has no answer
+for how the *first* account ever comes to exist. That was a genuine gap
+(discovered building Phase 1, not a deliberate omission): nothing in
+the design created the initial Keyholder a fresh deployment needs
+before invite-based signup can even start. `admin create-keyholder`
+closes it, as a sibling of the recovery commands below rather than a
+separate subsystem — same trust model, same confirmation/audit
+behavior, the only CLI command that creates an account instead of
+recovering one.
+
 | Command | Effect |
 |---|---|
+| `admin create-keyholder <email> [--display-name <name>]` | Creates a `role='keyholder'` account with a fresh cryptographically-random password, printed once to stdout — the deployer relays it to the real Keyholder over whatever channel they already trust, same "shown once" discipline as an invite token. The account holder should change it via the ordinary authenticated `POST /auth/password/change` on first login rather than keep the CLI-generated one. Meant to run exactly once per deployment, for the first account; every account after that goes through the normal invite flow. |
 | `admin reset-password <email>` | Issues a single-use password-reset token for the account (see below); prints it once to stdout. Does **not** set a password itself — the account holder still chooses their own. |
 | `admin disable-2fa <email>` | Force-clears `two_factor_credentials` and every `two_factor_recovery_codes` row for the account — the actual last resort for the lost-device-and-exhausted-recovery-codes case (§2 above). Doesn't touch the password; run `reset-password` too if both are needed. |
 | `admin unlock-account <email>` | Clears `failed_login_count` and `locked_until` immediately. A convenience, not a necessity — the account already self-unlocks once `locked_until` passes; this is for "I know it's really them, don't make them wait." |
