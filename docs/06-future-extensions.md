@@ -532,7 +532,7 @@ default being especially clever, just on one existing and being
 visibly reviewable rather than either absent or silently trusted
 forever.
 
-## 13. Pausing punishment deadlines / verification scheduling
+## 13. Pausing task deadlines / verification scheduling
 
 `08-punishments-and-deadlines.md` §9 deliberately scopes "pause the
 clocks" to just the confinement lock timer, not task/punishment

@@ -339,7 +339,7 @@ rather than folded into that other enum. Full pause/resume mechanics
 — in particular, what happens to `target_release_at` when the
 Keyholder resumes — are in `08-punishments-and-deadlines.md` §9. This
 field affects only the confinement countdown; it has no effect on
-punishment deadlines, verification scheduling, or anything else in
+task deadlines, verification scheduling, or anything else in
 the system — a deliberately narrow scope, not a first step toward a
 broader "pause everything" mode.
 
@@ -842,7 +842,7 @@ subscription lapsed.
 | id | TEXT PK | |
 | user_id | TEXT FK -> users.id | recipient |
 | link_id | TEXT NULL FK -> keyholder_submissive_links.id | scoping, null for account-level notifications |
-| type | TEXT | e.g. `verification.code_issued`, `verification.reviewed`, `punishment.assigned`, `punishment.deadline_approaching`, `punishment.failed`, `punishment.proof_submitted`, `reward.given`, `safety.alert_raised`, `confinement.adjusted`, `verification.missed` — full list in `09-notifications.md` |
+| type | TEXT | e.g. `verification.code_issued`, `verification.reviewed`, `task.assigned`, `task.deadline_approaching`, `task.failed`, `task.proof_submitted`, `reward.given`, `safety.alert_raised`, `confinement.adjusted`, `verification.missed` — full list in `09-notifications.md` |
 | title | TEXT | |
 | body | TEXT NULL | |
 | link_path | TEXT NULL | relative in-app path to deep-link to (e.g. `/proof-review/{id}`) |

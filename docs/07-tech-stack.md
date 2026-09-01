@@ -71,7 +71,7 @@ reasoning so implementation doesn't have to re-derive it.
 - **Background scheduling**: two Tokio `interval` tasks spawned at
   server startup, running in-process — no external job queue.
   1. Verification code issuance (`04-verification-workflow.md` §2).
-  2. The punishment deadline sweeper (`08-punishments-and-deadlines.md`
+  2. The task deadline sweeper (`08-punishments-and-deadlines.md`
      §3) — auto-fail and deadline-approaching passes. Structurally
      identical to #1 (scan-and-act on a timer), so both can share one
      small internal "scheduled task" helper rather than being two

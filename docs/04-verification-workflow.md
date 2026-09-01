@@ -213,7 +213,7 @@ in §4 above (update the submission's own `status`/`reviewed_at`/
    about that should just extend the deadline directly.
 4. `status = 'failed'` → the assignment moves to `failed`, and, if
    its `on_failure_template_id` is set, triggers the same escalation
-   the deadline sweeper would trigger for an auto-failed punishment
+   the deadline sweeper would trigger for an auto-failed task
    — one failure path, two possible causes (a rejected proof, or
    time simply running out), fully detailed in
    `08-punishments-and-deadlines.md`.

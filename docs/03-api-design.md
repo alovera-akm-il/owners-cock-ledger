@@ -110,7 +110,7 @@ section), and, for the Keyholder, API token management (§12).
 | `GET /submissive/devices` | submissive | self, read-only |
 | `GET /keyholder/submissives/{id}/status` | keyholder\* | derived current status + open session if any, including `target_release_at`, `time_remaining_seconds` (negative if overdue), whether it's overdue, and `clock_paused_at`/`clock_paused` (bool)/`clock_pause_message` |
 | `GET /submissive/status` | submissive | self equivalent — includes `clock_pause_message` too, since it's written to be read by the submissive |
-| `POST /keyholder/submissives/{id}/confinement-sessions/{sessionId}/pause` | keyholder\* | `{message?}` — optional note shown to both roles while paused. `409` if there's no open session, or it's already paused. Sets `clock_paused_at=now()` and, if given, `clock_pause_message` — freezes the confinement countdown *only*; punishment deadlines and verification scheduling are unaffected on purpose. Full reasoning and exact scope boundary in `08-punishments-and-deadlines.md` §9. |
+| `POST /keyholder/submissives/{id}/confinement-sessions/{sessionId}/pause` | keyholder\* | `{message?}` — optional note shown to both roles while paused. `409` if there's no open session, or it's already paused. Sets `clock_paused_at=now()` and, if given, `clock_pause_message` — freezes the confinement countdown *only*; task deadlines and verification scheduling are unaffected on purpose. Full reasoning and exact scope boundary in `08-punishments-and-deadlines.md` §9. |
 | `PATCH /keyholder/submissives/{id}/confinement-sessions/{sessionId}/pause-message` | keyholder\* | `{message}` (empty string clears it) — update the shown message without resuming and re-pausing. `409` if not currently paused. |
 | `POST /keyholder/submissives/{id}/confinement-sessions/{sessionId}/resume` | keyholder\* | no body. `409` if not currently paused. Computes the elapsed pause duration, extends `target_release_at` by it (inserting a `confinement_adjustments` row, `reason='clock_pause'`, `notes` carrying forward whatever `clock_pause_message` was), and clears both `clock_paused_at` and `clock_pause_message` — all in one transaction. |
 | `POST /keyholder/submissives/{id}/confinement-sessions` | keyholder\* | start a session: `{device_id, started_reason, target_release_at?, notes?}`; 409 if one is already open |
@@ -437,8 +437,9 @@ need duration-formatting logic):
   "consistency_pct": 21,
   "session_lengths": { "shortest_seconds": 0, "longest_seconds": 8985600, "average_seconds": 4492800 },
   "verification": { "verified": 142, "failed": 9, "missed": 3 },
-  "punishments": { "assigned": 18, "completed": 14, "failed": 4, "escalated": 3 },
+  "tasks": { "assigned": 18, "completed": 14, "failed": 4, "escalated": 3 },
   "rewards_given": 11,
+  "punishments_given": 5,
   "timer_adjustments": { "added_seconds": 356400, "removed_seconds": 43200 },
   "lifetime_locked_seconds": 31449600
 }
@@ -455,9 +456,21 @@ need duration-formatting logic):
   divided by the period's wall-clock length. For `period=all`, the
   denominator is time since the link's `started_at`, not account
   creation — consistency is about the dynamic, not the account.
-- `verification`/`punishments` counts are scoped to the selected
-  period by `submitted_at`/`assigned_at` respectively; `rewards_given`
-  and `timer_adjustments` likewise.
+- `verification`/`tasks` counts are scoped to the selected period by
+  `submitted_at`/`assigned_at` respectively; `rewards_given`,
+  `punishments_given`, and `timer_adjustments` likewise. `tasks` was
+  `punishments` before the `kind='task'` unification
+  (`01-data-model.md` §6) — renamed because `assigned`/`completed`/
+  `failed`/`escalated` only describe the task state machine
+  (`01-data-model.md` §6, "Task state machine") now: a bare
+  `kind='punishment'` row (`effect_kind='grant'` or
+  `'time_extension'`) has no deadline and can't fail, so counting it
+  alongside tasks under one bucket stopped meaning anything the
+  moment tasks became a distinct kind. `punishments_given` is the new
+  symmetric count for those — direct grants and applied time
+  extensions, whether assigned outright or reached via a task's
+  `on_failure_template_id` — mirroring how `rewards_given` already
+  counts direct grants and applied time reductions.
 - `lifetime_locked_seconds` is the one other never-period-filtered
   field, alongside the personal best — cumulative time locked across
   every session ever, for the same "Global, not Activity" reason.

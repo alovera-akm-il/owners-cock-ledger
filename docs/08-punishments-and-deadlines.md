@@ -97,7 +97,7 @@ than being invoked by any client request. Each tick:
    perform the escalation in §6. `assigned_via` on the *escalation*
    row (not the failed one, which keeps whatever it already had) is
    set to `'system'`. Note: pausing the confinement clock (§9) has no
-   effect here — punishment deadlines are a separate concern and keep
+   effect here — task deadlines are a separate concern and keep
    running on their own schedule regardless of whether the lock timer
    is paused.
 2. **Deadline-approaching pass**: purely informational — it
@@ -106,7 +106,7 @@ than being invoked by any client request. Each tick:
    deadline would need its reminder *before* the punishment was even
    assigned, and a 90-minute one would fire almost immediately after
    assignment, which is just noise on top of the
-   `punishment.assigned` notification that already told the submissive
+   `task.assigned` notification that already told the submissive
    about it. So the window scales with the punishment's own length
    instead of being a flat constant:
    - `total = deadline_at - assigned_at`, `window = min(1 hour, total / 2)`,
@@ -117,7 +117,7 @@ than being invoked by any client request. Each tick:
      warning, and a second one seconds later adds nothing.
    - Otherwise, each tick finds `assignments` still `status='assigned'`
      where `now >= reminder_at` and no
-     `punishment.deadline_approaching` notification has been recorded
+     `task.deadline_approaching` notification has been recorded
      yet for this assignment (checked against `notifications` by
      `related_entity_id`, rather than a new column on `assignments` —
      one less piece of state to keep in sync), and enqueues exactly
@@ -227,11 +227,17 @@ just-failed assignment `F` with `F.on_failure_template_id = T`:
    "reviewed" are kept as two separate facts rather than one, so a
    default nobody has looked at in a while doesn't just keep firing
    unexamined.
-4. Send **two** notifications (`09-notifications.md`):
-   - `punishment.assigned` to the submissive, same as any new
-     punishment, flagged as arriving via escalation
+4. Send notifications (`09-notifications.md`):
+   - if `T.kind = 'task'`: `task.assigned` to the submissive, same as
+     any new task, flagged as arriving via escalation
      (`escalated_from_assignment_id`) so the notification/UI can say
-     "because you didn't complete X."
+     "because you didn't complete X." If `T.kind = 'punishment'`
+     instead (a bare `effect_kind='time_extension'` consequence with
+     no completion workflow of its own), there's no separate
+     "assigned" notification — the `confinement.adjusted` notification
+     already fired by applying it in step 3 (`09-notifications.md`
+     §3) is the submissive-facing signal, tagged as an extension so it
+     pushes rather than sitting feed-only.
    - if (and only if) `T.effect_kind = 'time_extension'`: a
      `confinement.time_extension_needs_review` notification to the
      **Keyholder** — this is new, and closes a real gap: nothing
@@ -466,7 +472,7 @@ for as long as the pause continues, rather than firing once and being
 forgotten, or never firing again and letting a pause silently persist
 indefinitely.
 
-### Scope: why this doesn't also touch punishment deadlines
+### Scope: why this doesn't also touch task deadlines
 
 It's tempting to generalize "pause time for this submissive" into one
 switch that also freezes the deadline sweeper (§3) and verification
@@ -475,12 +481,12 @@ asked to be narrowed to just the lock timer, and there's a real reason
 that narrower scope is defensible rather than merely "what was
 requested": the lock timer is a single, unambiguous quantity per
 submissive with one obvious pause semantics (stop counting toward one
-target). Punishment deadlines are plural, independent, and each
+target). Task deadlines are plural, independent, and each
 already has its own Keyholder-editable `deadline_at`
 (`03-api-design.md` §7) — a Keyholder who wants a specific open
-punishment's clock to wait can already extend that one deadline
+task's clock to wait can already extend that one deadline
 directly, without needing a separate pause/resume concept layered on
-top. If a genuine need for pausing punishment deadlines (or
+top. If a genuine need for pausing task deadlines (or
 verification scheduling) as their own concept shows up later, it's an
 additive feature — its own `pause`/`resume` pair, following exactly
 this same pattern — not a reason to have generalized this one

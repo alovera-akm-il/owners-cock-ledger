@@ -90,13 +90,13 @@ protections elsewhere in this document set.
 
 Two Tokio interval tasks now carry real system guarantees:
 verification code issuance (`04-verification-workflow.md` §2) and the
-punishment deadline sweeper (`08-punishments-and-deadlines.md` §3).
+task deadline sweeper (`08-punishments-and-deadlines.md` §3).
 If either silently stops — a panic that isn't caught, a deadlock, the
 process being in a bad state without actually crashing — the failure
 mode is invisible from the outside: no codes get issued, or
-punishments simply never auto-fail, and nothing in the UI would look
+tasks simply never auto-fail, and nothing in the UI would look
 obviously wrong until someone noticed a much later symptom (a
-submissive who should have failed three punishments by now hasn't).
+submissive who should have failed three tasks by now hasn't).
 That's a bad property for something a Keyholder is relying on to
 enforce consequences.
 

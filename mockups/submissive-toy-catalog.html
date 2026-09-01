@@ -70,7 +70,27 @@
       <input type="text" placeholder="Brand" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
       <input type="text" placeholder="Color" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
     </div>
+    <div class="grid grid-cols-2 gap-3">
+      <input type="text" placeholder="Size notes (length, diameter, etc.)" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <select class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="">Compatible device (optional)</option>
+        <option>Holy Trainer V4 — steel</option>
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <input type="text" placeholder="Storage location" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <div>
+        <label class="block text-[11px] text-slate-500 mb-1">Acquired (optional)</label>
+        <input type="date" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+    </div>
+    <textarea rows="2" placeholder="Care instructions" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <textarea rows="2" placeholder="Usage notes (e.g. requires extra lubricant, check battery before use)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
     <input type="text" placeholder="Tags, comma separated" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-2">Photo</label>
+      <div class="rounded-lg border-2 border-dashed border-slate-700 bg-slate-950 p-4 text-center text-xs text-slate-500 hover:border-slate-600 cursor-pointer">Click to add one or more photos</div>
+    </div>
     <div class="flex justify-end gap-2">
       <button id="cancel-new" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
       <button id="save-toy-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save toy</button>

@@ -213,11 +213,11 @@ There is deliberately no `DELETE` on `keyholder_submissive_links`.
   token has no legitimate reason to keep working even briefly, so
   `DELETE /keyholder/api-tokens/{id}` takes effect on the very next
   request rather than draining gracefully.
-- **A submissive can never mark their own punishment `completed`,
+- **A submissive can never mark their own task `completed`,
   even for `acknowledge_only` ones, and can never review their own
   completion proof.** Both stay Keyholder-only, matching the
   pre-existing reward/punishment confirmation rule — the deadline
-  system changes *when* a punishment can auto-fail, not who gets to
+  system changes *when* a task can auto-fail, not who gets to
   say it succeeded.
 - **Auto-failure and auto-escalation are system actions, not a new
   authorization path for anyone.** The deadline sweeper

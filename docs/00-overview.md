@@ -30,17 +30,18 @@ produced from this design.
 - On `failed`, let the Keyholder attach a punishment from a reusable
   catalog or define a new one on the spot. Symmetrically, let the
   Keyholder grant rewards from a catalog at any time.
-- Track not just *whether* a punishment was carried out but *how*
+- Track not just *whether* a task was carried out but *how*
   (a simple acknowledgement, or actual submitted proof) and *by when*
-  — the server enforces punishment deadlines itself, automatically
-  marking a missed one `failed` and applying whatever consequence the
-  Keyholder configured for that failure, up to and including another
-  punishment (`08-punishments-and-deadlines.md`).
+  — the server enforces task deadlines itself, automatically marking
+  a missed one `failed` and applying whatever consequence the
+  Keyholder configured for that failure, up to and including a
+  punishment (`08-punishments-and-deadlines.md`,
+  `11-tasks-and-rewards.md`).
 - Track how long a submissive is *actually* locked (measured, from
   lock to unlock) separately from how long they're *supposed* to be
   locked (a Keyholder-set, Keyholder-modifiable countdown target) —
-  and let a punishment's failure consequence be extending that
-  countdown directly, not just assigning another task.
+  and let a punishment's consequence be extending that countdown
+  directly, not just assigning another task.
 - Notify each role, via the browser (Web Push) and always via an
   in-app feed, when something needs their attention — a code is due,
   a proof was reviewed, a deadline is approaching or was missed, a
@@ -62,7 +63,7 @@ produced from this design.
   operated instance.
 - Automated (OCR/ML) verification-code reading from the photo itself.
   MVP verification is a human (the Keyholder) visually confirming the
-  code appears in the submitted photo — this holds for punishment
+  code appears in the submitted photo — this holds for task
   completion proof too (`08-punishments-and-deadlines.md`), not just
   the original chastity check-in.
 - A native mobile app, or any delivery channel beyond Web Push and
@@ -103,7 +104,7 @@ Full permission matrix: see `02-roles-and-permissions.md`.
                     |                                        |
                     |  Background tasks (Tokio intervals):    |
                     |  verification-code issuance,            |
-                    |  punishment deadline sweeper             |
+                    |  task deadline sweeper                   |
                     |                                        |
                     |  Data access layer (rusqlite             |
                     |  over SQLite, migrations)                |
