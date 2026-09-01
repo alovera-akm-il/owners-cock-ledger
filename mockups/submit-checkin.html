@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Fill In Check-in</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="submissive-dashboard.html">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      <span class="hidden sm:inline">The Ledger</span>
+    </a>
+    <a href="submit-proof.html" class="text-xs text-slate-400 hover:text-slate-200">&larr; Back to Submit Proof</a>
+  </div>
+</nav>
+
+<main class="max-w-2xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">Morning chastity cage check-in</h1>
+  <p class="text-sm text-slate-400 mb-6">Paired with the overnight cage photo-proof task — not live, no one else is watching this happen in real time, so just fill it in whenever and submit.</p>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-5">
+
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-2">Color <span class="text-slate-600 font-normal">— always required</span></label>
+      <div class="flex gap-2">
+        <button class="color-btn flex-1 rounded-lg border-2 border-emerald-500 bg-emerald-500/10 text-emerald-400 text-sm font-semibold py-2" data-color="green">Green — SAFE/OK</button>
+        <button class="color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2 hover:border-amber-600/50" data-color="yellow">Yellow — Near limit</button>
+        <button class="color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2 hover:border-red-600/50" data-color="red">Red — Immediate stop</button>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1">Skin status</label>
+      <p class="text-[11px] text-slate-500 mb-1.5">Look at the skin under and around the cage, not just how it feels.</p>
+      <select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option>Normal</option>
+        <option>Mild redness</option>
+        <option>Chafing</option>
+        <option>Swelling</option>
+        <option>Open skin</option>
+      </select>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <label class="text-xs font-medium text-slate-400">Cage comfort</label>
+        <span class="text-sm font-mono text-amber-400">2 / 5</span>
+      </div>
+      <input type="range" min="1" max="5" value="2" class="w-full accent-amber-500" />
+      <div class="flex justify-between text-[10px] text-slate-600 mt-0.5"><span>1 = barely feel it</span><span>5 = painful</span></div>
+      <p class="text-[11px] text-slate-500 mt-1">1 = barely feel it, 5 = painful — anything above 3 should probably also be RED.</p>
+    </div>
+
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1">Incidents</label>
+      <p class="text-[11px] text-slate-500 mb-1.5">Any pressure points, nocturnal erections, or discomfort — even minor.</p>
+      <textarea rows="2" placeholder="None" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    </div>
+
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1">Sleep quality</label>
+      <textarea rows="2" placeholder="Hours, interruptions, position…" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Device</label>
+        <select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option>Holy Trainer V4 — steel</option>
+        </select>
+        <p class="text-[11px] text-slate-600 mt-1">Pulled from your toy catalog automatically.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Duration (hours)</label>
+        <input type="number" value="9" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+    </div>
+
+    <button id="submit-checkin-btn" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+      Submit check-in
+    </button>
+    <p id="submitted-note" class="hidden text-xs text-center text-emerald-400">✓ Submitted — your Keyholder can see this alongside your overnight task's proof.</p>
+  </div>
+</main>
+
+<script>
+  $('.color-btn').on('click', function () {
+    $('.color-btn').removeClass('border-emerald-500 bg-emerald-500/10 text-emerald-400 border-amber-500 bg-amber-500/10 text-amber-400 border-red-500 bg-red-500/10 text-red-400')
+      .addClass('border-slate-800 text-slate-400');
+    const color = $(this).data('color');
+    const map = {
+      green: 'border-emerald-500 bg-emerald-500/10 text-emerald-400',
+      yellow: 'border-amber-500 bg-amber-500/10 text-amber-400',
+      red: 'border-red-500 bg-red-500/10 text-red-400',
+    };
+    $(this).removeClass('border-slate-800 text-slate-400').addClass(map[color]);
+  });
+
+  $('#submit-checkin-btn').on('click', function () {
+    $(this).prop('disabled', true).text('Submitted ✓');
+    $('#submitted-note').removeClass('hidden');
+  });
+</script>
+</body>
+</html>

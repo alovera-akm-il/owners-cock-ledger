@@ -92,6 +92,12 @@
     <p class="text-xs text-slate-500 mt-1">Accepts: <span class="text-slate-300">video only</span> — set by whoever created this task</p>
   </div>
 
+  <div id="context-checkin-note" class="hidden rounded-lg border border-amber-700/40 bg-amber-500/5 px-4 py-3 mb-6 text-sm">
+    <span class="text-amber-400 font-medium">Some tasks pair with a check-in</span>
+    <span class="text-slate-300"> — the overnight cage task, for example, also expects the "Morning chastity cage check-in" filled in alongside this proof.</span>
+    <a href="submit-checkin.html" class="block mt-1 text-amber-400 hover:text-amber-300 underline underline-offset-2">Fill in that check-in →</a>
+  </div>
+
   <form class="space-y-5">
 
     <div>
@@ -175,12 +181,12 @@
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');
     $('#mode-task').removeClass('bg-slate-800').addClass('text-slate-400');
     $('#context-verification').removeClass('hidden');
-    $('#context-task').addClass('hidden');
+    $('#context-task, #context-checkin-note').addClass('hidden');
   });
   $('#mode-task').on('click', function () {
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');
     $('#mode-verification').removeClass('bg-slate-800').addClass('text-slate-400');
-    $('#context-task').removeClass('hidden');
+    $('#context-task, #context-checkin-note').removeClass('hidden');
     $('#context-verification').addClass('hidden');
     selectMedia('video'); // this task's proof_media_types only allows video
   });

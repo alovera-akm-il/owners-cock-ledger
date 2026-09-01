@@ -31,6 +31,7 @@
     <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="in_progress">In progress</button>
     <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="pending_judgement">Pending judgement</button>
     <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="completed">Completed</button>
+    <button class="state-btn text-xs font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1" data-state="cancelled">Cancelled</button>
   </div>
 
   <div class="flex items-start justify-between mb-6">
@@ -128,14 +129,14 @@
     <div class="space-y-4">
       <div id="actions-scheduled" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-2">
         <p class="text-xs font-medium text-slate-400 mb-1">This session hasn't started yet</p>
-        <button class="w-full rounded-lg bg-sky-500 hover:bg-sky-400 py-2 text-sm font-semibold text-slate-950">Start now</button>
-        <button class="w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
+        <button id="start-session-btn" class="w-full rounded-lg bg-sky-500 hover:bg-sky-400 py-2 text-sm font-semibold text-slate-950">Start now</button>
+        <button class="cancel-session-btn w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
       </div>
       <div id="actions-in-progress" class="hidden rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-5 space-y-2">
         <p class="text-xs font-medium text-emerald-400 mb-1">Live now</p>
         <p class="text-xs text-slate-400 mb-2">Elapsed: <span class="font-mono text-slate-200">00:41:12</span></p>
-        <button class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 py-2 text-sm font-semibold text-slate-950">End session</button>
-        <button class="w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
+        <button id="end-session-btn" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 py-2 text-sm font-semibold text-slate-950">End session</button>
+        <button class="cancel-session-btn w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
       </div>
       <div id="actions-pending" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
         <p class="text-xs font-medium text-amber-400">Awaiting your judgement</p>
@@ -144,6 +145,10 @@
       <div id="actions-completed" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
         <p class="text-xs font-medium text-slate-300">Session complete</p>
         <p class="text-xs text-slate-500 mt-1">Nothing further to do here.</p>
+      </div>
+      <div id="actions-cancelled" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+        <p class="text-xs font-medium text-slate-400">Session cancelled</p>
+        <p class="text-xs text-slate-500 mt-1">No judgement applies — cancelling was a "never mind," not a failure.</p>
       </div>
     </div>
   </div>
@@ -155,6 +160,7 @@
     in_progress: { badge: ['In progress', 'bg-emerald-500/10 text-emerald-400'], started: 'Today, 21:02', ended: '—', judgement: false, completedSummary: false },
     pending_judgement: { badge: ['Pending judgement', 'bg-amber-500/10 text-amber-400'], started: 'Today, 21:02', ended: 'Today, 22:03', judgement: true, completedSummary: false },
     completed: { badge: ['Completed', 'bg-slate-800 text-slate-400'], started: 'Today, 21:02', ended: 'Today, 22:03', judgement: false, completedSummary: true },
+    cancelled: { badge: ['Cancelled', 'bg-slate-800 text-slate-500'], started: '—', ended: '—', judgement: false, completedSummary: false },
   };
 
   function setState(name) {
@@ -164,13 +170,18 @@
     $('#ended-at-block p.font-medium').text(s.ended);
     $('#judgement-panel').toggleClass('hidden', !s.judgement);
     $('#completed-summary').toggleClass('hidden', !s.completedSummary);
-    $('#actions-scheduled, #actions-in-progress, #actions-pending, #actions-completed').addClass('hidden');
+    $('#actions-scheduled, #actions-in-progress, #actions-pending, #actions-completed, #actions-cancelled').addClass('hidden');
     $('#actions-' + name.replace('pending_judgement', 'pending').replace('in_progress', 'in-progress')).removeClass('hidden');
     $('.state-btn').removeClass('bg-slate-800').addClass('text-slate-400');
     $(`.state-btn[data-state="${name}"]`).addClass('bg-slate-800').removeClass('text-slate-400');
   }
 
   $('.state-btn').on('click', function () { setState($(this).data('state')); });
+  $('#start-session-btn').on('click', () => setState('in_progress'));
+  $('#end-session-btn').on('click', () => setState('pending_judgement'));
+  $('.cancel-session-btn').on('click', function () {
+    if (confirm('Cancel this session? No judgement applies — this is a "never mind," not a failure.')) setState('cancelled');
+  });
   $('#mark-completed-btn').on('click', () => setState('completed'));
   $('#save-judgement-btn').on('click', () => alert('Judgement saved — session stays in "pending judgement" until you mark it completed.'));
 

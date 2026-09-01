@@ -88,6 +88,10 @@
     $('#login-step-2fa').addClass('hidden');
     $('#login-step-password').removeClass('hidden');
   });
+  $('#tfa-verify-btn').on('click', function () {
+    // demo only: a real app routes by the account's actual role
+    window.location = 'keyholder-dashboard.html';
+  });
 </script>
 </body>
 </html>

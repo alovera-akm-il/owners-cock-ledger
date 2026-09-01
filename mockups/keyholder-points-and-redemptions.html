@@ -78,8 +78,8 @@
   </div>
 
   <h2 class="text-sm font-semibold text-slate-300 mb-3">Pending redemption requests</h2>
-  <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800 mb-8">
-    <div class="flex items-center justify-between px-5 py-4">
+  <div id="pending-requests" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800 mb-6">
+    <div class="redemption-row flex items-center justify-between px-5 py-4" data-name="Riley" data-reward="Extra 15 min video call" data-cost="20">
       <div>
         <p class="text-sm font-medium">Riley wants to redeem "Extra 15 min video call"</p>
         <p class="text-xs text-slate-500 mt-0.5">Costs 20 pts · has 42 pts · requested 3 hours ago</p>
@@ -88,6 +88,15 @@
         <button class="deny-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5">Deny</button>
         <button class="approve-btn text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5">Approve</button>
       </div>
+    </div>
+  </div>
+  <p id="no-pending-requests" class="hidden text-xs text-slate-500 mb-6">Nothing waiting on you right now.</p>
+
+  <h2 class="text-sm font-semibold text-slate-300 mb-3">Recently decided</h2>
+  <div id="decided-requests" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800 mb-8 opacity-70">
+    <div class="flex items-center justify-between px-5 py-4">
+      <p class="text-sm text-slate-300">Sam redeemed "Choose tonight's movie" <span class="text-slate-500">— 10 pts</span></p>
+      <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">approved 2 days ago</span>
     </div>
   </div>
 
@@ -139,7 +148,28 @@
     $('#menu-icon-close').addClass('hidden');
   });
   $('.approve-btn, .deny-btn').on('click', function () {
-    $(this).closest('.flex').fadeOut(200);
+    const approved = $(this).hasClass('approve-btn');
+    const row = $(this).closest('.redemption-row');
+    const name = row.data('name'), reward = row.data('reward'), cost = row.data('cost');
+    row.fadeOut(200, function () {
+      $(this).remove();
+      if ($('#pending-requests .redemption-row').length === 0) {
+        $('#pending-requests').addClass('hidden');
+        $('#no-pending-requests').removeClass('hidden');
+      }
+      const status = approved
+        ? `<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">approved just now</span>`
+        : `<span class="text-[11px] font-semibold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">denied just now</span>`;
+      $('#decided-requests').prepend(`
+        <div class="flex items-center justify-between px-5 py-4">
+          <p class="text-sm text-slate-300">${name} ${approved ? 'redeemed' : 'requested'} "${reward}" <span class="text-slate-500">— ${cost} pts</span></p>
+          ${status}
+        </div>
+      `);
+      if (approved) {
+        $('table tbody').prepend(`<tr><td class="px-5 py-3 text-slate-300">Redeemed "${reward}"</td><td class="px-5 py-3 text-slate-500 text-xs">just now</td><td class="px-5 py-3 text-right font-mono text-red-400">−${cost}</td></tr>`);
+      }
+    });
   });
   $('.enable-points-btn').on('click', function () {
     $(this).closest('.rounded-xl').find('span').removeClass('text-slate-500 bg-slate-800').addClass('text-emerald-400 bg-emerald-500/10').text('points on');
