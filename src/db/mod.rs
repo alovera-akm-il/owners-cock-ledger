@@ -27,6 +27,11 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../migrations/0006_background_task_runs.sql"
         )),
+        M::up(include_str!("../../migrations/0007_profiles.sql")),
+        M::up(include_str!("../../migrations/0008_invites.sql")),
+        M::up(include_str!(
+            "../../migrations/0009_verification_policies.sql"
+        )),
     ])
 }
 
