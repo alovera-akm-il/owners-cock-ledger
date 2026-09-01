@@ -20,3 +20,4 @@ Read in order:
 13. [`12-toy-catalog.md`](12-toy-catalog.md) — the toy/BDSM-gear catalog, field rationale, and the add/retire permission split.
 14. [`13-checkins.md`](13-checkins.md) — check-in templates, the configurable field-type system, the color safety signal, and real-time live-session updates.
 15. [`14-play-sessions.md`](14-play-sessions.md) — live and retrospective play-session logging, templates, toy attachment, and the judgement-before-completion workflow.
+16. [`15-implementation-roadmap.md`](15-implementation-roadmap.md) — honest evaluation of the design's current state and a phased build order, read once the doc set above is settled and it's time to actually start writing code.
