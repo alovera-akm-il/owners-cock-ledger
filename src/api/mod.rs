@@ -3,8 +3,11 @@
 //! don't hold business logic themselves.
 
 pub mod auth;
+pub mod chastity;
 pub mod invites;
+pub mod proofs;
 pub mod roster;
+pub mod verification;
 
 use axum::Json;
 use axum::http::StatusCode;

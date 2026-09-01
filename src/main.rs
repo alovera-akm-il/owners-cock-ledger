@@ -3,6 +3,7 @@ mod auth;
 mod db;
 mod domain;
 mod ops;
+mod storage;
 mod web;
 
 use std::io::Write;
@@ -66,23 +67,84 @@ fn open_pool() -> anyhow::Result<db::Pool> {
     Ok(pool)
 }
 
-fn build_router(pool: db::Pool) -> Router {
+fn build_router(state: db::AppState) -> Router {
     Router::new()
         .route("/health", get(ops::health))
         .nest(
             "/api/v1",
             api::auth::router()
                 .merge(api::invites::router())
-                .merge(api::roster::router()),
+                .merge(api::roster::router())
+                .merge(api::chastity::router())
+                .merge(api::verification::router())
+                .merge(api::proofs::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
         .layer(axum::middleware::from_fn(auth::csrf::csrf_protect))
-        .with_state(pool)
+        .with_state(state)
+}
+
+/// One tick of the verification-code issuance background task
+/// (04-verification-workflow.md §2) — writes a `background_task_runs`
+/// heartbeat regardless of outcome, same discipline as the health-check
+/// design in `ops` (10-operations.md §3), so a silently-stopped task
+/// shows up as unhealthy rather than looking indistinguishable from
+/// "nothing was due."
+fn run_verification_issuance_tick(pool: &db::Pool) {
+    let conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            tracing::error!(error = %e, "verification issuance: failed to get a DB connection");
+            return;
+        }
+    };
+    match domain::verification::codes::run_due_issuance_tick(&conn) {
+        Ok(issued) => {
+            let _ = ops::record_heartbeat(&conn, "verification_issuance", true, None, issued);
+            if issued > 0 {
+                tracing::info!(issued, "verification codes issued");
+            }
+        }
+        Err(e) => {
+            let _ = ops::record_heartbeat(
+                &conn,
+                "verification_issuance",
+                false,
+                Some(&e.to_string()),
+                0,
+            );
+            tracing::error!(error = %e, "verification issuance tick failed");
+        }
+    }
+}
+
+fn spawn_verification_issuance_task(pool: db::Pool) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let pool = pool.clone();
+            if let Err(e) =
+                tokio::task::spawn_blocking(move || run_verification_issuance_tick(&pool)).await
+            {
+                tracing::error!(error = %e, "verification issuance task panicked");
+            }
+        }
+    });
 }
 
 async fn serve(pool: db::Pool) -> anyhow::Result<()> {
-    let app = build_router(pool);
+    let blob_dir = db::resolve_data_dir()?.join("blobs");
+    std::fs::create_dir_all(&blob_dir)?;
+
+    spawn_verification_issuance_task(pool.clone());
+
+    let state = db::AppState {
+        pool,
+        blob_dir: db::BlobDir(blob_dir),
+    };
+    let app = build_router(state);
 
     let listen_addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
@@ -177,13 +239,43 @@ mod tests {
     struct TestClient {
         app: Router,
         cookies: HashMap<String, String>,
+        // Owned only when this client made its own blob dir (`new`); a
+        // client sharing one via `new_with_blob_dir` (two TestClients
+        // standing in for two real browsers hitting the same server)
+        // holds None and relies on the caller keeping the shared TempDir
+        // alive instead.
+        _blob_dir: Option<tempfile::TempDir>,
+    }
+
+    fn test_app_state(pool: db::Pool, blob_dir: std::path::PathBuf) -> Router {
+        let state = db::AppState {
+            pool,
+            blob_dir: db::BlobDir(blob_dir),
+        };
+        build_router(state)
     }
 
     impl TestClient {
         fn new(pool: db::Pool) -> Self {
+            let blob_dir = tempfile::tempdir().unwrap();
+            let app = test_app_state(pool, blob_dir.path().to_path_buf());
             Self {
-                app: build_router(pool),
+                app,
                 cookies: HashMap::new(),
+                _blob_dir: Some(blob_dir),
+            }
+        }
+
+        /// For two `TestClient`s standing in for two different people
+        /// hitting the same running server — they must share one blob
+        /// dir, the way one real process's `AppState` does, or a file
+        /// one of them uploads is invisible to the other.
+        fn new_with_blob_dir(pool: db::Pool, blob_dir: &std::path::Path) -> Self {
+            let app = test_app_state(pool, blob_dir.to_path_buf());
+            Self {
+                app,
+                cookies: HashMap::new(),
+                _blob_dir: None,
             }
         }
 
@@ -224,14 +316,7 @@ mod tests {
                 .await
                 .unwrap();
             let status = response.status();
-
-            for value in response.headers().get_all(header::SET_COOKIE) {
-                let raw = value.to_str().unwrap();
-                if let Some((k, v)) = raw.split(';').next().and_then(|kv| kv.split_once('=')) {
-                    self.cookies
-                        .insert(k.trim().to_string(), v.trim().to_string());
-                }
-            }
+            self.capture_cookies(&response);
 
             let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
             let json = if bytes.is_empty() {
@@ -279,6 +364,82 @@ mod tests {
             body: serde_json::Value,
         ) -> (StatusCode, serde_json::Value) {
             self.request("POST", path, Some(body)).await
+        }
+
+        async fn patch(
+            &mut self,
+            path: &str,
+            body: serde_json::Value,
+        ) -> (StatusCode, serde_json::Value) {
+            self.request("PATCH", path, Some(body)).await
+        }
+
+        fn capture_cookies(&mut self, response: &axum::http::Response<Body>) {
+            for value in response.headers().get_all(header::SET_COOKIE) {
+                let raw = value.to_str().unwrap();
+                if let Some((k, v)) = raw.split(';').next().and_then(|kv| kv.split_once('=')) {
+                    self.cookies
+                        .insert(k.trim().to_string(), v.trim().to_string());
+                }
+            }
+        }
+
+        /// A minimal hand-built `multipart/form-data` body — proof
+        /// submission is the only endpoint that needs one, so a tiny
+        /// purpose-built builder here beats pulling in a multipart-client
+        /// crate for one test path.
+        async fn post_multipart(
+            &mut self,
+            path: &str,
+            fields: &[(&str, &str)],
+            files: &[(&str, &str, &str, &[u8])],
+        ) -> (StatusCode, serde_json::Value) {
+            let boundary = "test-boundary-owners-cock-ledger";
+            let mut body = Vec::new();
+            for (name, value) in fields {
+                body.extend_from_slice(
+                    format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
+                        .as_bytes(),
+                );
+            }
+            for (field_name, filename, content_type, bytes) in files {
+                body.extend_from_slice(
+                    format!(
+                        "--{boundary}\r\nContent-Disposition: form-data; name=\"{field_name}\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
+                    )
+                    .as_bytes(),
+                );
+                body.extend_from_slice(bytes);
+                body.extend_from_slice(b"\r\n");
+            }
+            body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+
+            let mut builder = Request::builder().method("POST").uri(path).header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={boundary}"),
+            );
+            if !self.cookies.is_empty() {
+                builder = builder.header(header::COOKIE, self.cookie_header());
+            }
+            if let Some(csrf) = self.cookies.get(auth::csrf::CSRF_COOKIE_NAME) {
+                builder = builder.header(auth::csrf::CSRF_HEADER_NAME, csrf.clone());
+            }
+
+            let response = self
+                .app
+                .clone()
+                .oneshot(builder.body(Body::from(body)).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            self.capture_cookies(&response);
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let json = if bytes.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
+            };
+            (status, json)
         }
     }
 
@@ -439,7 +600,8 @@ mod tests {
     async fn mutating_request_without_csrf_is_rejected() {
         let (_dir, pool) = temp_pool();
         seed_keyholder(&pool, "kh6@example.test", "correct horse battery staple");
-        let app = build_router(pool);
+        let blob_dir = tempfile::tempdir().unwrap();
+        let app = test_app_state(pool, blob_dir.path().to_path_buf());
         let response = app
             .oneshot(
                 Request::builder()
@@ -570,5 +732,391 @@ mod tests {
         let (status, _, body) = client.get_page("/static/css/app.css").await;
         assert_eq!(status, StatusCode::OK);
         assert!(!body.is_empty());
+    }
+
+    // ---- Phase 2: chastity, verification, and proof-submission flows ----
+
+    const TINY_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+        0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0xF8,
+        0xCF, 0xC0, 0x00, 0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xDD, 0x8D, 0xB0, 0x00, 0x00, 0x00,
+        0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    /// Logs a keyholder in, invites a submissive, and redeems that invite
+    /// — the real HTTP flow (not a DB shortcut) two separate `TestClient`s
+    /// need before any Phase 2 endpoint makes sense.
+    async fn linked_keyholder_and_submissive(
+        pool: &db::Pool,
+        keyholder_email: &str,
+        submissive_email: &str,
+    ) -> (TestClient, TestClient, tempfile::TempDir) {
+        let blob_dir = tempfile::tempdir().unwrap();
+        seed_keyholder(pool, keyholder_email, "correct horse battery staple");
+        let mut keyholder = TestClient::new_with_blob_dir(pool.clone(), blob_dir.path());
+        keyholder.get("/health").await;
+        keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": keyholder_email, "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (_, invite_body) = keyholder
+            .post("/api/v1/keyholder/invites", serde_json::json!({}))
+            .await;
+        let token = invite_body["token"].as_str().unwrap().to_string();
+
+        let mut submissive = TestClient::new_with_blob_dir(pool.clone(), blob_dir.path());
+        submissive.get("/health").await;
+        submissive
+            .post(
+                "/api/v1/auth/invites/redeem",
+                serde_json::json!({
+                    "token": token,
+                    "email": submissive_email,
+                    "password": "another strong password",
+                    "display_name": "Sub",
+                }),
+            )
+            .await;
+
+        (keyholder, submissive, blob_dir)
+    }
+
+    async fn submissive_id(keyholder: &mut TestClient) -> String {
+        let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
+        roster[0]["submissive_id"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn device_and_confinement_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-device@example.test",
+            "sub-device@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, device) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "steel #2", "description": "daily wear"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let device_id = device["id"].as_str().unwrap().to_string();
+
+        let (status, status_body) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status_body["locked"], false);
+
+        let (status, status_body) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status_body["locked"], true);
+        let session_id = status_body["session_id"].as_str().unwrap().to_string();
+
+        // A second open session is rejected.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        let (status, _) = keyholder
+            .post(
+                &format!(
+                    "/api/v1/keyholder/submissives/{sub_id}/confinement-sessions/{session_id}/pause"
+                ),
+                serde_json::json!({"message": "traveling"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, status_body) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(status_body["clock_paused"], true);
+        assert_eq!(status_body["clock_pause_message"], "traveling");
+
+        let (status, _) = keyholder
+            .post(
+                &format!(
+                    "/api/v1/keyholder/submissives/{sub_id}/confinement-sessions/{session_id}/resume"
+                ),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, status_body) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(status_body["clock_paused"], false);
+
+        let (status, _) = keyholder
+            .patch(
+                &format!(
+                    "/api/v1/keyholder/submissives/{sub_id}/confinement-sessions/{session_id}"
+                ),
+                serde_json::json!({"ended_reason": "scheduled_release"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, status_body) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(status_body["locked"], false);
+    }
+
+    #[tokio::test]
+    async fn verification_and_proof_review_flow() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-verify@example.test",
+            "sub-verify@example.test",
+        )
+        .await;
+
+        let (status, code_body) = submissive
+            .post(
+                "/api/v1/submissive/verification-codes",
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let code_id_check = submissive
+            .get("/api/v1/submissive/verification-codes/current")
+            .await;
+        assert_eq!(code_id_check.0, StatusCode::OK);
+        assert_eq!(code_id_check.1["code"], code_body["code"]);
+
+        // A second on-demand request while one is still live is a conflict.
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/verification-codes",
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // The proof-submission API needs the code's id, not its display
+        // value — fetch it via the keyholder's issued-code history, the
+        // only place the raw id is exposed today (deliberately: the
+        // *code text* is what the submissive types, not an id).
+        let sub_id = submissive_id(&mut keyholder).await;
+        // Not needed for submission (client only ever sends the code's
+        // own id from /current in a real UI); simulate that by resolving
+        // it straight from the DB in this test.
+        let conn = pool.get().unwrap();
+        let code_id: String = conn
+            .query_row(
+                "SELECT id FROM verification_codes WHERE code = ?1",
+                rusqlite::params![code_body["code"].as_str().unwrap()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(conn);
+
+        let (status, submission) = submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("verification_code_id", &code_id), ("kind", "photo")],
+                &[("files", "proof.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(submission["status"], "pending");
+        assert_eq!(
+            submission["verification_code_value"],
+            code_body["code"].clone()
+        );
+        assert_eq!(submission["attachments"].as_array().unwrap().len(), 1);
+        let submission_id = submission["id"].as_str().unwrap().to_string();
+
+        // The code is now consumed — no more "current" code.
+        let current = submissive
+            .get("/api/v1/submissive/verification-codes/current")
+            .await;
+        assert!(current.1.is_null());
+
+        // Cross-roster feed shows it.
+        let (status, feed) = keyholder.get("/api/v1/keyholder/proof-submissions").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(feed.as_array().unwrap().len(), 1);
+
+        // Download the attachment as the keyholder.
+        let attachment_id = submission["attachments"][0]["id"].as_str().unwrap();
+        let (dl_status, _, dl_body) = keyholder
+            .get_page(&format!(
+                "/api/v1/keyholder/proof-submissions/{submission_id}/attachments/{attachment_id}"
+            ))
+            .await;
+        assert_eq!(dl_status, StatusCode::OK);
+        assert!(!dl_body.is_empty());
+
+        // Review it as redo.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/proof-submissions/{submission_id}/review"),
+                serde_json::json!({"status": "redo", "review_notes": "try again"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // A second review of the same submission is rejected.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/proof-submissions/{submission_id}/review"),
+                serde_json::json!({"status": "verified"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // Resubmit as a redo, then verify it.
+        let (status, redo_submission) = submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "photo"), ("redo_of_submission_id", &submission_id)],
+                &[("files", "proof2.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let redo_id = redo_submission["id"].as_str().unwrap().to_string();
+
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/proof-submissions/{redo_id}/review"),
+                serde_json::json!({"status": "verified"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, own_list) = submissive.get("/api/v1/submissive/proof-submissions").await;
+        let verified = own_list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == redo_id)
+            .unwrap();
+        assert_eq!(verified["status"], "verified");
+        assert_eq!(verified["reviewed_via"], "session");
+        let _ = sub_id; // scoping-only; already exercised above
+    }
+
+    #[tokio::test]
+    async fn submissive_cannot_review_or_touch_another_submissives_devices() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-acl@example.test", "sub-acl@example.test")
+                .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, _) = submissive
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "not allowed"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // A second, unrelated keyholder can't see this submissive at all.
+        seed_keyholder(
+            &pool,
+            "kh-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_keyholder = TestClient::new(pool.clone());
+        other_keyholder.get("/health").await;
+        other_keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _, _) = other_keyholder
+            .get_page(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn submissive_dashboard_and_submit_proof_pages_render() {
+        let (_dir, pool) = temp_pool();
+        let (_keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-pages@example.test",
+            "sub-pages@example.test",
+        )
+        .await;
+
+        let (status, _, body) = submissive.get_page("/submissive").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Unlocked"));
+
+        let (status, _, body) = submissive.get_page("/submissive/submit-proof").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Submit proof"));
+    }
+
+    #[tokio::test]
+    async fn keyholder_pages_render_submissive_detail_and_review_queue() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-pages2@example.test",
+            "sub-pages2@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, _, body) = keyholder
+            .get_page(&format!("/keyholder/submissives/{sub_id}"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Devices"));
+
+        let (status, _, body) = keyholder.get_page("/keyholder/review").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Nothing waiting on review"));
+
+        // Submit something and confirm it now shows up in the queue.
+        submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+        let (status, _, body) = keyholder.get_page("/keyholder/review").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("note"));
+        assert!(!body.contains("Nothing waiting on review"));
+    }
+
+    #[tokio::test]
+    async fn dashboard_roster_row_links_to_submissive_detail() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-link@example.test", "sub-link@example.test")
+                .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, _, body) = keyholder.get_page("/dashboard").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains(&format!("/keyholder/submissives/{sub_id}")));
     }
 }

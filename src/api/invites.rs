@@ -12,6 +12,7 @@ use crate::api::auth::MeResponse;
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::password;
 use crate::auth::session::{self, CurrentUser, Role};
+use crate::db;
 use crate::db::Pool;
 use crate::domain::invites;
 
@@ -181,7 +182,7 @@ async fn redeem_invite(
     ))
 }
 
-pub fn router() -> Router<Pool> {
+pub fn router() -> Router<db::AppState> {
     Router::new()
         .route("/keyholder/invites", post(create_invite).get(list_invites))
         .route("/keyholder/invites/{id}", delete(revoke_invite))

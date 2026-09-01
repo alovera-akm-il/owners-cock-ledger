@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ApiError, INTERNAL_ERROR};
 use crate::auth::password;
 use crate::auth::session::{self, CurrentUser, SESSION_COOKIE_NAME};
+use crate::db;
 use crate::db::Pool;
 use crate::domain::users;
 
@@ -141,7 +142,7 @@ async fn me(user: CurrentUser) -> Json<MeResponse> {
     })
 }
 
-pub fn router() -> Router<Pool> {
+pub fn router() -> Router<db::AppState> {
     Router::new()
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))

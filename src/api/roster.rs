@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, INTERNAL_ERROR};
 use crate::auth::session::{CurrentUser, Role};
+use crate::db;
 use crate::db::Pool;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
@@ -70,6 +71,6 @@ async fn roster(
     Ok(Json(rows))
 }
 
-pub fn router() -> Router<Pool> {
+pub fn router() -> Router<db::AppState> {
     Router::new().route("/keyholder/submissives", get(roster))
 }
