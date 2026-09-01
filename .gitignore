@@ -24,3 +24,8 @@ target
 # Added by cargo
 
 /target
+
+# Standalone Tailwind CLI binary — dev-machine-specific, not a runtime
+# dependency. Re-download from the pinned v3.4.17 GitHub release to
+# rebuild static/css/app.css from tailwind/input.css.
+/.build-tools/
