@@ -1,0 +1,53 @@
+/* Shared motion — functional only, never decorative. Three patterns,
+   used consistently across every mockup rather than one-off per page:
+   - .flash-updated: a value just changed (a ledger row landed, a
+     status badge moved to a new state) — brief highlight, not a loop.
+   - .pulse-urgent: needs a human's attention right now (an
+     unacknowledged safety alert, a live "recording" indicator) —
+     reserved for genuinely urgent/live signals so it keeps that
+     meaning; never used for routine "something's new."
+   - .panel-fade: swapping which panel/card is visible (e.g. a
+     play session's state-dependent action panel) reads as a change,
+     not a snap-cut.
+   See 07-tech-stack.md §3 for the policy this implements. */
+
+@keyframes flash-updated {
+  0% { background-color: rgba(52, 211, 153, 0.25); }
+  100% { background-color: transparent; }
+}
+.flash-updated {
+  animation: flash-updated 1.2s ease-out;
+}
+
+@keyframes pulse-urgent {
+  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.5); }
+  100% { box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
+}
+.pulse-urgent {
+  animation: pulse-urgent 1.5s infinite;
+}
+
+/* live-safe variant (emerald) for a non-urgent "connected/live" signal,
+   e.g. checkin-live.html's streaming indicator — same mechanic, calmer
+   color so it doesn't compete with pulse-urgent's alarm meaning */
+@keyframes pulse-live {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+  100% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+}
+.pulse-live {
+  animation: pulse-live 1.5s infinite;
+}
+
+.panel-fade {
+  animation: panel-fade-in 0.2s ease-out;
+}
+@keyframes panel-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-updated, .pulse-urgent, .pulse-live, .panel-fade {
+    animation: none;
+  }
+}

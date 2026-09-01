@@ -6,6 +6,7 @@
 <title>The Ledger — Safety Alerts</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -76,27 +77,27 @@
   <div class="space-y-4">
 
     <!-- unacknowledged: highest urgency -->
-    <div class="rounded-xl border border-red-600/50 bg-red-600/10 p-5">
+    <div id="alert-riley" class="rounded-xl border border-red-600/50 bg-red-600/10 p-5">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
-          <div class="h-9 w-9 rounded-full bg-red-600/20 border border-red-600/40 flex items-center justify-center shrink-0 mt-0.5">
+          <div class="pulse-urgent h-9 w-9 rounded-full bg-red-600/20 border border-red-600/40 flex items-center justify-center shrink-0 mt-0.5">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
           </div>
           <div>
             <p class="text-sm font-semibold text-red-400">Riley <span class="font-normal text-red-300/80">· raised 8 minutes ago</span></p>
             <p class="text-sm text-slate-200 mt-1">"Device feels too tight, need to check"</p>
-            <span class="inline-block mt-2 text-[11px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">unacknowledged</span>
+            <span class="status-badge inline-block mt-2 text-[11px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">unacknowledged</span>
           </div>
         </div>
         <div class="flex flex-col gap-2 shrink-0">
-          <button class="text-xs font-semibold text-slate-950 bg-red-500 hover:bg-red-400 rounded-lg px-3 py-1.5 whitespace-nowrap">Acknowledge</button>
+          <button class="ack-btn text-xs font-semibold text-slate-950 bg-red-500 hover:bg-red-400 rounded-lg px-3 py-1.5 whitespace-nowrap">Acknowledge</button>
           <a href="submissive-detail.html" class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5 text-center whitespace-nowrap">View Riley →</a>
         </div>
       </div>
     </div>
 
     <!-- acknowledged, not yet resolved -->
-    <div class="rounded-xl border border-amber-600/40 bg-amber-500/5 p-5">
+    <div id="alert-sam" class="rounded-xl border border-amber-600/40 bg-amber-500/5 p-5">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3">
           <div class="h-9 w-9 rounded-full bg-amber-500/15 border border-amber-600/30 flex items-center justify-center shrink-0 mt-0.5">
@@ -105,11 +106,11 @@
           <div>
             <p class="text-sm font-semibold text-amber-400">Sam <span class="font-normal text-amber-300/70">· raised 2 hours ago</span></p>
             <p class="text-sm text-slate-200 mt-1">"Not feeling well, might need the timer paused for a bit"</p>
-            <span class="inline-block mt-2 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">acknowledged 1h ago by you</span>
+            <span class="status-badge inline-block mt-2 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">acknowledged 1h ago by you</span>
           </div>
         </div>
         <div class="flex flex-col gap-2 shrink-0">
-          <button class="text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5 whitespace-nowrap">Resolve</button>
+          <button class="resolve-btn text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5 whitespace-nowrap">Resolve</button>
           <a href="submissive-detail.html" class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-1.5 text-center whitespace-nowrap">View Sam →</a>
         </div>
       </div>
@@ -155,6 +156,30 @@
   $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+
+  $('.ack-btn').on('click', function () {
+    const card = $(this).closest('[id^="alert-"]');
+    card.removeClass('border-red-600/50 bg-red-600/10').addClass('border-amber-600/40 bg-amber-500/5 flash-updated');
+    card.find('.pulse-urgent').removeClass('pulse-urgent')
+      .removeClass('bg-red-600/20 border-red-600/40').addClass('bg-amber-500/15 border-amber-600/30')
+      .find('svg').removeClass('text-red-400').addClass('text-amber-400');
+    card.find('.status-badge').removeClass('text-red-400 bg-red-500/10').addClass('text-amber-400 bg-amber-500/10').text('acknowledged just now by you');
+    card.find('p.font-semibold').removeClass('text-red-400').addClass('text-amber-400');
+    $(this).removeClass('ack-btn bg-red-500 hover:bg-red-400').addClass('resolve-btn bg-amber-500 hover:bg-amber-400').text('Resolve');
+  });
+
+  $(document).on('click', '.resolve-btn', function () {
+    const card = $(this).closest('[id^="alert-"]');
+    card.find('.status-badge').text('resolved just now');
+    $(this).fadeOut(200, function () { $(this).remove(); });
+    setTimeout(() => {
+      card.removeClass('border-amber-600/40 bg-amber-500/5 flash-updated').addClass('border-slate-800 bg-slate-900 opacity-70 flash-updated');
+      card.find('.h-9').removeClass('bg-amber-500/15 border-amber-600/30').addClass('bg-slate-800 border-slate-700')
+        .find('svg').removeClass('text-amber-400').addClass('text-slate-500').attr('viewBox', '0 0 24 24').html('<path d="m5 13 4 4L19 7"/>');
+      card.find('.status-badge').removeClass('text-amber-400 bg-amber-500/10').addClass('text-slate-400 bg-slate-800');
+      card.find('p.font-semibold').removeClass('text-amber-400').addClass('text-slate-300');
+    }, 220);
+  });
 </script>
 </body>
 </html>

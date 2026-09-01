@@ -6,6 +6,7 @@
 <title>The Ledger — Points &amp; Redemptions</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -160,13 +161,13 @@
         ? `<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">approved just now</span>`
         : `<span class="text-[11px] font-semibold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">denied just now</span>`;
       $('#decided-requests').prepend(`
-        <div class="flex items-center justify-between px-5 py-4">
+        <div class="flash-updated flex items-center justify-between px-5 py-4">
           <p class="text-sm text-slate-300">${name} ${approved ? 'redeemed' : 'requested'} "${reward}" <span class="text-slate-500">— ${cost} pts</span></p>
           ${status}
         </div>
       `);
       if (approved) {
-        $('table tbody').prepend(`<tr><td class="px-5 py-3 text-slate-300">Redeemed "${reward}"</td><td class="px-5 py-3 text-slate-500 text-xs">just now</td><td class="px-5 py-3 text-right font-mono text-red-400">−${cost}</td></tr>`);
+        $('table tbody').prepend(`<tr class="flash-updated"><td class="px-5 py-3 text-slate-300">Redeemed "${reward}"</td><td class="px-5 py-3 text-slate-500 text-xs">just now</td><td class="px-5 py-3 text-right font-mono text-red-400">−${cost}</td></tr>`);
       }
     });
   });
@@ -179,7 +180,7 @@
     const val = parseInt($('#adjust-value').val() || '0', 10);
     if (!val) return;
     const sign = val > 0 ? '+' : '';
-    $('table tbody').prepend(`<tr><td class="px-5 py-3 text-slate-300">Manual adjustment — "${notes}"</td><td class="px-5 py-3 text-slate-500 text-xs">just now</td><td class="px-5 py-3 text-right font-mono ${val > 0 ? 'text-emerald-400' : 'text-red-400'}">${sign}${val}</td></tr>`);
+    $('table tbody').prepend(`<tr class="flash-updated"><td class="px-5 py-3 text-slate-300">Manual adjustment — "${notes}"</td><td class="px-5 py-3 text-slate-500 text-xs">just now</td><td class="px-5 py-3 text-right font-mono ${val > 0 ? 'text-emerald-400' : 'text-red-400'}">${sign}${val}</td></tr>`);
     $('#adjust-notes, #adjust-value').val('');
   });
 </script>

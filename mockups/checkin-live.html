@@ -6,13 +6,10 @@
 <title>The Ledger — Live Check-in</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <style>
   body{font-family:'Inter',sans-serif;}
-  @keyframes pulse-ring { 0%{box-shadow:0 0 0 0 rgba(52,211,153,.5);} 100%{box-shadow:0 0 0 8px rgba(52,211,153,0);} }
-  .live-dot{animation:pulse-ring 1.5s infinite;}
-  @keyframes flash { 0%{background-color:rgba(52,211,153,.25);} 100%{background-color:transparent;} }
-  .just-updated{animation:flash 1.2s ease-out;}
 </style>
 </head>
 <body class="h-full bg-slate-950 text-slate-100">
@@ -34,7 +31,7 @@
       <p class="text-sm text-slate-400 mt-1">Live for the duration of the play session — either of you edits, both of you see it land immediately</p>
     </div>
     <span class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-600/30 rounded-full px-3 py-1.5">
-      <span class="h-2 w-2 rounded-full bg-emerald-400 live-dot"></span> Live
+      <span class="h-2 w-2 rounded-full bg-emerald-400 pulse-live"></span> Live
     </span>
   </div>
   <p class="text-xs text-slate-500 mb-6">This mockup shows both people's screens side by side and simulates the update happening. In the real app, each person only sees their own page — the point is that they'd both be looking at this same content at the same time.</p>
@@ -174,8 +171,8 @@
   }
 
   function flash() {
-    $('.checkin-pane').addClass('just-updated');
-    setTimeout(() => $('.checkin-pane').removeClass('just-updated'), 1200);
+    $('.checkin-pane').addClass('flash-updated');
+    setTimeout(() => $('.checkin-pane').removeClass('flash-updated'), 1200);
     $('.ago').text('just now');
   }
 

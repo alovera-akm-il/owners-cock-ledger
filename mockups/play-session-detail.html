@@ -6,6 +6,7 @@
 <title>The Ledger — Play Session</title>
 <script src="vendor/tailwind.js"></script>
 <link href="vendor/fonts.css" rel="stylesheet">
+<link href="app.css" rel="stylesheet">
 <script src="vendor/jquery.min.js"></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -162,15 +163,24 @@
     cancelled: { badge: ['Cancelled', 'bg-slate-800 text-slate-500'], started: '—', ended: '—', judgement: false, completedSummary: false },
   };
 
+  function replay(el, cls) {
+    el.removeClass(cls);
+    void el[0].offsetWidth; // force reflow so the animation restarts
+    el.addClass(cls);
+  }
+
   function setState(name) {
     const s = STATES[name];
     $('#status-badge').removeClass().addClass('text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 ' + s.badge[1]).text(s.badge[0]);
+    replay($('#status-badge'), 'flash-updated');
     $('#started-at-block p.font-medium').text(s.started);
     $('#ended-at-block p.font-medium').text(s.ended);
     $('#judgement-panel').toggleClass('hidden', !s.judgement);
     $('#completed-summary').toggleClass('hidden', !s.completedSummary);
     $('#actions-scheduled, #actions-in-progress, #actions-pending, #actions-completed, #actions-cancelled').addClass('hidden');
-    $('#actions-' + name.replace('pending_judgement', 'pending').replace('in_progress', 'in-progress')).removeClass('hidden');
+    const activePanel = $('#actions-' + name.replace('pending_judgement', 'pending').replace('in_progress', 'in-progress'));
+    activePanel.removeClass('hidden');
+    replay(activePanel, 'panel-fade');
     $('.state-btn').removeClass('bg-slate-800').addClass('text-slate-400');
     $(`.state-btn[data-state="${name}"]`).addClass('bg-slate-800').removeClass('text-slate-400');
   }

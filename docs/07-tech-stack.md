@@ -220,6 +220,35 @@ CDN dependency anywhere, full stop, not just for Tailwind/jQuery:
   submissive-facing set (own status, submit-proof, own history,
   own assignments) — enforced server-side by the same auth/role
   checks as the API, not just hidden nav links.
+- **Motion**: functional, not decorative — every animation exists to
+  communicate a state change, direct attention, or confirm an action
+  landed, never as flourish. Three patterns, reused everywhere rather
+  than invented per page (`mockups/app.css` is the reference
+  implementation the real frontend's stylesheet should port
+  directly):
+  - **Flash on change** — a value that just updated (a new ledger
+    row, a status badge moving to a new state after an action) gets a
+    brief background highlight, not a silent snap. The default for
+    "something changed as a direct result of what you just did."
+  - **Urgent pulse** — reserved specifically for something needing a
+    human's attention *right now*: an unacknowledged safety alert, a
+    live/recording indicator. Deliberately rare, so it keeps that
+    meaning — never used for routine "here's something new," only for
+    the handful of genuinely urgent or live signals in the whole app.
+  - **Panel fade** — swapping which panel is visible (e.g. a play
+    session's state-dependent action panel) gets a short cross-fade
+    instead of an instant `hidden`-class snap, so a state transition
+    reads as a change rather than a glitch.
+  All three collapse to nothing under `prefers-reduced-motion:
+  reduce` — a real accessibility consideration, not an afterthought.
+  Explicitly **not** done anywhere: entrance animation on page load,
+  hover bounce/scale micro-interactions, or any animation that exists
+  purely for visual flair — consistent with this app's restrained,
+  utilitarian tone rather than a consumer-app feel. Ordinary
+  hover/focus color transitions (Tailwind's `transition-colors`) are
+  the one exception, already the baseline on every interactive
+  element and not considered part of this "motion" category — they're
+  standard affordance, not a communicated event.
 
 ## 4. Project layout (indicative, for when implementation starts)
 
