@@ -105,7 +105,7 @@ Full permission matrix: see `02-roles-and-permissions.md`.
                     |  verification-code issuance,            |
                     |  punishment deadline sweeper             |
                     |                                        |
-                    |  Data access layer (sqlx/rusqlite        |
+                    |  Data access layer (rusqlite             |
                     |  over SQLite, migrations)                |
                     |                                        |
                     |  Blob storage (filesystem dir,           |

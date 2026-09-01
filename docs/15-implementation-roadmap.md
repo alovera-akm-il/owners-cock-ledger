@@ -65,30 +65,49 @@ from an assumed head start.
   check-ins, and play sessions are substantial elaborations layered
   on in one later session. Treating all 15 as one build is a real
   risk of shipping nothing before the scope stops moving.
-- **Two spikes are still explicitly open** and block Phase 0 either
-  way: `sqlx` vs `rusqlite`, and `askama` vs `tera` for server-rendered
-  templates (`07-tech-stack.md` §1/§3 flag both as "decide during
-  implementation, not architecturally significant either way" — true
-  for the eventual design, but a real blocker for writing the first
-  line of `db/` or `web/` code).
 - **SQLite + single-process is a real ceiling**, correctly accepted
   for the stated scale (`07-tech-stack.md` §2) — worth remembering
   only if the scope ever grows past one deployer and a handful of
   submissives.
 
-## 3. Spikes to resolve before Phase 0
+## 3. Phase 0 foundation decisions — resolved
 
-Both are called out as open in `07-tech-stack.md` and gate the very
-first commit of real code:
+Originally two open spikes; both are now settled, plus two related
+constraints that came up while resolving them and apply just as much
+to Phase 0. All four in `07-tech-stack.md`, summarized here so the
+reasoning doesn't have to be re-derived:
 
-1. `sqlx` (async, compile-time-checked queries) vs `rusqlite`
-   (synchronous, simpler to audit) for the DB layer.
-2. `askama` (compile-time-checked templates) vs `tera` (runtime
-   templates) for server-rendered HTML.
+1. **`rusqlite` over `sqlx`** for the DB layer. `sqlx`'s compile-time
+   query checking is real value, but it requires either a live
+   `DATABASE_URL` or a committed offline cache regenerated (via a
+   command that itself needs `DATABASE_URL`) whenever a query
+   changes — some implicit relationship between `cargo build` and a
+   database, on some machine, at some point. The bar here is zero
+   such relationship, ever, including local dev — `rusqlite` gives
+   that unconditionally. Trade-off accepted explicitly: with no test
+   suite yet (§2 above), query correctness now leans more on care and
+   eventual integration tests than on the compiler.
+2. **`askama` over `tera`** for templates, same underlying logic —
+   compile-time-checked, and this app's single-operator,
+   redeploy-to-change-anything model never needed `tera`'s
+   runtime-editable-template advantage.
+3. **No CDN dependency anywhere** — not just the Tailwind/jQuery
+   vendoring already specified, but fonts too. A Google Fonts
+   `<link>` tag is easy to leave as a default without registering it
+   as the same category of third-party dependency as a JS framework;
+   Inter's `.woff2` files get vendored under `static/fonts/` instead.
+4. **All persistent app data under `~/.config/<app-name>/`** — the
+   SQLite file, its WAL companions, and the blob directory in one
+   place, not a repo-relative `data/` folder and not scattered across
+   XDG's config/data/cache split. Resolved via the `directories`
+   crate, overridable by env var for deployments that want a
+   different location.
 
-Neither choice is architecturally significant later — the schema and
-route shapes are identical either way — but each has to be picked
-once, in Phase 0, so `domain/` and `web/` have a foundation to sit on.
+None of these four are architecturally significant on their own —
+the schema, route shapes, and domain boundaries are identical either
+way — but each had to be picked before the first line of `db/` or
+`web/` code, so they're grouped here as the actual Phase 0 starting
+conditions rather than left as open questions.
 
 ## 4. Phased build order
 
@@ -99,8 +118,9 @@ audit.
 
 ### Phase 0 — Skeleton (no user-facing feature)
 
-Resolve the two spikes above. Project layout per `07-tech-stack.md`
-§4. SQLite pool + migrations tooling. Session-cookie auth (Argon2id,
+Apply the four foundation decisions above. Project layout per
+`07-tech-stack.md` §4. SQLite pool + `rusqlite_migration` tooling
+against `~/.config/<app-name>/`. Session-cookie auth (Argon2id,
 no 2FA yet) and the role middleware (`02-roles-and-permissions.md`
 §1). `audit_log` and `safety_alerts`
 (`01-data-model.md` §7/§8) wired in **now**, as cross-cutting

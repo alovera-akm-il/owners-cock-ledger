@@ -142,11 +142,13 @@ infrastructure-shaped answer:
 
 - The binary exposes a **backup subcommand**
   (e.g. `owners-cock-ledger backup --out <dir>`), not a scheduled
-  task or an HTTP endpoint. It performs a live, safe copy using
-  SQLite's own backup API (which is online-safe against a
-  concurrently-running server in WAL mode — no need to stop the
-  service) and copies the blob directory (`05-security-and-privacy.md`
-  §4) alongside it into the same output directory, as one unit.
+  task or an HTTP endpoint. It reads from `~/.config/<app-name>/`
+  (`07-tech-stack.md` §2, overridable the same way the server itself
+  resolves it) and performs a live, safe copy using SQLite's own
+  backup API (which is online-safe against a concurrently-running
+  server in WAL mode — no need to stop the service) and copies the
+  blob directory (`05-security-and-privacy.md` §4) alongside it into
+  the same output directory, as one unit.
 - The deployer wires this into whatever scheduling mechanism they
   already trust — a cron entry or a systemd timer calling the binary
   in backup mode — rather than this application inventing its own

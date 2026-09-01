@@ -14,14 +14,27 @@ reasoning so implementation doesn't have to re-derive it.
   multipart upload support (needed for proof attachments), and keeps
   routing declarative and easy to map 1:1 to the endpoint table in
   `03-api-design.md`.
-- **DB access**: `sqlx` with the `sqlite` feature, compile-time-
-  checked queries, and its migration support for schema evolution
-  (each table in `01-data-model.md` becomes one migration).
-  `rusqlite` is a reasonable alternative if a more synchronous,
-  simpler-to-audit DB layer is preferred over `sqlx`'s async pool —
-  worth a quick spike before committing, but not architecturally
-  significant either way since the schema and query shapes are the
-  same regardless of driver.
+- **DB access**: `rusqlite`, synchronous, wrapped in
+  `tokio::task::spawn_blocking` at the call sites inside async
+  handlers — settled over `sqlx` specifically because `sqlx`'s
+  compile-time query checking needs either a live `DATABASE_URL` or a
+  committed `.sqlx/` offline cache regenerated (via `cargo sqlx
+  prepare`, itself requiring `DATABASE_URL`) whenever a query changes;
+  the requirement to decide is "never, on any machine, for any
+  build" — no implicit relationship between `cargo build` and a
+  database, full stop. This trades away compile-time SQL validation,
+  which matters more given the project has no test suite yet
+  (`15-implementation-roadmap.md` §2), so query correctness leans more
+  on care and (eventually) integration tests than on the compiler.
+  SQLite itself is single-writer regardless of driver (WAL mode gives
+  concurrent readers, not concurrent writers), so `sqlx`'s async pool
+  was never buying real concurrency here — the async-vs-sync framing
+  was closer to a wash than the "async is better" default might
+  suggest.
+- **Migrations**: `rusqlite_migration` — plain numbered `.sql` files
+  in `migrations/`, applied in order and tracked in a
+  `schema_migrations`-style table, no build-time or `DATABASE_URL`
+  dependency of any kind, consistent with the DB-access choice above.
 - **Password hashing**: `argon2` crate.
 - **API token hashing**: `sha2` crate (SHA-256) — deliberately not
   `argon2` for these; see `05-security-and-privacy.md` §9 for why a
@@ -134,23 +147,48 @@ reasoning so implementation doesn't have to re-derive it.
 
 - **Database**: SQLite, single file, WAL journal mode, `foreign_keys`
   pragma on.
-- **Blob storage**: plain filesystem directory, structure e.g.
-  `data/proofs/<uuid>.<ext>`, outside any statically-served path.
-- **Migrations**: `sqlx migrate` (or equivalent) — one migration file
-  per table/change, matching the table list in `01-data-model.md`.
+- **Location**: `~/.config/<app-name>/` (e.g.
+  `~/.config/owners-cock-ledger/`) is the default root for everything
+  persistent — the SQLite file, its `-wal`/`-shm` companions, and the
+  blob directory all live under this one path, not scattered across
+  XDG's usual config/data/cache split. One directory to know about,
+  secure (`chmod 700`), and point a backup at. Overridable via an env
+  var (e.g. `DATA_DIR`) for deployments that want a different
+  location (a mounted volume in a container, say); resolved via the
+  `directories` crate rather than hand-rolled `$HOME` string-building,
+  so it degrades sensibly if `$HOME` isn't set the way a systemd
+  service account's environment might need `Environment=HOME=...`
+  configured explicitly for this to resolve at all.
+- **Blob storage**: plain filesystem directory,
+  `<data-dir>/blobs/<uuid>.<ext>`, outside any statically-served path.
+  Named generically (not `proofs/`) since it already needs to hold
+  more than proof photos — voice recordings today, toy photos if
+  `12-toy-catalog.md` §5's gap ever gets built.
+- **Migrations**: `rusqlite_migration` (§1) — numbered `.sql` files in
+  `migrations/`, one per table/change, matching the table list in
+  `01-data-model.md`, applied against `<data-dir>/`'s database file on
+  startup.
 
 ## 3. Frontend
 
 Per the request: Tailwind CSS, jQuery, vanilla JS — server-rendered
-HTML pages (Axum can render templates, e.g. via `askama` or `tera`)
-progressively enhanced with jQuery for API calls (AJAX submissions,
-dynamic status updates, review-queue interactions) rather than a full
-client-side SPA framework. This fits an app of this size: a handful
-of page types (dashboard, submissive detail, review queue, profile,
-catalogs, submit-proof form) each mostly server-rendered, with jQuery
-handling the interactive bits (file upload with progress, review
-action buttons calling `POST .../review` without a full page reload,
-polling `verification-codes/current`).
+HTML pages (Axum rendering `askama` templates, compiled in at build
+time — settled over `tera` for the same compile-time-safety-net
+reasoning as the `rusqlite`/`sqlx` call in §1, and because this app's
+single-operator, redeploy-to-change-anything deployment model never
+needed `tera`'s runtime-editable-templates advantage in the first
+place) progressively enhanced with jQuery for API calls (AJAX
+submissions, dynamic status updates, review-queue interactions)
+rather than a full client-side SPA framework. This fits an app of
+this size: a handful of page types (dashboard, submissive detail,
+review queue, profile, catalogs, submit-proof form) each mostly
+server-rendered, with jQuery handling the interactive bits (file
+upload with progress, review action buttons calling `POST
+.../review` without a full page reload, polling
+`verification-codes/current`).
+
+Every frontend asset is vendored and served by the app itself — no
+CDN dependency anywhere, full stop, not just for Tailwind/jQuery:
 
 - **Tailwind**: compiled at build time (CLI or a bundler step) into a
   static CSS file the server serves — no runtime CDN dependency, both
@@ -158,6 +196,15 @@ polling `verification-codes/current`).
   content) and reliability offline/self-hosted.
 - **jQuery**: vendored locally (served from the app itself), same
   reasoning — no CDN dependency for a privacy-sensitive app.
+- **Fonts**: the Inter typeface (SIL Open Font License) is downloaded
+  once and its `.woff2` files committed under `static/fonts/`,
+  referenced via a local `@font-face` rule compiled into the Tailwind
+  output — not a Google Fonts `<link>` tag. This is the one asset
+  that's easy to miss (Tailwind and jQuery are the visible framework
+  choices; a font `<link>` is easy to leave as the default CDN
+  snippet without thinking of it as the same category of dependency),
+  so it's called out explicitly here rather than assumed covered by
+  the bullets above.
 - **Service worker** (plain vanilla JS, no framework): required for
   Web Push (`09-notifications.md`) — registers on first load, handles
   `push` events by showing the OS notification and `notificationclick`
@@ -201,15 +248,20 @@ src/
   web/                   — server-rendered page handlers/templates
   storage/               — blob directory read/write, streaming, EXIF stripping
 migrations/
-templates/               — askama/tera templates
+templates/               — askama templates
 static/
   css/                   — compiled Tailwind output
   js/                    — vendored jQuery + app JS
+  fonts/                 — vendored Inter .woff2 files
   sw.js                  — service worker (push notifications only)
 docs/                    — this document set
 mockups/                 — static HTML mockups (see mockups/README)
-data/                    — sqlite file + proofs/ blob dir (gitignored)
 ```
+
+No `data/` directory in the repo tree — the SQLite file and blob
+directory live under `~/.config/<app-name>/` (§2), outside the
+project directory entirely, the same way any other Linux daemon's
+runtime state isn't checked out alongside its source.
 
 This mirrors the domain boundaries used throughout `01-data-model.md`
 through `10-operations.md`, so each doc section maps to one

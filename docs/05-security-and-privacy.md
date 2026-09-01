@@ -134,10 +134,12 @@ product rules:
 
 ## 4. Data at rest
 
-- SQLite file and the blob directory live outside any directory the
-  web server would ever serve statically, and ideally on a
-  filesystem/volume the deployer encrypts at rest (LUKS, or
-  provider-level disk encryption) — the application does not
+- SQLite file and the blob directory both live under
+  `~/.config/<app-name>/` (`07-tech-stack.md` §2) — outside any
+  directory the web server would ever serve statically, permissioned
+  `700` so only the server process's own user can read it, and
+  ideally on a filesystem/volume the deployer encrypts at rest (LUKS,
+  or provider-level disk encryption) — the application does not
   implement its own at-rest encryption layer; that's delegated to the
   deployment environment, called out explicitly so it isn't
   silently skipped.
@@ -258,7 +260,7 @@ product rules:
   §4 of the workflow doc calls out that the create endpoint always
   forces `status='pending'` server-side regardless of input.
 - SQL access exclusively through parameterized queries (via
-  `sqlx`/`rusqlite` bound parameters) — no string-built SQL,
+  `rusqlite` bound parameters) — no string-built SQL,
   anywhere.
 
 ## 7. Logging
