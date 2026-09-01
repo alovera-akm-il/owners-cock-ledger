@@ -59,21 +59,34 @@ no access.
 | Proof submission: view (single submissive) | R\* (their submissives') | R\* (self) |
 | Proof submission: view (cross-roster feed, `GET /keyholder/proof-submissions`) | R\* (own links only — see §5) | — (a submissive has only one "self," so this endpoint doesn't exist on their side) |
 | Proof submission: review (set verified/redo/failed) | RW\* | — |
-| Reward/punishment templates: manage catalog (incl. `effect_kind`/`completion_type`/deadlines/`on_failure_template_id`) | RW | — |
-| Reward/punishment templates: view | RW | R (read-only visibility into templates their Keyholder maintains, so they know what exists — see §5 caveat) |
-| Assignment (actual reward/punishment given): create | RW\* | — |
-| Assignment: acknowledge (submissive has seen it) | R\* | update\* (self, `assigned`→`acknowledged` only, `effect_kind='task'` only) |
-| Assignment: submit completion proof | R\* (reviews it) | create\* (self, `completion_type='proof_required'` only, before `deadline_at`) |
-| Assignment: mark completed/revoked, review completion proof | RW\* | — |
-| Assignment: edit `deadline_at` on an open punishment | RW\* | R\* (sees the current deadline and any edits to it) |
-| Assignment: auto-`failed` on missed deadline, auto-escalation to the configured `on_failure_template_id` | *(system-performed, not a role action — see `08-punishments-and-deadlines.md`)* | |
+| Reward/punishment/task templates: manage catalog (incl. `kind`/`effect_kind`/`completion_type`/`proof_media_types`/deadlines/`on_success_template_id`/`on_failure_template_id`/`points_delta`) | RW | — |
+| Reward/punishment/task templates: view | RW | R (read-only visibility into templates their Keyholder maintains, so they know what exists — see §5 caveat) |
+| Assignment (actual reward/punishment/task given): create | RW\* | — (except a reward redemption request, see the points row below) |
+| Assignment: acknowledge (submissive has seen it) | R\* | update\* (self, `assigned`→`acknowledged` only, `kind='task'` only) |
+| Assignment: submit completion proof (photo/video/voice, per `proof_media_types`) | R\* (reviews it) | create\* (self, `completion_type='proof_required'` only, before `deadline_at`) |
+| Assignment: mark completed/failed/revoked, review completion proof | RW\* | — |
+| Assignment: edit `deadline_at` on an open task/punishment | RW\* | R\* (sees the current deadline and any edits to it) |
+| Assignment: auto-`failed` on missed deadline, auto-escalation to `on_success_template_id`/`on_failure_template_id` | *(system-performed, not a role action — see `08-punishments-and-deadlines.md`)* | |
 | Safety alert: raise | R\* (receives) | create\* (self, always available) |
 | Safety alert: acknowledge/resolve | RW\* | R\* (self) |
 | Audit log | R\* (entries scoped to their links) | R\* (entries about themself only) |
 | API tokens: create/list/edit/revoke | RW (own tokens only) | — (no submissive-facing token mechanism in v1) |
 | Push subscriptions: register/list/remove own device | RW (own) | RW (own) — both roles can opt into push, see `09-notifications.md` |
 | In-app notification feed: read, mark read | R\*/update\* (own notifications only) | R\*/update\* (own notifications only) |
-| Play sessions (future) | RW\* (planned) | RW\* limited / R\* (planned, TBD when built) |
+| Points: enable/disable for a link, view balance/ledger, manual adjustment | RW\* | R\* (self) |
+| Points: request reward redemption | — (approves/denies requests, doesn't create them) | create\* (self, only if `points_enabled` and `points_balance` covers the reward's `points_cost`) |
+| Toy catalog: add | RW\* | create\* (self) |
+| Toy catalog: view/update | RW\* | RW\* (self, update covers care notes/tags/etc., not retirement) |
+| Toy catalog: retire (soft-delete) | RW\* (direct, or approve/decline a pending request) | — (can only `request` retirement, see `12-toy-catalog.md` §3) |
+| Check-in templates: manage (`checkin_templates`/`checkin_template_fields`) | RW | — |
+| Check-in templates: view | RW | R (so they can see what a template will ask before filling it in) |
+| Check-in instance: create/update (standalone or task-attached) | RW\* | RW\* (self) |
+| Check-in instance: create/update (live, in-progress play session) | RW\* (real-time via SSE, `13-checkins.md` §5) | RW\* (self, real-time via SSE) |
+| Play session templates: manage | RW | — |
+| Play session: create/assign from template or ad-hoc | RW\* | — |
+| Play session: start/log check-ins/end (live or retrospective) | RW\* | RW\* (self, on a session for their own link — either role can be the one running a live session) |
+| Play session: judgement (assign reward/punishment) and mark completed | RW\* | — |
+| Play session: view | R\* | R\* (self) |
 
 `*` scope is always resolved from the authenticated session, never
 from a client-supplied `keyholder_id`/`submissive_id` in the request
@@ -228,3 +241,40 @@ There is deliberately no `DELETE` on `keyholder_submissive_links`.
   domain events themselves (a missed check-in, a failed punishment)
   through the normal roster/detail views, same as before
   notifications existed.
+- **A toy retirement request is not a delete right in disguise.** A
+  submissive calling the "request removal" action only ever sets
+  `retirement_requested_at` — it never transitions `retired_at`
+  itself, regardless of what the request payload contains. Only a
+  Keyholder-authenticated call can set `retired_at`, whether that's
+  approving a pending request or retiring a toy with no request at
+  all (`12-toy-catalog.md` §3).
+- **A reward redemption request is the one place a submissive can
+  self-assign something, and it's deliberately narrow.** It only
+  creates a *pending* request row against a balance the Keyholder's
+  own templates and grants already built up — it never creates the
+  `assignments` row directly, and it's a no-op if `points_enabled` is
+  off for that link or the balance is short. The Keyholder's approval
+  step is what actually creates the assignment and debits the ledger,
+  so this doesn't weaken "submissives never self-assign" as a general
+  rule (`11-tasks-and-rewards.md` §3).
+- **Check-in templates follow the same edit/view split as reward and
+  punishment templates** (§3) — a submissive can see what a check-in
+  will ask before filling one in, but only a Keyholder authors or
+  edits the field list. Filling in and updating an actual check-in
+  instance is symmetric between roles, including live ones — the
+  real-time SSE channel (`13-checkins.md` §5) is read-only fan-out on
+  top of the same authorization as the ordinary `PATCH`, not a
+  separate write path with different permissions.
+- **Either role can start or log a live play session for their own
+  link**, unlike task/reward assignment which stays Keyholder-only —
+  a submissive plausibly starts a session on their device in the
+  moment. What stays Keyholder-only is everything after the session
+  reaches `pending_judgement`: assigning a reward/punishment and
+  marking the session `completed` (`14-play-sessions.md` §5). A
+  submissive can view but not alter the judgement.
+- **Play session templates cannot leak toy inventory across
+  submissives.** `suggested_toy_categories` is plain text, never a
+  reference to a specific `toys` row, precisely so a template built
+  around one submissive's catalog can't accidentally expose or
+  imply another submissive's inventory when reused
+  (`14-play-sessions.md` §2).

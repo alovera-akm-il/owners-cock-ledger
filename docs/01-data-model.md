@@ -28,11 +28,28 @@ erDiagram
     PROOF_SUBMISSIONS ||--o{ PROOF_ATTACHMENTS : "has"
     PROOF_SUBMISSIONS ||--o| PROOF_SUBMISSIONS : "redo_of (self ref)"
     USERS ||--o{ REWARD_PUNISHMENT_TEMPLATES : "authored by keyholder"
-    REWARD_PUNISHMENT_TEMPLATES ||--o| REWARD_PUNISHMENT_TEMPLATES : "on_failure (self ref)"
-    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ ASSIGNMENTS : "reward/punishment instances"
+    REWARD_PUNISHMENT_TEMPLATES ||--o| REWARD_PUNISHMENT_TEMPLATES : "on_success / on_failure (self ref)"
+    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ ASSIGNMENTS : "reward/punishment/task instances"
     REWARD_PUNISHMENT_TEMPLATES ||--o{ ASSIGNMENTS : "instantiates"
     PROOF_SUBMISSIONS ||--o| ASSIGNMENTS : "triggered by / completion proof for (nullable)"
+    PLAY_SESSIONS ||--o{ ASSIGNMENTS : "judgement triggers (nullable)"
     ASSIGNMENTS ||--o| ASSIGNMENTS : "escalated_from (self ref)"
+    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ POINT_TRANSACTIONS : "optional points ledger"
+    REWARD_PUNISHMENT_TEMPLATES ||--o{ REWARD_REDEMPTION_REQUESTS : "redeemable reward"
+    REWARD_REDEMPTION_REQUESTS ||--o| ASSIGNMENTS : "approved into (nullable)"
+    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ TOYS : "catalog"
+    USERS ||--o{ TOYS : "added_by"
+    USERS ||--o{ CHECKIN_TEMPLATES : "authored by keyholder"
+    CHECKIN_TEMPLATES ||--o{ CHECKIN_TEMPLATE_FIELDS : "custom fields"
+    CHECKIN_TEMPLATES ||--o{ CHECKINS : "instantiates"
+    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ CHECKINS : "logged for"
+    USERS ||--o{ PLAY_SESSION_TEMPLATES : "authored by keyholder"
+    PLAY_SESSION_TEMPLATES ||--o{ PLAY_SESSIONS : "instantiates"
+    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ PLAY_SESSIONS : "assigned to"
+    PLAY_SESSIONS ||--o{ PLAY_SESSION_TOYS : "toys used"
+    TOYS ||--o{ PLAY_SESSION_TOYS : "used in"
+    PLAY_SESSIONS ||--o{ CHECKINS : "mid-session"
+    PLAY_SESSIONS ||--o{ PLAY_SESSION_CHECKIN_SCHEDULE : "planned check-in slots"
     CONFINEMENT_SESSIONS ||--o{ CONFINEMENT_ADJUSTMENTS : "timer changes"
     ASSIGNMENTS ||--o{ CONFINEMENT_ADJUSTMENTS : "caused (time-extension effect)"
     USERS ||--o{ AUDIT_LOG : "actor"
@@ -45,7 +62,6 @@ erDiagram
     USERS ||--o{ PUSH_SUBSCRIPTIONS : "registered device"
     USERS ||--o{ NOTIFICATIONS : "recipient"
     USERS ||--o{ IDEMPOTENCY_KEYS : "scoped to"
-    KEYHOLDER_SUBMISSIVE_LINKS ||--o{ PLAY_SESSIONS : "future"
 ```
 
 ## 2. Core identity
@@ -495,127 +511,169 @@ One submission can carry multiple files (e.g. two angles, or a photo
 | sha256 | TEXT | integrity check, also de-dupes accidental double-uploads |
 | uploaded_at | INTEGER | |
 
-## 6. Rewards and punishments
+## 6. Rewards, punishments, and tasks
 
-Rewards stay simple by design (assign it, submissive acknowledges,
-Keyholder confirms — see the state machine at the end of this
-section). Punishments are structurally richer, because they carry
-real consequences the system has to actively track: **what** the
-submissive must do to satisfy it (nothing beyond acknowledging, or
-actual proof), **by when** (a deadline the server enforces, not just
-displays), and **what happens automatically if they don't** (a
-follow-up punishment, up to and including extending how long they
-stay locked). This asymmetry is deliberate — see
-`06-future-extensions.md` §11 for why rewards don't get the
-mirror-image treatment ("completed on time" doesn't need enforcing
-the way "failed to comply" does).
+**Revised in this pass** — `11-tasks-and-rewards.md`'s research
+exposed that the original design's `kind='punishment',
+effect_kind='task'` and a genuinely *neutral* assignable task were
+the same shape with one path missing: a punishment-as-task could only
+escalate to something worse, never resolve into something good. Once
+a task can be *either* a punitive assignment or a proactively-offered
+one with its own reward for success, "punishment that happens to
+require a task" and "task" stopped being two concepts. Rather than
+carry both, `kind` gains a third value and `effect_kind='task'` moves
+out from under `kind='punishment'` entirely:
+
+- **`kind='reward'`** — an immediate, keyholder-granted positive
+  consequence. No task, no deadline, no proof. (Optionally an
+  immediate *timer* reward — see `effect_kind` below.)
+- **`kind='punishment'`** — an immediate, keyholder-applied negative
+  consequence. Also no task, no deadline, no proof — this is
+  deliberately narrower than it was before this revision; anything
+  that requires the submissive to *do* something now lives under
+  `kind='task'` instead, whether it originated punitively or not.
+- **`kind='task'`** — an assignable activity requiring acknowledgment
+  or proof (photo/video/voice, `11-tasks-and-rewards.md` §1), on a
+  deadline, with **two** independent escalation paths: what happens
+  on success (`on_success_template_id`, typically a reward) and what
+  happens on failure (`on_failure_template_id`, typically a
+  punishment or another task). A task assigned *as* a punishment
+  (e.g. "500 lines") simply leaves `on_success_template_id` NULL —
+  nothing rewards you for doing your punishment — while a
+  proactively-offered task ("clean the whole apartment by Sunday,
+  video required") can set both paths.
+
+This asymmetry between `reward`/`punishment` (immediate, no task) and
+`task` (deferred, tracked, dual-path) is deliberate, not an
+inconsistency: an immediate consequence has nothing to enforce, so it
+doesn't need any of this machinery; anything requiring the submissive
+to act, by a deadline, with a consequence either way, is a `task`
+regardless of whether it originated as a reward opportunity or a
+punishment. Full task workflow (multi-media proof, points, the
+research behind `on_success_template_id`) is in
+`11-tasks-and-rewards.md`; this section stays the schema reference.
 
 ### `reward_punishment_templates`
 The reusable catalog a Keyholder builds up over time. For
-`kind='punishment'`, a template is a **complete, reusable spec**:
-what satisfying it requires, how long the submissive gets, and what
-happens if they don't — so that assigning from a well-built catalog
+`kind='task'`, a template is a **complete, reusable spec**: what
+satisfying it requires, how long the submissive gets, and what
+happens either way — so that assigning from a well-built catalog
 never requires re-deciding those things per submissive. An ad-hoc
-punishment (not from a template) has to specify the punishment-only
-columns inline instead, at assignment time (`03-api-design.md` §7).
+task (not from a template) has to specify the task-only columns
+inline instead, at assignment time (`03-api-design.md` §7).
 
 | column | type | notes |
 |---|---|---|
 | id | TEXT PK | |
 | keyholder_id | TEXT FK -> users.id | |
-| kind | TEXT CHECK IN ('reward','punishment') | |
+| kind | TEXT CHECK IN ('reward','punishment','task') | |
 | title | TEXT | |
 | description | TEXT NULL | |
 | severity | INTEGER NULL | optional ordering/weight, keyholder-defined scale |
 | active | INTEGER (bool) | soft-hide without deleting (assignments keep referencing it) |
 | created_at | INTEGER | |
-| effect_kind | TEXT NULL CHECK IN ('task','time_extension') | **punishment-only**, required when `kind='punishment'`; NULL/unused for rewards. `task` = the submissive must do something (see `completion_type`); `time_extension` = no task at all, the punishment's entire effect is adding time to the submissive's current confinement countdown |
-| completion_type | TEXT NULL CHECK IN ('acknowledge_only','proof_required') | **punishment-only**, required when `effect_kind='task'`; NULL when `effect_kind='time_extension'` (there's nothing to acknowledge or prove — see below) |
-| default_deadline_seconds | INTEGER NULL | **punishment-only**, required when `effect_kind='task'` — how long a submissive gets, from the moment it's assigned, to acknowledge/submit proof. e.g. `86400` for 24h. Copied into `assignments.deadline_at` (as `assigned_at + default_deadline_seconds`) at assignment time; a Keyholder can override the resulting deadline on a specific instance afterward |
-| time_extension_seconds | INTEGER NULL | **punishment-only**, required when `effect_kind='time_extension'` — how much time this adds to the target confinement countdown when applied. The template-creation UI pre-fills this to `21600` (6 hours) as a reasonable starting point, editable before saving — not a hardcoded floor or ceiling, just a default so a Keyholder isn't forced to pick a number with no starting reference |
-| on_failure_template_id | TEXT NULL FK -> reward_punishment_templates.id (self, `kind='punishment'`) | the default escalation: if a punishment assigned from *this* template ends up `failed` (deadline passed with nothing done, or a submitted proof was rejected), an assignment from *this* template is automatically created next. NULL = no automatic escalation; a Keyholder handles a failure of this one manually instead |
+| effect_kind | TEXT NULL CHECK IN ('grant','time_extension','time_reduction') | required for `kind IN ('reward','punishment')`, NULL/unused for `kind='task'` (a task's effect is determined by what it resolves *into* — its `on_success`/`on_failure` templates — not by a field on itself). `grant` = the plain "something nice happens" / "you're in trouble" case with nothing else to track (default for both kinds); `time_extension` (punishment-only) and `time_reduction` (reward-only) apply directly to the confinement countdown, mirror images of each other |
+| completion_type | TEXT NULL CHECK IN ('acknowledge_only','proof_required') | **task-only**, required when `kind='task'` |
+| proof_media_types | TEXT NULL (JSON array) | **task-only**, required when `completion_type='proof_required'` — which media type(s) satisfy this task, e.g. `["photo"]`, `["photo","video"]`, `["voice"]`. See `11-tasks-and-rewards.md` §1 for why voice recording is in scope alongside photo/video |
+| default_deadline_seconds | INTEGER NULL | **task-only**, required when `kind='task'` — how long a submissive gets, from the moment it's assigned, to acknowledge/submit proof. e.g. `86400` for 24h. Copied into `assignments.deadline_at` at assignment time; a Keyholder can override the resulting deadline on a specific instance afterward |
+| time_extension_seconds | INTEGER NULL | required when `effect_kind='time_extension'` (punishment) — how much time this adds to the target confinement countdown when applied. Pre-filled to `21600` (6h) as a starting default, per the existing review-on-apply workflow (`08-punishments-and-deadlines.md` §6) |
+| time_reduction_seconds | INTEGER NULL | required when `effect_kind='time_reduction'` (reward) — how much time this removes from the confinement countdown when granted. The direct positive mirror of `time_extension_seconds`; see `11-tasks-and-rewards.md` §2 for why this needed its own review-on-apply treatment too, not just a negated delta |
+| on_success_template_id | TEXT NULL FK -> reward_punishment_templates.id (self) | **task-only** — if this task resolves as completed/verified, an assignment from *this* template is automatically created next (typically `kind='reward'`, but any kind is technically allowed — see `11-tasks-and-rewards.md` §1 for why chaining task→task on success is left possible but not specially designed for yet). NULL = the Keyholder decides what, if anything, to grant, manually |
+| on_failure_template_id | TEXT NULL FK -> reward_punishment_templates.id (self) | **task-only** — if this task ends up `failed` (deadline passed with nothing done, or a submitted proof was rejected), an assignment from *this* template is automatically created next. NULL = no automatic escalation; a Keyholder handles a failure of this one manually instead |
+| points_delta | INTEGER NULL | optional, only meaningful if the Keyholder has points tracking turned on for this submissive (`11-tasks-and-rewards.md` §3) — how many points this template's assignment is worth. Positive by convention for rewards and task successes, negative for punishments and task failures, but not enforced as a sign constraint — a Keyholder could deliberately make a "reward" worth `-5` points if that's genuinely what they mean by it |
+| points_cost | INTEGER NULL | **reward-only** (`kind='reward'`) — if set, a submissive with a sufficient `points_balance` can request to redeem this reward themselves (`reward_redemption_requests`, below), rather than only ever receiving it as a direct Keyholder grant. NULL = this reward is never self-redeemable, only ever hand-assigned |
 
 Templates are keyholder-owned, not submissive-specific, so the same
 catalog (including its escalation chains) can be reused across every
 submissive linked to that Keyholder.
 
-An escalation chain is just templates pointing at templates —
-`"cold shower, video required"` (task/proof_required/24h) can point
-its `on_failure_template_id` at `"extra day locked"`
-(time_extension/86400s), and that leaf template simply has no
-`on_failure_template_id` of its own, since a `time_extension`
-punishment is applied immediately and can't itself be "failed" (see
-`assignments.status` below) — a chain built this way naturally
-terminates rather than needing a depth limit enforced in code. A
-chain can also go task → task → time_extension, or stop after one
-step; the Keyholder designs the ladder once, in the catalog.
+An escalation chain is just templates pointing at templates — a task
+can point its `on_failure_template_id` at a punishment template with
+`effect_kind='time_extension'`, and that leaf template has no further
+escalation of its own, since an immediate `grant`/`time_extension`/
+`time_reduction` effect resolves instantly and can't itself be
+"failed" — a chain built this way naturally terminates rather than
+needing a depth limit enforced in code. A chain can also go
+task → task → punishment, or task → reward on success and a
+completely separate task → punishment on failure; the Keyholder
+designs the ladder once, in the catalog.
 
 ### `assignments`
-An actual instance of a reward or punishment given to a specific
-submissive, optionally tied to the verification event that triggered
-it, or to another assignment that escalated into it.
+An actual instance of a reward, punishment, or task given to a
+specific submissive, optionally tied to the verification event (or
+play session, `14-play-sessions.md` §4) that triggered it, or to
+another assignment that escalated into it.
 
 | column | type | notes |
 |---|---|---|
 | id | TEXT PK | |
 | link_id | TEXT FK -> keyholder_submissive_links.id | |
 | template_id | TEXT NULL FK -> reward_punishment_templates.id | null if created ad-hoc and not saved to the catalog |
-| kind | TEXT CHECK IN ('reward','punishment') | denormalized from template for ad-hoc rows |
+| kind | TEXT CHECK IN ('reward','punishment','task') | denormalized from template for ad-hoc rows |
 | title | TEXT | copied at assignment time (so later edits/deletes of the template don't rewrite history) |
 | description | TEXT NULL | copied at assignment time, may be customized per-assignment |
-| effect_kind | TEXT NULL CHECK IN ('task','time_extension') | **punishment-only**; copied from the template or set inline for an ad-hoc punishment. NULL for rewards |
-| completion_type | TEXT NULL CHECK IN ('acknowledge_only','proof_required') | **punishment-only**, when `effect_kind='task'` |
-| deadline_at | INTEGER NULL | **punishment-only**, when `effect_kind='task'` — computed at assignment time from the template's `default_deadline_seconds` (or set explicitly for an ad-hoc one), Keyholder-editable afterward the same way `confinement_sessions.target_release_at` is |
-| time_extension_seconds | INTEGER NULL | **punishment-only**, when `effect_kind='time_extension'` — the actual amount applied to the submissive's current confinement session |
+| effect_kind | TEXT NULL CHECK IN ('grant','time_extension','time_reduction') | copied from the template or set inline for an ad-hoc reward/punishment. NULL for `kind='task'` |
+| completion_type | TEXT NULL CHECK IN ('acknowledge_only','proof_required') | **task-only** |
+| proof_media_types | TEXT NULL (JSON array) | **task-only**, when `completion_type='proof_required'` |
+| deadline_at | INTEGER NULL | **task-only** — computed at assignment time from the template's `default_deadline_seconds` (or set explicitly for an ad-hoc one), Keyholder-editable afterward the same way `confinement_sessions.target_release_at` is |
+| time_extension_seconds | INTEGER NULL | when `effect_kind='time_extension'` — the actual amount applied |
+| time_reduction_seconds | INTEGER NULL | when `effect_kind='time_reduction'` — the actual amount applied |
 | proof_submission_id | TEXT NULL FK -> proof_submissions.id | set once the submissive submits completion proof, for `completion_type='proof_required'`. Mirrors `proof_submissions.assignment_id` |
-| on_failure_template_id | TEXT NULL FK -> reward_punishment_templates.id | resolved from the originating template at assignment time (or explicitly overridden for this one instance) — which template to escalate to if *this* assignment fails |
-| escalated_from_assignment_id | TEXT NULL FK -> assignments.id (self) | set on an assignment that was auto-created because a prior one failed; lets a Keyholder or submissive walk the whole chain from any link in it |
-| triggered_by_submission_id | TEXT NULL FK -> proof_submissions.id | set when assigned as the direct result of marking a *verification* submission `failed` (unrelated to `escalated_from_assignment_id`, which is punishment-to-punishment) |
+| on_success_template_id | TEXT NULL FK -> reward_punishment_templates.id | **task-only** — resolved from the originating template at assignment time (or explicitly overridden for this instance) |
+| on_failure_template_id | TEXT NULL FK -> reward_punishment_templates.id | **task-only** — same, for the failure path |
+| escalated_from_assignment_id | TEXT NULL FK -> assignments.id (self) | set on an assignment that was auto-created because a prior one resolved (success *or* failure); lets anyone walk the whole chain from any link in it |
+| triggered_by_submission_id | TEXT NULL FK -> proof_submissions.id | set when assigned as the direct result of marking a *verification* submission `failed` (unrelated to `escalated_from_assignment_id`, which is task-to-task) |
+| triggered_by_play_session_id | TEXT NULL FK -> play_sessions.id | set when assigned as part of a play session's judgement (`14-play-sessions.md` §4). Kept as its own dedicated nullable column rather than a generic `triggered_by_entity_type`/`entity_id` pair — `06-future-extensions.md` flagged that generalization as worth doing once a second concrete trigger source existed; now that one does, a second dedicated column turned out to be the better call: SQLite can't enforce a polymorphic foreign key's referential integrity the way it can two ordinary ones, and this schema has consistently preferred a concrete column over a generic reference elsewhere (`confinement_adjustments.caused_by_assignment_id` is the same pattern) |
+| points_delta | INTEGER NULL | copied from the template at assignment time (or set inline), same sign convention as above |
 | assigned_at | INTEGER | |
-| assigned_by_user_id | TEXT NULL FK -> users.id | the Keyholder; NULL when the row was created automatically by the deadline sweeper as an escalation rather than by a Keyholder action in the moment (`assigned_via` below still applies — see `08-punishments-and-deadlines.md`) |
-| assigned_via | TEXT CHECK IN ('session','api_token','system') | same rationale as `proof_submissions.reviewed_via`; `system` covers escalations and automatic time-extension applications the deadline sweeper creates on its own, so those are distinguishable from anything a Keyholder (or their token) did directly |
+| assigned_by_user_id | TEXT NULL FK -> users.id | the Keyholder; NULL when the row was created automatically by the deadline sweeper or a play-session judgement rather than by a Keyholder action in the moment (`assigned_via` below still applies) |
+| assigned_via | TEXT CHECK IN ('session','api_token','system') | same rationale as `proof_submissions.reviewed_via`; `system` covers escalations and automatic timer applications created without a Keyholder click in the moment |
 | status | TEXT CHECK IN ('assigned','acknowledged','proof_submitted','completed','failed','revoked','applied') | see state machines below |
 | status_updated_at | INTEGER NULL | |
 | notes | TEXT NULL | |
 
-**Reward state machine** (unchanged from before): `assigned` →
-submissive marks `acknowledged` → Keyholder marks `completed`
-(confirms it happened) or `revoked` (called off). The submissive
-never sets `completed` themselves.
+**Reward/punishment state machine** (`effect_kind='grant'`):
+`assigned` → submissive marks `acknowledged` → Keyholder marks
+`completed` (confirms it happened) or `revoked` (called off). The
+submissive never sets `completed` themselves.
 
-**Punishment state machine** depends on `effect_kind`:
+**Reward/punishment state machine** (`effect_kind IN
+('time_extension','time_reduction')`): created directly in status
+`applied` — there's no task, so nothing to acknowledge or prove. The
+confinement adjustment (`confinement_adjustments`, §4) is applied in
+the *same transaction* that creates the assignment. `applied` is
+terminal — this kind of consequence resolves instantly and can't
+itself be "failed," which is exactly why it makes a safe,
+guaranteed-to-terminate leaf at the end of an escalation chain.
 
-- `effect_kind='time_extension'`: created directly in status
-  `applied` — there's no task, so nothing to acknowledge or prove.
-  The confinement extension (a `confinement_adjustments` row, §4) is
-  applied in the *same transaction* that creates the assignment.
-  `applied` is terminal; this kind of punishment cannot itself fail,
-  which is exactly why it makes a safe, guaranteed-to-terminate leaf
-  at the end of an escalation chain.
-- `effect_kind='task'`, `completion_type='acknowledge_only'`:
-  `assigned` → submissive marks `acknowledged` → Keyholder marks
-  `completed` or `revoked`. If `deadline_at` passes while still
-  `assigned` (submissive never acknowledged), the deadline sweeper
-  auto-transitions it to `failed`.
-- `effect_kind='task'`, `completion_type='proof_required'`:
-  `assigned` → submissive submits proof (`proof_submissions` row with
-  `purpose='punishment_completion'`, §5) → `proof_submitted` →
-  Keyholder reviews that submission same as any proof review: verified
-  moves this assignment to `completed`, redo leaves it awaiting
-  resubmission (still governed by the original `deadline_at` — a
-  Keyholder who wants to be lenient just extends the deadline, the
-  same editable field either way), failed moves it straight to
-  `failed`. If `deadline_at` passes with no proof ever submitted
-  (still `assigned`), the sweeper auto-fails it the same as the
+**Task state machine** (`kind='task'`) depends on `completion_type`:
+
+- `completion_type='acknowledge_only'`: `assigned` → submissive marks
+  `acknowledged` → Keyholder marks `completed` or `revoked`. If
+  `deadline_at` passes while still `assigned` (submissive never
+  acknowledged), the deadline sweeper auto-transitions it to `failed`.
+- `completion_type='proof_required'`: `assigned` → submissive submits
+  proof (`proof_submissions` row with `purpose='punishment_completion'`
+  §5 — the purpose name predates this revision and still applies to
+  any task's completion proof, not only a punitive one) →
+  `proof_submitted` → Keyholder reviews that submission same as any
+  proof review: verified moves this assignment to `completed`, redo
+  leaves it awaiting resubmission (still governed by the original
+  `deadline_at`), failed moves it straight to `failed`. If
+  `deadline_at` passes with no proof ever submitted (still
+  `assigned`), the sweeper auto-fails it the same as the
   acknowledge-only case.
-- Any `failed` transition (auto or Keyholder-judged) triggers the
-  escalation described under `on_failure_template_id`, if one is set
-  — full mechanics, including exactly what "the deadline sweeper" is,
-  are in `08-punishments-and-deadlines.md`.
+- Reaching `completed` triggers `on_success_template_id`, if set. Any
+  `failed` transition (auto or Keyholder-judged) triggers
+  `on_failure_template_id`, if set — full mechanics, including
+  exactly what "the deadline sweeper" is, are in
+  `08-punishments-and-deadlines.md` (still the canonical workflow doc
+  for deadlines/escalation — its examples now generalize from
+  "punishment" to "task," see the note at the top of that document).
 - `revoked` is reachable from `assigned`, `acknowledged`, or
-  `proof_submitted` — a Keyholder can call off a punishment at any
-  point before it resolves, and a revoked punishment does **not**
-  trigger its escalation (revoking isn't failing).
+  `proof_submitted` — a Keyholder can call off a task at any point
+  before it resolves, and a revoked task triggers **neither**
+  escalation path (revoking isn't a resolution).
 
 See `02-roles-and-permissions.md` for who can move which transitions,
 and `08-punishments-and-deadlines.md` for the full workflow including
@@ -634,7 +692,9 @@ involved.
 | submissive_id | TEXT FK -> users.id | |
 | link_id | TEXT FK -> keyholder_submissive_links.id | |
 | raised_at | INTEGER | |
-| message | TEXT NULL | optional free text |
+| raised_via | TEXT CHECK IN ('submissive','system') | default `'submissive'` — a person hitting the safety-alert button, or the system auto-raising one from a RED check-in on an opted-in template (`13-checkins.md` §6). Same accountability pattern as `assigned_via`/`reviewed_via` (`01-data-model.md` §6/§5): never present an automated escalation identically to a person's deliberate action |
+| related_checkin_id | TEXT NULL FK -> checkins.id | set when `raised_via='system'` — which check-in triggered this |
+| message | TEXT NULL | optional free text; auto-raised alerts get a system-generated message identifying the template and its color, not left blank |
 | acknowledged_at | INTEGER NULL | |
 | acknowledged_by_user_id | TEXT NULL FK -> users.id | |
 | resolved_at | INTEGER NULL | |
@@ -800,25 +860,230 @@ Rows older than the replay window (e.g. 24h) are ignored on lookup
 (treated as if the key were never used) and periodically deleted —
 this is a short-lived dedupe cache, not a permanent record.
 
-## 12. Reserved for future: play sessions
+## 12. Points (optional)
 
-Table is specified now (see `06-future-extensions.md` for the full
-rationale) so the schema doesn't need a breaking migration later, but
-it is **not built** in this iteration — no API routes target it yet.
+Full research and the case for building this at all is in
+`11-tasks-and-rewards.md` §3 — this is the schema reference. Points
+are **opt-in per link**, not a system-wide feature every Keyholder is
+forced to maintain.
 
-### `play_sessions` (reserved)
+### `keyholder_submissive_links` (additional column)
+| column | type | notes |
+|---|---|---|
+| points_enabled | INTEGER (bool) DEFAULT 0 | off by default; a Keyholder turns it on per submissive, same "opt-in, narrow, reversible" posture as `self_report_allowed` |
+| points_balance | INTEGER DEFAULT 0 | **cached**, not purely derived — unlike confinement lock status (checked rarely relative to writes), a point balance is read constantly (every dashboard load) and changes relatively rarely, so caching it and updating it transactionally alongside every ledger insert is the right tradeoff here, not a violation of the "derive, don't duplicate" instinct used elsewhere |
+
+### `point_transactions`
+Append-only ledger — the source of truth `points_balance` is a cached
+projection of. Every change is one row here, so "why do I have 42
+points" always has a full, itemized answer, the same instinct as
+`confinement_adjustments`.
+
 | column | type | notes |
 |---|---|---|
 | id | TEXT PK | |
 | link_id | TEXT FK -> keyholder_submissive_links.id | |
-| started_at | INTEGER | |
-| ended_at | INTEGER NULL | |
-| session_type | TEXT NULL | |
-| notes | TEXT NULL | |
-| safety_check_ok | INTEGER (bool) NULL | |
+| delta | INTEGER | signed |
+| reason | TEXT CHECK IN ('task_completed','task_failed','verification_verified','verification_failed','verification_missed','checkin_logged','manual_adjustment','redemption') | |
+| related_entity_type | TEXT NULL | e.g. `'assignment'`, `'proof_submission'`, `'checkin'` |
+| related_entity_id | TEXT NULL | |
+| notes | TEXT NULL | Keyholder's reason, for `manual_adjustment` |
+| created_at | INTEGER | |
 
-`confinement_sessions` and `assignments` both already carry a
-loose-typed `notes`/`metadata` field and a `link_id`, so a future
-`play_sessions` table slots in beside them without touching existing
-tables — it would only need its own migration plus new routes under
-`/api/v1/play-sessions`.
+Every ledger insert updates `points_balance` by `delta` in the same
+transaction. `reason='redemption'` is the one row a **submissive**
+action can create — see `11-tasks-and-rewards.md` §3 for the
+redemption-request flow this backs.
+
+### `reward_redemption_requests`
+The one table a submissive can insert into that isn't their own
+proof/self-report/toy data — see `11-tasks-and-rewards.md` §3 for why
+this narrow exception doesn't weaken "submissives never self-assign."
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| link_id | TEXT FK -> keyholder_submissive_links.id | |
+| template_id | TEXT FK -> reward_punishment_templates.id | must be `kind='reward'` with `points_cost` set |
+| points_cost | INTEGER | snapshotted from the template at request time, same "copy at write time" reasoning as everywhere else — a later template price change shouldn't alter a pending or past request |
+| status | TEXT CHECK IN ('pending','approved','denied') | default `pending` |
+| requested_at | INTEGER | |
+| decided_at | INTEGER NULL | |
+| decided_by_user_id | TEXT NULL FK -> users.id | always the Keyholder |
+| resulting_assignment_id | TEXT NULL FK -> assignments.id | set on `approved` |
+
+## 13. Toy catalog
+
+Full field-by-field rationale in `12-toy-catalog.md` — this is the
+schema reference.
+
+### `toys`
+Per-submissive, like `chastity_devices` — a physical item belongs to
+a person, not to the Keyholder's reusable catalog the way
+`reward_punishment_templates` does.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| submissive_id | TEXT FK -> users.id | |
+| added_by_user_id | TEXT FK -> users.id | either role — see `02-roles-and-permissions.md` for why a submissive can add but not delete |
+| name | TEXT | |
+| category | TEXT NULL | free text with a suggested common list in the UI, not a rigid enum — kink toy categories are numerous and keep evolving |
+| material | TEXT NULL | e.g. silicone, steel, leather, glass, wood, nylon — relevant to care instructions and to cross-checking against a hard limit naming a material, though that cross-check is not automated (`06-future-extensions.md`) |
+| brand | TEXT NULL | |
+| size_notes | TEXT NULL | free text (length/diameter/etc.) — kept unstructured given how much variance exists across categories |
+| color | TEXT NULL | |
+| compatible_device_id | TEXT NULL FK -> chastity_devices.id | optional link for a cage-compatible attachment (a specific ring, spacer, etc.) |
+| storage_location | TEXT NULL | |
+| care_instructions | TEXT NULL | |
+| usage_notes | TEXT NULL | safety/usage notes — "requires extra lubricant," "check battery before use" |
+| tags | TEXT NULL (JSON array) | freeform, e.g. `["travel-friendly","quiet"]` |
+| photo_attachment_path | TEXT NULL | same private-blob-storage pattern as proof attachments (`05-security-and-privacy.md` §4), not a BLOB column |
+| acquired_at | INTEGER NULL | |
+| retirement_requested_at | INTEGER NULL | set by a submissive asking to remove an entry they don't have delete rights to (§ next) |
+| retired_at | INTEGER NULL | soft-delete, same pattern as `chastity_devices.retired_at` — only a Keyholder ever sets this |
+| retired_by_user_id | TEXT NULL FK -> users.id | always the Keyholder |
+
+`retired_at` (not a hard delete) preserves history the same way
+everywhere else in this schema does — a toy referenced by a past
+`play_session_toys` row or a check-in's notes shouldn't become a
+dangling reference just because it's no longer in active use.
+
+## 14. Check-ins
+
+Full field-type rationale, the color system, and the real-time
+requirement are in `13-checkins.md` — this is the schema reference.
+
+### `checkin_templates`
+Keyholder-authored only (`02-roles-and-permissions.md`) — a
+submissive can be the one *filling in* a check-in, never the one
+defining what fields it asks for.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| keyholder_id | TEXT FK -> users.id | |
+| title | TEXT | e.g. "Morning chastity cage check-in" |
+| description | TEXT NULL | |
+| active | INTEGER (bool) | |
+| auto_escalate_on_red | INTEGER (bool) DEFAULT 0 | opt-in per template — if true, a check-in instantiated from this template transitioning *into* `color='red'` automatically raises a `safety_alerts` row (`raised_via='system'`) instead of only sending the strong `checkin.red_flag` push. Default off, deliberately: whether RED on *this specific template* is severe enough to warrant the full alert workflow is a judgment call about that template's content, not a system-wide rule — see `13-checkins.md` §6 |
+| created_at | INTEGER | |
+
+Every check-in, regardless of template, always carries one built-in
+field that isn't part of the custom-fields list below: `color`
+(`green`/`yellow`/`red`) — see `13-checkins.md` §1 for why this is
+schema-level, not just another configurable field.
+
+### `checkin_template_fields`
+The ordered list of *additional* fields a given template asks for,
+beyond the always-present color.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| template_id | TEXT FK -> checkin_templates.id | |
+| position | INTEGER | display/entry order |
+| field_key | TEXT | short stable identifier, e.g. `skin_status` — referenced from `checkins.field_values` |
+| label | TEXT | display text, e.g. "Skin status" |
+| field_type | TEXT CHECK IN ('scale','select','number','text','boolean') | see `13-checkins.md` §2 for the shape of `config` per type |
+| config | TEXT (JSON) | e.g. `{"min":1,"max":5,"min_label":"barely feel it","max_label":"painful"}` for a `scale`; `{"options":[...]}` or `{"source":"devices"}` for a `select`; `{"unit":"hours"}` for a `number` |
+| required | INTEGER (bool) | |
+
+### `checkins`
+One instance of a filled-in (or being-filled-in) check-in.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| link_id | TEXT FK -> keyholder_submissive_links.id | |
+| template_id | TEXT FK -> checkin_templates.id | |
+| color | TEXT CHECK IN ('green','yellow','red') | |
+| field_values | TEXT (JSON) | `{field_key: value}` for the template's custom fields |
+| related_confinement_session_id | TEXT NULL FK -> confinement_sessions.id | e.g. the overnight-cage morning check-in example |
+| related_assignment_id | TEXT NULL FK -> assignments.id | when a check-in is required alongside a task's proof (`13-checkins.md` §3) |
+| related_play_session_id | TEXT NULL FK -> play_sessions.id | mid-session check-ins, §15 |
+| created_by_user_id | TEXT FK -> users.id | who started this check-in |
+| updated_by_user_id | TEXT NULL FK -> users.id | who last edited it — either role can update a live one, see §15 |
+| created_at | INTEGER | |
+| updated_at | INTEGER | |
+
+A check-in tied to an **in-progress** play session is live-editable
+by either role with near-real-time fan-out to whoever else is
+viewing it (`13-checkins.md` §4 — a Server-Sent-Events channel, the
+one exception to this architecture's otherwise request/response-only
+API shape). A standalone or task-attached check-in is an ordinary
+create-once (rarely edited) REST resource — the real-time treatment
+is specifically for the "someone is watching it happen" case, not a
+general property of check-ins.
+
+## 15. Play sessions
+
+Full workflow — live vs. logged-after-the-fact, the judgement step,
+toys, and mid-session check-in scheduling — is in
+`14-play-sessions.md`; this is the schema reference. This replaces
+the earlier reserved stub (`06-future-extensions.md` §1) now that
+there's a concrete design rather than a placeholder.
+
+### `play_session_templates`
+Keyholder-owned and reusable across submissives, exactly like
+`reward_punishment_templates` and `checkin_templates` — which is why
+this does **not** reference specific `toys` rows (those are
+per-submissive; a template has to stay submissive-agnostic to be
+reusable at all).
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| keyholder_id | TEXT FK -> users.id | |
+| title | TEXT | |
+| setup_notes | TEXT NULL | prep instructions, read before starting |
+| suggested_toy_categories | TEXT NULL (JSON array) | informational only, e.g. `["vibrator","cock cage"]` — the real toy is picked from the actual submissive's catalog at assignment/start time |
+| planned_duration_seconds | INTEGER NULL | |
+| checkin_template_id | TEXT NULL FK -> checkin_templates.id | which template to use for scheduled mid-session check-ins |
+| checkin_interval_seconds | INTEGER NULL | how often a check-in is expected during the session |
+| active | INTEGER (bool) | |
+| created_at | INTEGER | |
+
+### `play_sessions`
+An actual instance — assigned from a template, or fully ad-hoc.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| link_id | TEXT FK -> keyholder_submissive_links.id | |
+| template_id | TEXT NULL FK -> play_session_templates.id | null for ad-hoc |
+| title | TEXT | copied from template or set inline |
+| setup_notes | TEXT NULL | copied from template, editable per instance |
+| status | TEXT CHECK IN ('scheduled','in_progress','pending_judgement','completed','cancelled') | see `14-play-sessions.md` §2 |
+| planned_duration_seconds | INTEGER NULL | |
+| checkin_template_id | TEXT NULL FK -> checkin_templates.id | |
+| checkin_interval_seconds | INTEGER NULL | |
+| started_at | INTEGER NULL | NULL until it actually starts |
+| ended_at | INTEGER NULL | |
+| safety_check_ok | INTEGER (bool) NULL | carried over from the original reserved stub — a simple end-of-session flag independent of the richer check-in system |
+| judgement_notes | TEXT NULL | Keyholder's notes at judgement time |
+| reward_assignment_id | TEXT NULL FK -> assignments.id | set if the judgement granted a reward |
+| punishment_assignment_id | TEXT NULL FK -> assignments.id | set if the judgement applied a punishment |
+| assigned_by_user_id | TEXT FK -> users.id | always the Keyholder |
+| assigned_at | INTEGER | |
+
+### `play_session_toys`
+| column | type | notes |
+|---|---|---|
+| session_id | TEXT FK -> play_sessions.id | |
+| toy_id | TEXT FK -> toys.id | must belong to the same session's submissive — enforced at the service layer, not just implied |
+
+### `play_session_checkin_schedule`
+The planned mid-session check-in slots, separate from the actual
+`checkins` rows that fulfill them — a schedule can exist (and be
+displayed as "3 check-ins planned, every 20 minutes") before any of
+them are actually filled in.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| play_session_id | TEXT FK -> play_sessions.id | |
+| sequence_number | INTEGER | |
+| planned_offset_seconds | INTEGER | from `started_at` |
+| checkin_template_id | TEXT FK -> checkin_templates.id | |
+| fulfilled_checkin_id | TEXT NULL FK -> checkins.id | set once someone actually fills in the check-in for this slot |

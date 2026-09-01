@@ -81,6 +81,23 @@ reasoning so implementation doesn't have to re-derive it.
   upload): `image` crate, or a minimal EXIF-stripping crate if full
   re-encoding is judged unnecessary overhead — decide during
   implementation based on measured cost, not upfront here.
+- **Voice proof attachments**: no new crate needed for storage or
+  playback — a voice recording is stored and streamed exactly like a
+  video attachment (opaque file in the blob directory, browser
+  `<audio>` playback), just with a smaller size cap. The one addition
+  is validating the uploaded container/codec (e.g. accept
+  `audio/webm`/`audio/mp4`, reject anything else) at the same
+  multipart-handling layer that already validates image/video
+  content-type, not a separate subsystem.
+- **Real-time live check-ins**: Axum's built-in SSE support
+  (`axum::response::sse`), no separate crate. A small in-process
+  broadcast channel (`tokio::sync::broadcast`) per open live play
+  session is enough to fan an update out to the (at most two)
+  connections subscribed to it — no external pub/sub needed at this
+  scale, consistent with the rest of this stack's "in-process,
+  single-instance" posture (`10-operations.md`). See
+  `13-checkins.md` §5 for the scoping (in-progress play sessions
+  only).
 - **Web Push**: the `web-push` crate (handles RFC 8291 payload
   encryption and RFC 8292 VAPID JWT signing) rather than
   hand-rolling either — this is exactly the kind of narrow
@@ -147,7 +164,10 @@ src/
     chastity/             (devices, confinement_sessions, timer adjustments)
     verification/         (policies, codes, background issuance task)
     proofs/               (submissions, attachments, review)
-    rewards_punishments/  (templates, assignments, deadline sweeper, escalation)
+    rewards_punishments/  (templates, assignments, deadline sweeper, escalation, points ledger)
+    toys/                  (catalog CRUD, retirement request/approve)
+    checkins/              (templates, fields, instances, SSE fan-out for live sessions)
+    play_sessions/         (templates, instances, toy attachment, check-in scheduling, judgement)
     safety/
     audit/
     api_tokens/

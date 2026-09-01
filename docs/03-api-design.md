@@ -177,8 +177,8 @@ raw image bytes inline.
 
 | Method & path | Role | Notes |
 |---|---|---|
-| `GET /keyholder/templates` | keyholder | own catalog, `?kind=reward\|punishment` |
-| `POST /keyholder/templates` | keyholder | rewards: `{kind:"reward", title, description?, severity?}`. Punishments: `{kind:"punishment", title, description?, severity?, effect_kind:"task"\|"time_extension", completion_type?, default_deadline_seconds?, time_extension_seconds?, on_failure_template_id?}` — `completion_type`+`default_deadline_seconds` required when `effect_kind="task"`; `time_extension_seconds` required when `effect_kind="time_extension"`. `422` if the required combination for the chosen `effect_kind` isn't present. |
+| `GET /keyholder/templates` | keyholder | own catalog, `?kind=reward\|punishment\|task` |
+| `POST /keyholder/templates` | keyholder | Rewards: `{kind:"reward", title, description?, severity?, effect_kind:"grant"\|"time_reduction", time_reduction_seconds?, points_cost?}`. Punishments: `{kind:"punishment", title, description?, severity?, effect_kind:"grant"\|"time_extension", time_extension_seconds?, points_delta?}`. Tasks: `{kind:"task", title, description?, completion_type, proof_media_types?, default_deadline_seconds?, on_success_template_id?, on_failure_template_id?, points_delta?}` — `proof_media_types` (e.g. `["photo","video"]`, or `["voice"]`) required when `completion_type="proof_required"` (`11-tasks-and-rewards.md` §2). `422` if the required combination for the chosen `kind`/`effect_kind` isn't present. |
 | `PATCH /keyholder/templates/{id}` | keyholder\* | edit any of the above fields, or deactivate. Editing an existing template never rewrites past assignments (§6 in `01-data-model.md` — everything meaningful is copied at assignment time), so changing e.g. `default_deadline_seconds` only affects punishments assigned *after* the edit. |
 | `GET /submissive/templates` | submissive | read-only, only if `catalog_visible_to_submissive` true for the caller's link. Includes the punishment-only fields (a submissive can see that "cold shower" requires proof within 24h and escalates to "extra day locked" — full transparency about the ladder, per the same reasoning as template read-visibility generally, `02-roles-and-permissions.md` §3) |
 
@@ -186,14 +186,14 @@ raw image bytes inline.
 
 | Method & path | Role | Notes |
 |---|---|---|
-| `POST /keyholder/submissives/{id}/assignments` | keyholder\* | Rewards: `{kind:"reward", template_id? \| (title & description), notes?}`, unchanged. Punishments: `{kind:"punishment", template_id? \| (title, description, effect_kind, completion_type?, default_deadline_seconds?, time_extension_seconds?), on_failure_template_id?, deadline_at?, triggered_by_submission_id?, notes?}`. From a template, `effect_kind`/`completion_type`/deadline math/`on_failure_template_id` all default from it; any may be overridden inline for this one instance. `deadline_at` defaults to `assigned_at + default_deadline_seconds` and can be overridden directly instead of via the seconds offset. `effect_kind="time_extension"` punishments apply immediately (§6 in `01-data-model.md`) and return with `status:"applied"` already set — there's nothing further for anyone to do. Also the endpoint used internally by the verification-review flow's `punishment` payload (`04-verification-workflow.md` §4) and by the deadline sweeper's escalation logic (`08-punishments-and-deadlines.md`), which is why `assigned_via` can be `"system"` as well as `"session"`/`"api_token"`. |
-| `GET /keyholder/submissives/{id}/assignments` | keyholder\* | one submissive's history, filterable by `kind`/`status`/`effect_kind` and by `deadline_before`/`deadline_after` (ISO-8601, see below); response includes `assigned_via`, `deadline_at`, `escalated_from_assignment_id` per row |
+| `POST /keyholder/submissives/{id}/assignments` | keyholder\* | Rewards/punishments: `{kind:"reward"\|"punishment", template_id? \| (title & description), notes?}`, unchanged in shape from before tasks existed. Tasks: `{kind:"task", template_id? \| (title, description, completion_type, proof_media_types?, default_deadline_seconds?), on_success_template_id?, on_failure_template_id?, deadline_at?, triggered_by_submission_id?, triggered_by_play_session_id?, notes?}`. From a template, `completion_type`/`proof_media_types`/deadline math/`on_success_template_id`/`on_failure_template_id` all default from it; any may be overridden inline for this one instance. `deadline_at` defaults to `assigned_at + default_deadline_seconds` and can be overridden directly instead of via the seconds offset. `effect_kind="time_extension"`/`"time_reduction"` rewards/punishments apply immediately (§6 in `01-data-model.md`) and return with `status:"applied"` already set — there's nothing further for anyone to do. Also the endpoint used internally by the verification-review flow's `punishment` payload (`04-verification-workflow.md` §4), the deadline sweeper's escalation logic (`08-punishments-and-deadlines.md`), and a play session's judgement step (`14-play-sessions.md` §5, via `triggered_by_play_session_id`) — which is why `assigned_via` can be `"system"` as well as `"session"`/`"api_token"`. |
+| `GET /keyholder/submissives/{id}/assignments` | keyholder\* | one submissive's history, filterable by `kind`/`status`/`effect_kind` and by `deadline_before`/`deadline_after` (ISO-8601, see below); response includes `assigned_via`, `deadline_at`, `escalated_from_assignment_id`, `triggered_by_play_session_id` per row |
 | `GET /keyholder/assignments` | keyholder | **cross-roster feed**, the same relationship `GET /keyholder/proof-submissions` (§6) has to its per-submissive equivalent: open/recent punishments and rewards across every submissive linked to the caller, newest first, same filters as above plus an optional `submissive_id`. This is what "what's due across my whole roster" actually needs — `GET /keyholder/assignments?status=assigned&deadline_before=2026-08-31T00:00:00Z` answers "everything due by midnight," which nothing in v1 could answer without an N-submissive fan-out before this endpoint existed. Scoped via the same `link_id IN (caller's links)` join as the proof-submissions feed (`02-roles-and-permissions.md` §5). |
 | `GET /keyholder/assignments/{id}` | keyholder\* | single assignment detail, including its full escalation chain (walking `escalated_from_assignment_id` backward and any assignment with `escalated_from_assignment_id = this id` forward) — lets a Keyholder see "this is the 3rd link in a chain that started with X" at a glance |
 | `GET /submissive/assignments` | submissive | self history, same filters/fields as the Keyholder list above (no separate cross-roster concept needed — a submissive's "roster" is always just themself, same reasoning as the proof-submissions feed) |
-| `PATCH /submissive/assignments/{id}/acknowledge` | submissive\* | only legal transition a submissive can make directly: `assigned`→`acknowledged`. `409` if `effect_kind != "task"` or `completion_type != "acknowledge_only"` (a `proof_required` punishment is acted on via the proof endpoint below instead, not this one; a `time_extension` punishment has nothing to acknowledge — it's already `applied`) |
-| `POST /submissive/assignments/{id}/proof` | submissive\* | `multipart/form-data`, same shape as `POST /submissive/proof-submissions` (§6) minus `verification_code_id`. Creates a `proof_submissions` row with `purpose="punishment_completion"` and `assignment_id` set, and moves this assignment to `proof_submitted` — both in one transaction. `409` if `completion_type != "proof_required"`, if the assignment isn't in `assigned` status, or if `deadline_at` has already passed (see `08-punishments-and-deadlines.md` for exactly when the sweeper beats a late submission to it). |
-| `POST /keyholder/proof-submissions/{id}/review` | keyholder\* | **the same endpoint as §6** — when the reviewed submission has `purpose="punishment_completion"`, a `verified` result also moves the linked assignment to `completed`, `failed` also fails the assignment (triggering escalation per `on_failure_template_id`, see `08-punishments-and-deadlines.md`), and `redo` leaves the assignment as-is awaiting resubmission. No separate punishment-proof review endpoint exists — reuse, not a parallel pathway. |
+| `PATCH /submissive/assignments/{id}/acknowledge` | submissive\* | only legal transition a submissive can make directly: `assigned`→`acknowledged`. `409` if `kind != "task"` or `completion_type != "acknowledge_only"` (a `proof_required` task is acted on via the proof endpoint below instead, not this one; a `time_extension`/`time_reduction` reward/punishment has nothing to acknowledge — it's already `applied`) |
+| `POST /submissive/assignments/{id}/proof` | submissive\* | `multipart/form-data`, same shape as `POST /submissive/proof-submissions` (§6) minus `verification_code_id`, with `files[]` constrained to whatever `proof_media_types` the task allows (photo/video/voice, `11-tasks-and-rewards.md` §2). Creates a `proof_submissions` row with `purpose="punishment_completion"` (the value predates the `kind='task'` unification and now covers any task's completion proof, not only a punitive one — see `01-data-model.md` §6) and `assignment_id` set, and moves this assignment to `proof_submitted` — both in one transaction. `409` if `completion_type != "proof_required"`, if the assignment isn't in `assigned` status, or if `deadline_at` has already passed (see `08-punishments-and-deadlines.md` for exactly when the sweeper beats a late submission to it). |
+| `POST /keyholder/proof-submissions/{id}/review` | keyholder\* | **the same endpoint as §6** — when the reviewed submission has `purpose="punishment_completion"`, a `verified` result also moves the linked assignment to `completed` (triggering `on_success_template_id` and any `points_delta`, `11-tasks-and-rewards.md` §3), `failed` also fails the assignment (triggering escalation per `on_failure_template_id`, see `08-punishments-and-deadlines.md`), and `redo` leaves the assignment as-is awaiting resubmission. No separate task-proof review endpoint exists — reuse, not a parallel pathway. |
 | `PATCH /keyholder/assignments/{id}` | keyholder\* | `{status: "completed"\|"revoked", notes?}` — for rewards, and for `acknowledge_only` punishments once acknowledged. Not used for `proof_required` punishments, whose completion is decided by the proof review above, not this endpoint directly. |
 | `PATCH /keyholder/assignments/{id}/deadline` | keyholder\* | `{deadline_at}` — extend or shorten an open punishment's deadline. `409` once the assignment has left `assigned`/`proof_submitted` (nothing left to extend). Every edit is a normal audited action; unlike the confinement timer (§4) this is a direct absolute-value set rather than a delta, since a deadline is a single point in time, not an accumulating quantity. |
 | `PATCH /keyholder/assignments/{id}/escalation` | keyholder\* | `{on_failure_template_id}` (nullable — `null` clears it, meaning "no automatic escalation, I'll decide manually if this fails"). Lets a Keyholder reconsider the consequence after assigning, without revoking and recreating the punishment from scratch. Same `409` window as the deadline edit above — once the assignment has resolved, there's nothing left to escalate. |
@@ -223,10 +223,68 @@ what the deadline sweeper itself sweeps on internally.
 | `GET /keyholder/audit-log` | keyholder | **cross-roster feed**, same pattern as the proof-submissions and assignments feeds — every audit entry across the caller's own links, newest first, filterable by `action` and `submissive_id`. Without this, "what's happened across my roster today" required opening every submissive individually; with it, it's one call. Scoped identically (`link_id IN (caller's links)`). |
 | `GET /submissive/audit-log` | submissive | self-scoped entries only |
 
-## 10. Reserved, not implemented yet
+## 10. Play sessions
 
-`/api/v1/play-sessions*` — namespace reserved per
-`06-future-extensions.md`; no routes exist in this version.
+Backs `01-data-model.md` §15; full workflow rationale in
+`14-play-sessions.md`.
+
+| Method & path | Role | Notes |
+|---|---|---|
+| `GET /keyholder/play-session-templates` | keyholder | own templates |
+| `POST /keyholder/play-session-templates` | keyholder | `{title, setup_notes?, suggested_toy_categories?, planned_duration_seconds?, checkin_template_id?, checkin_interval_seconds?}` |
+| `PATCH /keyholder/play-session-templates/{id}` | keyholder\* | edit or deactivate; never rewrites past sessions (copy-at-creation, same as every other template in this schema) |
+| `GET /submissive/play-session-templates` | submissive | read-only, subject to `catalog_visible_to_submissive` (§3 in `02-roles-and-permissions.md`) |
+| `POST /keyholder/submissives/{id}/play-sessions` | keyholder\* | `{template_id? \| (title, setup_notes?), toy_ids?: [...], planned_duration_seconds?, checkin_template_id?, checkin_interval_seconds?, started_at?, ended_at?}`. Omitting `started_at` creates a `scheduled` session for a live start later; supplying both `started_at` and `ended_at` up front logs a retrospective session, landing directly in `pending_judgement` (`14-play-sessions.md` §3). `toy_ids` must belong to this submissive's own catalog — `422` otherwise. |
+| `GET /keyholder/submissives/{id}/play-sessions` / `GET /submissive/play-sessions` | keyholder\*/submissive | history, filterable by `status` |
+| `GET /keyholder/play-sessions/{id}` / equivalent submissive route | keyholder\*/submissive\* | detail, including toys, check-in schedule with fulfillment status, and judgement fields once set |
+| `POST /keyholder/play-sessions/{id}/start` or `POST /submissive/play-sessions/{id}/start` | keyholder\*/submissive\* | no body — either role may start a session for their own link (`02-roles-and-permissions.md` §5); sets `started_at`, `status="in_progress"`. `409` if not `scheduled`. |
+| `POST .../play-sessions/{id}/end` (same either-role pattern) | keyholder\*/submissive\* | `{safety_check_ok?}` — sets `ended_at`, `status="pending_judgement"`. `409` if not `in_progress`. |
+| `PATCH /keyholder/play-sessions/{id}/judgement` | keyholder\* | `{judgement_notes?, reward?: {template_id? \| (title & description)}, punishment?: {template_id? \| (title, description, effect_kind, ...)}}` — creates the reward/punishment `assignments` row(s) via the same path as `POST .../assignments` (§7), each with `triggered_by_play_session_id` set, and records the resulting id(s) back onto the session. Callable multiple times before completion (e.g. notes now, judgement later); `409` once `status="completed"`. |
+| `PATCH /keyholder/play-sessions/{id}/complete` | keyholder\* | no body — moves `pending_judgement` → `completed`. Judgement is optional; a Keyholder can complete a session with no reward/punishment attached. |
+| `PATCH /keyholder/play-sessions/{id}/cancel` | keyholder\* | from `scheduled` or `in_progress` only — no judgement applies. |
+| `GET /play-sessions/{id}/checkin-stream` | keyholder\*/submissive\* | Server-Sent Events stream, only reachable while `status="in_progress"` — see `13-checkins.md` §5. Authenticated identically to every other route (session cookie or API token); the stream itself carries no write capability. |
+
+## 10a. Toy catalog
+
+Backs `01-data-model.md` §13; field rationale in `12-toy-catalog.md`.
+
+| Method & path | Role | Notes |
+|---|---|---|
+| `GET /keyholder/submissives/{id}/toys` / `GET /submissive/toys` | keyholder\*/submissive | list, excludes `retired_at IS NOT NULL` by default, `?include_retired=true` to include |
+| `POST /keyholder/submissives/{id}/toys` / `POST /submissive/toys` | keyholder\*/submissive | either role may create; `added_by_user_id` set from the caller |
+| `PATCH .../toys/{id}` | keyholder\*/submissive\* (own) | edit any field except `retired_at`/`retired_by_user_id` |
+| `POST /submissive/toys/{id}/request-removal` | submissive\* | no body — sets `retirement_requested_at`. `409` if already retired or already pending. |
+| `POST /keyholder/toys/{id}/retire` | keyholder\* | `{}` — sets `retired_at`/`retired_by_user_id`, whether or not a request was pending. Clears any pending `retirement_requested_at` implicitly (it's now moot). |
+| `POST /keyholder/toys/{id}/decline-removal` | keyholder\* | no body — clears `retirement_requested_at` back to null without retiring; audit-logged so the decline itself is recorded (`12-toy-catalog.md` §3). `409` if no request is pending. |
+
+## 10b. Check-in templates and instances
+
+Backs `01-data-model.md` §14; full field-type and real-time design in
+`13-checkins.md`.
+
+| Method & path | Role | Notes |
+|---|---|---|
+| `GET /keyholder/checkin-templates` | keyholder | own templates, with their `checkin_template_fields` |
+| `POST /keyholder/checkin-templates` | keyholder | `{title, description?, auto_escalate_on_red?, fields: [{field_key, label, field_type, config, required}]}` — `auto_escalate_on_red` defaults false; see `13-checkins.md` §6 for what turning it on does |
+| `PATCH /keyholder/checkin-templates/{id}` | keyholder\* | edit title/description/fields, or deactivate. Editing fields never rewrites `field_values` already recorded on past `checkins` rows. |
+| `GET /submissive/checkin-templates` | submissive | read-only, subject to `catalog_visible_to_submissive` |
+| `POST /keyholder/submissives/{id}/checkins` / `POST /submissive/checkins` | keyholder\*/submissive | `{template_id, color, field_values: {...}, related_confinement_session_id?, related_assignment_id?, related_play_session_id?}` — either role may create one for their own link |
+| `GET .../checkins` (per-submissive, keyholder or submissive) | keyholder\*/submissive | history, filterable by `color`, and by `related_*` id to pull "the check-ins for this task/session" |
+| `PATCH /checkins/{id}` | keyholder\*/submissive\* (own link) | `{color?, field_values?}` — either party can update; if `related_play_session_id` is set and that session is `in_progress`, the update also fans out over the SSE stream (`13-checkins.md` §5) |
+
+## 10c. Points
+
+Backs `01-data-model.md` §12; full research in
+`11-tasks-and-rewards.md` §3.
+
+| Method & path | Role | Notes |
+|---|---|---|
+| `PATCH /keyholder/submissives/{id}/link/settings` | keyholder\* | (extends the existing settings endpoint, §2) add `{points_enabled: bool}` |
+| `GET /keyholder/submissives/{id}/points` / `GET /submissive/points` | keyholder\*/submissive | `{balance, transactions: [...]}`, paginated ledger |
+| `POST /keyholder/submissives/{id}/points/adjust` | keyholder\* | `{delta, notes}` — inserts a `manual_adjustment` ledger row |
+| `POST /submissive/rewards/{templateId}/redeem` | submissive | creates a pending `reward_redemption_requests` row. `409` if `points_enabled` is off for the link, the template has no `points_cost`, or `points_balance < points_cost`. |
+| `GET /keyholder/reward-redemption-requests` | keyholder | pending (and, filterable, past) requests across the roster |
+| `PATCH /keyholder/reward-redemption-requests/{id}` | keyholder\* | `{decision: "approve"\|"deny"}` — `approve` creates the `assignments` row and inserts a `redemption` ledger entry in one transaction; `deny` just closes the request, no ledger effect |
 
 ## 11. Pagination & filtering convention
 

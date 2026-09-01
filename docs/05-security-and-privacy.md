@@ -115,6 +115,19 @@ product rules:
   the private blob directory. This also means the blob directory
   itself should have OS-level permissions restricting it to the
   server process's user.
+- The live check-in **SSE stream** (`GET /play-sessions/{id}/checkin-stream`,
+  `03-api-design.md` §10, `13-checkins.md` §5) is authenticated
+  identically to every other route — session cookie or API token,
+  same middleware, no separate token or query-string secret invented
+  for it. The one property worth stating explicitly: it's read-only
+  fan-out of data the caller could already fetch via ordinary
+  `GET /checkins/{id}` polling, scoped to one session the caller
+  already has (keyholder\*/submissive\*) access to — the stream
+  doesn't grant any capability beyond what the caller's normal
+  ownership check already permits, it just delivers updates faster.
+  The server drops a connection the moment its play session leaves
+  `in_progress`, so a stream can't be left open as a standing
+  side-channel past the point it's meant to exist.
 
 ## 4. Data at rest
 
@@ -164,6 +177,25 @@ product rules:
   highest-value of that list to encrypt first, precisely because
   unlike the others it's a live credential (compromise it and 2FA is
   defeated going forward), not just sensitive personal content.
+- **Voice proof recordings** (`11-tasks-and-rewards.md` §2) join this
+  candidate list, and arguably belong nearer the top of it than
+  photo/video attachments do: a voice recording is far more directly
+  identifying than a cropped or anonymized photo, since a voice is
+  itself biometric-adjacent data that's comparatively easy to tie to
+  a real person. It gets the same private-blob-storage, EXIF-adjacent
+  (i.e. no embedded location/device metadata retained) handling as
+  photo/video attachments in §4, with the size/duration caps noted
+  there being the main defense against an oversized or misused
+  upload.
+- **Check-in field data** (`13-checkins.md`) — the structured
+  skin-status/comfort/incident fields a check-in can capture are
+  health-adjacent in the same way `hard_limits`/`soft_limits` are,
+  and inherit the same handling: ordinary columns in v1
+  (`checkins.field_values`, a JSON blob, isn't singled out for
+  per-key encryption — encrypting one key inside a JSON column
+  loses the query/filter ability the column exists for), flagged
+  as in-scope if/when field-level encryption is actually built,
+  not before.
 - **Amended by Web Push, and worth stating plainly rather than
   quietly walking back**: this architecture previously talked to
   nothing but its own SQLite file and filesystem. Push notifications

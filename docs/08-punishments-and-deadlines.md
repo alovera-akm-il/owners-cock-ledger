@@ -1,14 +1,33 @@
-# Punishments, Deadlines, and Escalation
+# Tasks, Punishments, Deadlines, and Escalation
 
 This document is the workflow companion to `01-data-model.md` §6
 (`reward_punishment_templates`/`assignments`) — read that first for
-the schema; this is the *mechanics*: how a punishment ladder is
-built once, how an individual punishment moves through its lifecycle,
-and what the server does on its own when a deadline passes.
+the schema; this is the *mechanics*: how a deadline/escalation ladder
+is built once, how an individual task or punishment moves through its
+lifecycle, and what the server does on its own when a deadline
+passes.
 
-Rewards are intentionally out of scope here — they don't have
-deadlines or failure states (`06-future-extensions.md` §11 covers why
-that asymmetry is deliberate, not an oversight).
+Everything below was originally written for `kind='punishment',
+effect_kind='task'` specifically, before `kind='task'` existed as its
+own thing (`11-tasks-and-rewards.md` §1). It applies unchanged to
+`kind='task'` rows generally — a task assigned proactively goes
+through exactly the same deadline/proof/sweeper mechanics as a task
+reached as a punishment's consequence, the only difference being
+*why* it was assigned, not how it behaves once assigned. Where this
+document says "punishment," read it as "a task-shaped
+`assignments` row" unless a passage is explicitly about the
+consequence side (`effect_kind='time_extension'`) of a plain
+`kind='punishment'` row. The one genuinely new piece this document
+didn't cover before: a task can also resolve *successfully* into
+`on_success_template_id` (§6a) — the escalation machinery described
+here for failure has a mirror-image success path now, not just a
+failure one.
+
+Bare rewards/punishments (`kind IN ('reward','punishment')`,
+`effect_kind='grant'`, no completion workflow of their own) are
+intentionally out of scope here — they don't have deadlines or
+failure states (`06-future-extensions.md` §11 covers why that
+asymmetry is deliberate, not an oversight).
 
 ## 1. Building an escalation ladder in the catalog
 
@@ -17,13 +36,14 @@ incident. A minimal but complete example:
 
 ```
 Template: "cold shower, 5 min, video required"
-  effect_kind = task
+  kind = task
   completion_type = proof_required
+  proof_media_types = ["video"]
   default_deadline_seconds = 86400        (24h)
   on_failure_template_id -> "extra day locked"
 
 Template: "extra day locked"
-  effect_kind = time_extension
+  kind = punishment, effect_kind = time_extension
   time_extension_seconds = 86400          (24h)
   on_failure_template_id = NULL           (nothing to fail into — see §6)
 ```
@@ -69,7 +89,7 @@ verification-code-issuance task in `04-verification-workflow.md` §2
 than being invoked by any client request. Each tick:
 
 1. **Auto-fail pass**: find every `assignments` row where
-   `kind='punishment'`, `effect_kind='task'`, `status='assigned'`
+   `kind='task'`, `status='assigned'`
    (i.e. the submissive has done *nothing* — not acknowledged, not
    submitted proof), and `deadline_at < now`. For each, in one
    transaction: set `status='failed'`, `status_updated_at=now`, write
@@ -117,23 +137,30 @@ this system doesn't (and shouldn't) penalize the submissive for. See
 `02-roles-and-permissions.md` §5 for this as an explicit design
 choice, not an oversight.
 
-## 4. The two ways a punishment fails
+## 4. The two ways a task fails (and the one way it succeeds)
 
 1. **Deadline auto-fail** (§3 above) — the submissive didn't act in
    time. `assigned_via='system'` on the resulting escalation,
    `reviewed_by_user_id` stays NULL on the original (nobody reviewed
    anything; there was nothing submitted to review).
-2. **Keyholder-judged fail** — for a `proof_required` punishment, the
+2. **Keyholder-judged fail** — for a `proof_required` task, the
    Keyholder reviews a submitted completion proof and rejects it
    (`04-verification-workflow.md` §7). Here a human did look at
    something and decided it didn't count.
 
 Both land the assignment in the same terminal `status='failed'` and
-trigger the same escalation logic — the *record* of which path it
-took lives in whether `proof_submission_id` is set and what that
+trigger the same escalation logic (§6) — the *record* of which path
+it took lives in whether `proof_submission_id` is set and what that
 submission's own review trail shows, not in a separate status value,
-since from the submissive's perspective ("I failed this punishment
-and now have a new one") the practical outcome is identical.
+since from the submissive's perspective ("I failed this task and now
+have a new one") the practical outcome is identical.
+
+Success is simpler and has only one path: an `acknowledge_only` task
+the Keyholder marks `completed`, or a `proof_required` task whose
+submitted proof the Keyholder reviews as `verified`. Either lands the
+assignment in terminal `status='completed'` and, if
+`on_success_template_id` is set, triggers the success-path escalation
+in §6a — the mirror image of §6, using the same mechanics.
 
 ## 5. Applying a `time_extension` effect
 
@@ -164,7 +191,7 @@ adjustment (`03-api-design.md` §4) — same target table, same delta
 pattern — the only difference is who/what initiated it and that
 `reason` records which.
 
-## 6. Escalation mechanics
+## 6. Escalation mechanics (failure path)
 
 Triggered from §3 step 1 (deadline auto-fail) or from a
 Keyholder-judged fail via `04-verification-workflow.md` §7 (a
@@ -242,9 +269,37 @@ depth counter or recursion guard — progressing further down a chain
 always requires either real time passing (another `deadline_at`) or
 another Keyholder judgment call (another proof rejection), so a chain
 cannot run away with itself in a tight loop the way naive recursive
-code sometimes can. A `time_extension` leaf (§1) can't fail at all
-(`status='applied'` is terminal), so every chain has at least one
-natural place it's guaranteed to stop.
+code sometimes can. A `time_extension`/`time_reduction` leaf (§1)
+can't fail or succeed at all (`status='applied'` is terminal), so
+every chain has at least one natural place it's guaranteed to stop.
+
+## 6a. Escalation mechanics (success path)
+
+Triggered when a task lands in `status='completed'` (§4) with
+`on_success_template_id` set. Mechanically identical to §6 with
+"success" substituted for "failure" throughout: given just-completed
+assignment `C` with `C.on_success_template_id = T`, the server loads
+`T` (again, even if `T.active = false`, same reasoning as §6 step 1),
+creates a new `assignments` row from it with `escalated_from_assignment_id
+= C.id` and `assigned_via` attributed the same way, applies it
+immediately if `T.effect_kind` is `time_reduction` (per §5's
+mirror-image reasoning, flagging `keyholder_reviewed_at` NULL the
+same way an auto-applied `time_extension` does), and sends the
+equivalent notifications — `reward.assigned` (or `task.assigned`, if
+`T` is itself a task) to the submissive, and, only for an escalated
+`time_reduction`, a `confinement.time_reduction_needs_review`
+notification to the Keyholder, for the identical reason §6 step 4
+flags an escalated `time_extension`: a number applied to real
+confinement time with no Keyholder present in the moment deserves a
+visible, resolvable flag, not silent trust.
+
+The one asymmetry worth naming: success chains are expected to be
+shallow in practice (task → reward, most commonly, rather than a long
+ladder) since nothing about "doing well" has the same open-ended
+escalation logic that repeated non-compliance does — but the schema
+doesn't enforce shallowness, and a Keyholder who wants a multi-step
+success chain (task → task → reward) can build one exactly the same
+way a failure ladder is built in §1.
 
 ## 7. Interaction with the confinement timer
 
