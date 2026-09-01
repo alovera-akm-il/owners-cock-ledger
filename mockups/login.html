@@ -42,11 +42,45 @@
             Sign in
           </button>
 
-          <p class="text-xs text-center text-slate-500 pt-1">
+          <p class="text-xs text-center pt-1">
+            <button id="forgot-password-btn" type="button" class="text-slate-500 hover:text-slate-300">Forgot password?</button>
+          </p>
+          <p class="text-xs text-center text-slate-500">
             Have an invite code from your Keyholder?
             <a href="submit-proof.html#redeem" class="text-amber-500 hover:text-amber-400 font-medium">Redeem it</a>
           </p>
         </form>
+
+        <!-- step: forgot password -->
+        <form id="login-step-forgot" class="hidden space-y-4">
+          <div class="text-center mb-1">
+            <p class="text-sm font-medium">Reset your password</p>
+            <p class="text-xs text-slate-500 mt-1">We'll email a reset link if that address has an account. You'll see the same message either way.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="forgot-email">Email</label>
+            <input id="forgot-email" type="email" placeholder="you@example.com"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <button id="forgot-submit-btn" type="button" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+            Send reset link
+          </button>
+          <button id="back-from-forgot-btn" type="button" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-1">
+            &larr; Back
+          </button>
+        </form>
+
+        <!-- step: forgot-password confirmation -->
+        <div id="login-step-forgot-sent" class="hidden text-center space-y-4">
+          <div class="mx-auto h-10 w-10 rounded-full bg-emerald-500/10 border border-emerald-600/30 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>
+          </div>
+          <p class="text-sm">If <span id="forgot-email-echo">that email</span> has an account, a reset link is on its way.</p>
+          <p class="text-xs text-slate-500">No admin on hand, or no email configured for this server? Ask your Keyholder — a server admin can always force a reset directly.</p>
+          <button id="back-from-sent-btn" type="button" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-1">
+            &larr; Back to sign in
+          </button>
+        </div>
 
         <!-- step 2: 2FA code (only reached when the account has it enabled) -->
         <form id="login-step-2fa" class="hidden space-y-4">
@@ -91,6 +125,24 @@
   $('#tfa-verify-btn').on('click', function () {
     // demo only: a real app routes by the account's actual role
     window.location = 'keyholder-dashboard.html';
+  });
+
+  function showStep(id) {
+    $('#login-step-password, #login-step-2fa, #login-step-forgot, #login-step-forgot-sent').addClass('hidden');
+    $('#' + id).removeClass('hidden');
+  }
+
+  $('#forgot-password-btn').on('click', () => showStep('login-step-forgot'));
+  $('#back-from-forgot-btn').on('click', () => showStep('login-step-password'));
+  $('#back-from-sent-btn').on('click', () => showStep('login-step-password'));
+
+  $('#forgot-submit-btn').on('click', function () {
+    // demo only: a real request responds with this identical message
+    // immediately, before even looking up whether the email exists —
+    // see 05-security-and-privacy.md §11 for why that timing matters.
+    const email = $('#forgot-email').val() || 'that email';
+    $('#forgot-email-echo').text(email);
+    showStep('login-step-forgot-sent');
   });
 </script>
 </body>
