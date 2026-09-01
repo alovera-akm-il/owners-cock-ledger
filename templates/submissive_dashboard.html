@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Status</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="/submissive">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      <span class="hidden sm:inline">The Ledger</span>
+    </a>
+    <div class="flex items-center gap-3">
+      <span class="hidden sm:inline text-sm text-slate-300">{{ display_name }}</span>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-6 py-8 space-y-6">
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    {% if locked %}
+      <div class="flex items-center gap-2">
+        <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+        <p class="text-sm font-semibold text-emerald-400">Locked</p>
+      </div>
+      {% if let Some(remaining) = time_remaining_text %}
+        <p class="text-2xl font-semibold tracking-tight mt-2">
+          {% if overdue %}{{ remaining }} overdue{% else %}{{ remaining }} remaining{% endif %}
+        </p>
+      {% else %}
+        <p class="text-sm text-slate-400 mt-2">No release target set — open-ended.</p>
+      {% endif %}
+      {% if clock_paused %}
+        <div class="mt-3 rounded-lg bg-sky-500/10 border border-sky-600/30 px-3 py-2 text-xs text-sky-300">
+          Timer paused{% if let Some(msg) = clock_pause_message %} — {{ msg }}{% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="flex items-center gap-2">
+        <span class="h-2 w-2 rounded-full bg-slate-500"></span>
+        <p class="text-sm font-semibold text-slate-300">Unlocked</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-3">Verification code</p>
+    {% if let Some(code) = current_code %}
+      <div class="flex items-center gap-3">
+        <code class="text-2xl font-mono tracking-widest text-emerald-300">{{ code }}</code>
+        {% if let Some(expires) = current_code_expires_text %}
+          <span class="text-xs text-slate-500">expires in {{ expires }}</span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-slate-500 mt-2">Write this code in your proof photo, then submit it.</p>
+    {% else %}
+      <p class="text-sm text-slate-400 mb-3">No active code right now.</p>
+      <button id="request-code-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">
+        Request a code
+      </button>
+      <p id="request-code-message" class="hidden mt-2 text-xs"></p>
+    {% endif %}
+    <div class="mt-4">
+      <a href="/submissive/submit-proof" class="text-sm font-medium text-amber-500 hover:text-amber-400">Submit proof &rarr;</a>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-800">
+      <p class="text-sm font-semibold">Recent submissions</p>
+    </div>
+    <ul class="divide-y divide-slate-800">
+      {% for item in recent %}
+      <li class="px-5 py-3 flex items-center justify-between text-sm">
+        <span class="text-slate-300">{{ item.kind }} &middot; {{ item.submitted_ago }}</span>
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full
+          {% if item.status == "verified" %}bg-emerald-500/10 text-emerald-400
+          {% else if item.status == "failed" %}bg-red-500/10 text-red-400
+          {% else if item.status == "redo" %}bg-amber-500/10 text-amber-400
+          {% else %}bg-slate-700/40 text-slate-400{% endif %}">{{ item.status }}</span>
+      </li>
+      {% endfor %}
+      {% if recent.is_empty() %}
+      <li class="px-5 py-8 text-center text-sm text-slate-500">No submissions yet.</li>
+      {% endif %}
+    </ul>
+  </div>
+
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  $('#logout-btn').on('click', function () {
+    $.ajax({
+      url: '/api/v1/auth/logout',
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).always(function () { window.location = '/login'; });
+  });
+
+  $('#request-code-btn').on('click', function () {
+    $.ajax({
+      url: '/api/v1/submissive/verification-codes',
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).done(function () {
+      window.location.reload();
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not request a code right now.';
+      $('#request-code-message').removeClass('hidden text-emerald-400').addClass('text-red-400').text(msg);
+    });
+  });
+</script>
+</body>
+</html>

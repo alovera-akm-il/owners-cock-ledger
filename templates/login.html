@@ -89,11 +89,7 @@
       headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
       data: JSON.stringify({ email: $('#email').val(), password: $('#password').val() }),
     }).done(function (res) {
-      if (res.role === 'keyholder') {
-        window.location = '/dashboard';
-      } else {
-        showMessage("Signed in — but there's no submissive dashboard built yet in this version.", 'ok');
-      }
+      window.location = res.role === 'keyholder' ? '/dashboard' : '/submissive';
     }).fail(function (xhr) {
       const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
       showMessage(msg, 'error');

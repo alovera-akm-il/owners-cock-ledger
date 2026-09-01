@@ -4,14 +4,18 @@
 //! handlers read data to render, they don't duplicate business logic.
 
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
 use rusqlite::params;
 
 use crate::auth::session::{self, CurrentUser, Role, SESSION_COOKIE_NAME};
+use crate::db;
 use crate::db::Pool;
+use crate::domain::chastity::{confinement, devices};
+use crate::domain::verification::{codes, policy};
+use crate::domain::{links, proofs};
 
 fn render<T: Template>(tpl: T) -> Response {
     match tpl.render() {
@@ -44,9 +48,25 @@ fn initial_of(display_name: &str) -> String {
         .unwrap_or_else(|| "?".to_string())
 }
 
+fn fmt_duration(seconds: i64) -> String {
+    let sign = if seconds < 0 { "-" } else { "" };
+    let seconds = seconds.abs();
+    let days = seconds / 86_400;
+    let hours = (seconds % 86_400) / 3600;
+    let minutes = (seconds % 3600) / 60;
+    if days > 0 {
+        format!("{sign}{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{sign}{hours}h {minutes}m")
+    } else {
+        format!("{sign}{minutes}m")
+    }
+}
+
 async fn index(State(pool): State<Pool>, jar: CookieJar) -> Redirect {
     match resolve_current_user(&pool, &jar).await {
-        Some(_) => Redirect::to("/dashboard"),
+        Some(user) if user.role == Role::Keyholder => Redirect::to("/dashboard"),
+        Some(_) => Redirect::to("/submissive"),
         None => Redirect::to("/login"),
     }
 }
@@ -68,6 +88,7 @@ async fn redeem_invite_page() -> Response {
 }
 
 struct RosterRow {
+    submissive_id: String,
     display_name: String,
     initial: String,
     linked_days: i64,
@@ -87,10 +108,7 @@ async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
         return Redirect::to("/login").into_response();
     };
     if user.role != Role::Keyholder {
-        // No submissive dashboard exists yet — see the login/redeem
-        // pages' inline note. Bouncing back to /login avoids stranding
-        // them on a page built for the other role.
-        return Redirect::to("/login").into_response();
+        return Redirect::to("/submissive").into_response();
     }
 
     let keyholder_id = user.user_id.clone();
@@ -98,7 +116,7 @@ async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
         let conn = pool.get()?;
         let now = session::now();
         let mut stmt = conn.prepare(
-            "SELECT u.display_name, l.started_at
+            "SELECT u.id, u.display_name, l.started_at
              FROM keyholder_submissive_links l
              JOIN users u ON u.id = l.submissive_id
              WHERE l.keyholder_id = ?1 AND l.status = 'active'
@@ -106,9 +124,11 @@ async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
         )?;
         let rows = stmt
             .query_map(params![keyholder_id], |row| {
-                let display_name: String = row.get(0)?;
-                let started_at: i64 = row.get(1)?;
+                let submissive_id: String = row.get(0)?;
+                let display_name: String = row.get(1)?;
+                let started_at: i64 = row.get(2)?;
                 Ok(RosterRow {
+                    submissive_id,
                     initial: initial_of(&display_name),
                     display_name,
                     linked_days: (now - started_at) / 86_400,
@@ -132,11 +152,258 @@ async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
     })
 }
 
-pub fn router() -> axum::Router<Pool> {
+struct RecentSubmission {
+    status: String,
+    kind: String,
+    submitted_ago: String,
+}
+
+#[derive(Template)]
+#[template(path = "submissive_dashboard.html")]
+struct SubmissiveDashboardTemplate {
+    display_name: String,
+    locked: bool,
+    time_remaining_text: Option<String>,
+    overdue: bool,
+    clock_paused: bool,
+    clock_pause_message: Option<String>,
+    current_code: Option<String>,
+    current_code_expires_text: Option<String>,
+    recent: Vec<RecentSubmission>,
+}
+
+async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Submissive {
+        return Redirect::to("/dashboard").into_response();
+    }
+
+    let submissive_id = user.user_id.clone();
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let conn = pool.get()?;
+        let status = confinement::status_for(&conn, &submissive_id)?;
+        let link_id = links::active_link_for_submissive(&conn, &submissive_id)?;
+        let current_code = match &link_id {
+            Some(link_id) => codes::current_unconsumed(&conn, link_id)?,
+            None => None,
+        };
+        let recent = proofs::list_for_submissive(&conn, &submissive_id)?
+            .into_iter()
+            .take(5)
+            .map(|s| RecentSubmission {
+                status: s.status,
+                kind: s.kind,
+                submitted_ago: fmt_duration(session::now() - s.submitted_at) + " ago",
+            })
+            .collect::<Vec<_>>();
+        Ok((status, current_code, recent))
+    })
+    .await;
+
+    let Ok(Ok((status, current_code, recent))) = result else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
+    render(SubmissiveDashboardTemplate {
+        display_name: user.display_name,
+        locked: status.locked,
+        time_remaining_text: status.time_remaining_seconds.map(fmt_duration),
+        overdue: status.overdue,
+        clock_paused: status.clock_paused,
+        clock_pause_message: status
+            .session
+            .as_ref()
+            .and_then(|s| s.clock_pause_message.clone()),
+        current_code: current_code.as_ref().map(|c| c.code.clone()),
+        current_code_expires_text: current_code
+            .as_ref()
+            .map(|c| fmt_duration(c.expires_at - session::now())),
+        recent,
+    })
+}
+
+#[derive(Template)]
+#[template(path = "submit_proof.html")]
+struct SubmitProofTemplate {
+    current_code_id: Option<String>,
+    current_code: Option<String>,
+}
+
+async fn submit_proof_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Submissive {
+        return Redirect::to("/dashboard").into_response();
+    }
+
+    let submissive_id = user.user_id.clone();
+    let current_code =
+        tokio::task::spawn_blocking(move || -> anyhow::Result<Option<codes::Code>> {
+            let conn = pool.get()?;
+            let Some(link_id) = links::active_link_for_submissive(&conn, &submissive_id)? else {
+                return Ok(None);
+            };
+            Ok(codes::current_unconsumed(&conn, &link_id)?)
+        })
+        .await;
+
+    let current_code = current_code.ok().and_then(|r| r.ok()).flatten();
+    render(SubmitProofTemplate {
+        current_code_id: current_code.as_ref().map(|c| c.id.clone()),
+        current_code: current_code.map(|c| c.code),
+    })
+}
+
+struct DeviceRow {
+    id: String,
+    name: String,
+    description: String,
+    retired: bool,
+}
+
+#[derive(Template)]
+#[template(path = "submissive_detail.html")]
+struct SubmissiveDetailTemplate {
+    submissive_id: String,
+    display_name: String,
+    devices: Vec<DeviceRow>,
+    locked: bool,
+    session_id: Option<String>,
+    target_release_text: Option<String>,
+    overdue: bool,
+    clock_paused: bool,
+    frequency_kind: String,
+}
+
+async fn submissive_detail_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(submissive_id): Path<String>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    let keyholder_id = user.user_id.clone();
+    let target_id = submissive_id.clone();
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<_>> {
+        let conn = pool.get()?;
+        let Some(link_id) =
+            links::active_or_paused_link_for_keyholder(&conn, &keyholder_id, &target_id)?
+        else {
+            return Ok(None);
+        };
+        let display_name: String = conn.query_row(
+            "SELECT display_name FROM users WHERE id = ?1",
+            params![target_id],
+            |row| row.get(0),
+        )?;
+        let device_list = devices::list(&conn, &target_id)?
+            .into_iter()
+            .map(|d| DeviceRow {
+                id: d.id,
+                name: d.name,
+                description: d.description.unwrap_or_default(),
+                retired: d.retired_at.is_some(),
+            })
+            .collect::<Vec<_>>();
+        let status = confinement::status_for(&conn, &target_id)?;
+        let p = policy::get_for_link(&conn, &link_id)?;
+        Ok(Some((display_name, device_list, status, p)))
+    })
+    .await;
+
+    let Ok(Ok(Some((display_name, device_list, status, p)))) = result else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    render(SubmissiveDetailTemplate {
+        submissive_id,
+        display_name,
+        devices: device_list,
+        locked: status.locked,
+        session_id: status.session.as_ref().map(|s| s.id.clone()),
+        target_release_text: status.time_remaining_seconds.map(fmt_duration),
+        overdue: status.overdue,
+        clock_paused: status.clock_paused,
+        frequency_kind: p.map(|p| p.frequency_kind).unwrap_or_default(),
+    })
+}
+
+struct ReviewQueueItem {
+    id: String,
+    kind: String,
+    purpose: String,
+    submitted_ago: String,
+    code: Option<String>,
+    attachment_id: Option<String>,
+    attachment_mime: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "proof_review.html")]
+struct ProofReviewTemplate {
+    pending: Vec<ReviewQueueItem>,
+    pending_is_empty: bool,
+}
+
+async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    let keyholder_id = user.user_id.clone();
+    let pending = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<ReviewQueueItem>> {
+        let conn = pool.get()?;
+        let link_ids = links::active_link_ids_for_keyholder(&conn, &keyholder_id)?;
+        let submissions = proofs::list_for_links(&conn, &link_ids)?;
+        let now = session::now();
+        let mut items = Vec::new();
+        for s in submissions.into_iter().filter(|s| s.status == "pending") {
+            let attachments = proofs::list_attachments(&conn, &s.id)?;
+            let first = attachments.into_iter().next();
+            items.push(ReviewQueueItem {
+                id: s.id,
+                kind: s.kind,
+                purpose: s.purpose,
+                submitted_ago: fmt_duration(now - s.submitted_at) + " ago",
+                code: s.verification_code_value,
+                attachment_id: first.as_ref().map(|a| a.id.clone()),
+                attachment_mime: first.as_ref().map(|a| a.mime_type.clone()),
+            });
+        }
+        Ok(items)
+    })
+    .await;
+
+    let Ok(Ok(pending)) = pending else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
+    render(ProofReviewTemplate {
+        pending_is_empty: pending.is_empty(),
+        pending,
+    })
+}
+
+pub fn router() -> axum::Router<db::AppState> {
     use axum::routing::get;
     axum::Router::new()
         .route("/", get(index))
         .route("/login", get(login_page))
         .route("/invites/redeem", get(redeem_invite_page))
         .route("/dashboard", get(dashboard_page))
+        .route("/submissive", get(submissive_dashboard_page))
+        .route("/submissive/submit-proof", get(submit_proof_page))
+        .route("/keyholder/submissives/{id}", get(submissive_detail_page))
+        .route("/keyholder/review", get(review_queue_page))
 }

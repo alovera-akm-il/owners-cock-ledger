@@ -20,6 +20,7 @@
       </a>
       <div class="hidden lg:flex items-center gap-6 text-sm">
         <a href="/dashboard" class="text-slate-100 font-medium">Submissives</a>
+        <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
       </div>
     </div>
     <div class="flex items-center gap-3">
@@ -88,7 +89,7 @@
       </thead>
       <tbody class="divide-y divide-slate-800">
         {% for row in roster %}
-        <tr>
+        <tr class="hover:bg-slate-800/40 cursor-pointer" onclick="window.location='/keyholder/submissives/{{ row.submissive_id }}'">
           <td class="px-5 py-4">
             <div class="flex items-center gap-3">
               <div class="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">{{ row.initial }}</div>

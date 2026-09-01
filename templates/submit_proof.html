@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Submit Proof</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="/submissive">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      <span class="hidden sm:inline">The Ledger</span>
+    </a>
+    <a href="/submissive" class="text-xs font-medium text-slate-400 hover:text-slate-200">&larr; Back to status</a>
+  </div>
+</nav>
+
+<main class="max-w-lg mx-auto px-6 py-8">
+  <h1 class="text-xl font-semibold tracking-tight mb-1">Submit proof</h1>
+  <p class="text-sm text-slate-400 mb-6">
+    {% if let Some(code) = current_code %}
+      Write <span class="font-mono text-emerald-300">{{ code }}</span> somewhere visible in your photo or video, then upload it below.
+    {% else %}
+      No active verification code — this will be saved as an unscheduled note. <a href="/submissive" class="text-amber-500 hover:text-amber-400">Request a code first</a> if this is meant to prove a scheduled check-in.
+    {% endif %}
+  </p>
+
+  <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+    <form id="proof-form" class="space-y-4">
+      <div id="proof-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5" for="kind">Type</label>
+        <select id="kind" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option value="photo">Photo</option>
+          <option value="video">Video</option>
+          <option value="note">Note only (no file)</option>
+        </select>
+      </div>
+
+      <div id="file-field">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5" for="file">File</label>
+        <input id="file" type="file" accept="image/jpeg,image/png,video/mp4,video/webm"
+          class="w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-200 file:text-xs" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5" for="notes">Notes (optional)</label>
+        <textarea id="notes" rows="3" placeholder="anything your Keyholder should know"
+          class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60"></textarea>
+      </div>
+
+      <button id="submit-btn" type="submit" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+        Submit
+      </button>
+    </form>
+  </div>
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  $('#kind').on('change', function () {
+    $('#file-field').toggle($(this).val() !== 'note');
+  });
+
+  $('#proof-form').on('submit', function (e) {
+    e.preventDefault();
+    $('#proof-message').addClass('hidden');
+
+    const kind = $('#kind').val();
+    const fileInput = $('#file')[0];
+    if (kind !== 'note' && fileInput.files.length === 0) {
+      $('#proof-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text('Choose a file, or switch to "Note only".');
+      return;
+    }
+
+    const formData = new FormData();
+    {% if let Some(code_id) = current_code_id %}
+      formData.append('verification_code_id', '{{ code_id }}');
+    {% endif %}
+    formData.append('kind', kind);
+    const notes = $('#notes').val();
+    if (notes) {
+      formData.append('metadata', JSON.stringify({ notes: notes }));
+    }
+    if (fileInput.files.length > 0) {
+      formData.append('files', fileInput.files[0]);
+    }
+
+    $('#submit-btn').prop('disabled', true).text('Submitting…');
+    $.ajax({
+      url: '/api/v1/submissive/proof-submissions',
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).done(function () {
+      window.location = '/submissive';
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
+      $('#proof-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(msg);
+      $('#submit-btn').prop('disabled', false).text('Submit');
+    });
+  });
+</script>
+</body>
+</html>

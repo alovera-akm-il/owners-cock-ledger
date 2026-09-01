@@ -86,8 +86,7 @@
         display_name: $('#display_name').val(),
       }),
     }).done(function () {
-      showMessage("Account created and signed in — there's no submissive dashboard built yet in this version.", 'ok');
-      $('#redeem-form')[0].reset();
+      window.location = '/submissive';
     }).fail(function (xhr) {
       const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
       showMessage(msg, 'error');
