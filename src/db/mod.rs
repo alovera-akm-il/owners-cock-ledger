@@ -9,6 +9,33 @@ use rusqlite_migration::{M, Migrations};
 
 pub type Pool = r2d2::Pool<SqliteConnectionManager>;
 
+/// The blob directory (`<data-dir>/blobs/`), threaded through the router
+/// state as a distinct `FromRef` target from `Pool` — see `AppState`.
+#[derive(Clone)]
+pub struct BlobDir(pub PathBuf);
+
+/// Router state now carries two independent pieces (the DB pool and the
+/// blob directory), extracted separately by handlers via
+/// `State<Pool>`/`State<BlobDir>` — axum's `FromRef` pattern for
+/// multi-piece state, rather than every handler needing the whole struct.
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: Pool,
+    pub blob_dir: BlobDir,
+}
+
+impl axum::extract::FromRef<AppState> for Pool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for BlobDir {
+    fn from_ref(state: &AppState) -> Self {
+        state.blob_dir.clone()
+    }
+}
+
 /// Numbered, compile-time-embedded `.sql` files under `migrations/`,
 /// applied in order. Embedding via `include_str!` at compile time (rather
 /// than reading the directory at runtime, `rusqlite_migration`'s
@@ -32,6 +59,16 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../migrations/0009_verification_policies.sql"
         )),
+        M::up(include_str!("../../migrations/0010_chastity_devices.sql")),
+        M::up(include_str!(
+            "../../migrations/0011_confinement_sessions.sql"
+        )),
+        M::up(include_str!(
+            "../../migrations/0012_confinement_adjustments.sql"
+        )),
+        M::up(include_str!("../../migrations/0013_verification_codes.sql")),
+        M::up(include_str!("../../migrations/0014_proof_submissions.sql")),
+        M::up(include_str!("../../migrations/0015_proof_attachments.sql")),
     ])
 }
 
