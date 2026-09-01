@@ -859,7 +859,7 @@ full rationale in `10-operations.md`.
 
 ### `background_task_runs`
 A heartbeat row per tick of each Tokio background task (verification
-code issuance, `04-verification-workflow.md` §2; the punishment
+code issuance, `04-verification-workflow.md` §2; the task
 deadline sweeper, `08-punishments-and-deadlines.md` §3), so the
 health endpoint (`10-operations.md` §2) can answer "is this task
 actually still running" from data instead of assuming a process that
