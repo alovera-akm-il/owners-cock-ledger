@@ -10,7 +10,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRef, FromRequestParts};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
@@ -176,17 +176,21 @@ pub fn revoke_all_except(
     )
 }
 
-impl FromRequestParts<Pool> for CurrentUser {
+impl<S> FromRequestParts<S> for CurrentUser
+where
+    S: Send + Sync,
+    Pool: axum::extract::FromRef<S>,
+{
     type Rejection = StatusCode;
 
-    async fn from_request_parts(parts: &mut Parts, pool: &Pool) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_headers(&parts.headers);
         let session_id = jar
             .get(SESSION_COOKIE_NAME)
             .map(|c| c.value().to_string())
             .ok_or(StatusCode::UNAUTHORIZED)?;
 
-        let pool = pool.clone();
+        let pool = Pool::from_ref(state);
         let user = tokio::task::spawn_blocking(move || {
             let conn = pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             resolve(&conn, &session_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)

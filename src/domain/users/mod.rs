@@ -21,13 +21,6 @@ pub enum CreateUserError {
     Db(#[from] rusqlite::Error),
 }
 
-fn is_unique_violation(err: &rusqlite::Error) -> bool {
-    matches!(
-        err,
-        rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation
-    )
-}
-
 pub struct NewAccount<'a> {
     pub email: &'a str,
     pub password_hash: &'a str,
@@ -70,7 +63,7 @@ fn create(
             )?;
             Ok(id)
         }
-        Err(e) if is_unique_violation(&e) => Err(CreateUserError::EmailInUse),
+        Err(e) if super::is_unique_violation(&e) => Err(CreateUserError::EmailInUse),
         Err(e) => Err(e.into()),
     }
 }

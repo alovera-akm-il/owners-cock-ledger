@@ -4,10 +4,60 @@
 //! §5), so there's never an undefined window before a Keyholder
 //! configures a real schedule.
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 const DEFAULT_CODE_TTL_SECS: i64 = 15 * 60;
 const DEFAULT_GRACE_PERIOD_SECS: i64 = 10 * 60;
+
+/// The caller's own active link — every submissive-role query is
+/// implicitly scoped to this (02-roles-and-permissions.md §1 principle
+/// 3).
+pub fn active_link_for_submissive(
+    conn: &Connection,
+    submissive_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT id FROM keyholder_submissive_links
+         WHERE submissive_id = ?1 AND status = 'active'",
+        params![submissive_id],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
+/// Every `active` link id for a Keyholder — the cross-roster feed's
+/// scoping join (03-api-design.md §6, 02-roles-and-permissions.md §5).
+pub fn active_link_ids_for_keyholder(
+    conn: &Connection,
+    keyholder_id: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM keyholder_submissive_links WHERE keyholder_id = ?1 AND status = 'active'",
+    )?;
+    stmt.query_map(params![keyholder_id], |row| row.get(0))?
+        .collect()
+}
+
+/// Resolves `submissive_id` to the caller's own link to them, or `None`
+/// if no such link exists — the join every Keyholder-role query must go
+/// through rather than trusting a client-supplied submissive id
+/// (02-roles-and-permissions.md §1 principle 2). Includes `paused` links
+/// (a Keyholder still has read access to those, per that same principle)
+/// but not `ended` ones, since none of Phase 2's write actions should be
+/// reachable against a relationship that's over.
+pub fn active_or_paused_link_for_keyholder(
+    conn: &Connection,
+    keyholder_id: &str,
+    submissive_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT id FROM keyholder_submissive_links
+         WHERE keyholder_id = ?1 AND submissive_id = ?2 AND status IN ('active', 'paused')",
+        params![keyholder_id, submissive_id],
+        |row| row.get(0),
+    )
+    .optional()
+}
 
 /// Creates an `active` link between a Keyholder and a submissive plus its
 /// default on-demand-only verification policy. Callers are expected to run
