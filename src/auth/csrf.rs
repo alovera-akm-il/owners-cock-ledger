@@ -13,17 +13,6 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 pub const CSRF_COOKIE_NAME: &str = "ocl_csrf";
 pub const CSRF_HEADER_NAME: &str = "x-csrf-token";
 
-fn generate_token() -> String {
-    // Two concatenated v4 UUIDs (each backed by the OS CSPRNG) give a
-    // 256-bit unguessable token without pulling in a separate RNG crate
-    // just for this.
-    format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    )
-}
-
 fn is_bearer_request(req: &Request) -> bool {
     req.headers()
         .get(header::AUTHORIZATION)
@@ -65,7 +54,7 @@ pub async fn csrf_protect(jar: CookieJar, req: Request, next: Next) -> Response 
         return response;
     }
 
-    let cookie = Cookie::build((CSRF_COOKIE_NAME, generate_token()))
+    let cookie = Cookie::build((CSRF_COOKIE_NAME, super::token::generate()))
         .path("/")
         .secure(true)
         .same_site(SameSite::Strict)
