@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Redeem Invite</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+  <div class="min-h-full flex items-center justify-center px-4">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-8">
+        <div class="mx-auto h-12 w-12 rounded-xl bg-amber-600 flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+          </svg>
+        </div>
+        <h1 class="text-xl font-semibold tracking-tight">Redeem your invite</h1>
+        <p class="text-sm text-slate-400 mt-1">Your Keyholder gave you a one-time invite code</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <form id="redeem-form" class="space-y-4">
+          <div id="redeem-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="token">Invite code</label>
+            <input id="token" name="token" type="text" placeholder="paste the code your Keyholder sent"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 font-mono focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="display_name">Your name</label>
+            <input id="display_name" name="display_name" type="text" placeholder="shown to your Keyholder"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="username" placeholder="you@example.com"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="password">Choose a password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" placeholder="••••••••••"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+
+          <button id="redeem-submit-btn" type="submit" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+            Create account
+          </button>
+
+          <p class="text-xs text-center text-slate-500 pt-1">
+            Already have an account? <a href="/login" class="text-amber-500 hover:text-amber-400 font-medium">Sign in</a>
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function showMessage(text, tone) {
+    const cls = tone === 'error'
+      ? 'bg-red-600/10 border border-red-600/30 text-red-300'
+      : 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300';
+    $('#redeem-message').attr('class', 'rounded-lg px-3 py-2 text-xs ' + cls).text(text);
+  }
+
+  $('#redeem-form').on('submit', function (e) {
+    e.preventDefault();
+    $('#redeem-message').addClass('hidden');
+    $.ajax({
+      url: '/api/v1/auth/invites/redeem',
+      method: 'POST',
+      contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: JSON.stringify({
+        token: $('#token').val(),
+        email: $('#email').val(),
+        password: $('#password').val(),
+        display_name: $('#display_name').val(),
+      }),
+    }).done(function () {
+      showMessage("Account created and signed in — there's no submissive dashboard built yet in this version.", 'ok');
+      $('#redeem-form')[0].reset();
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
+      showMessage(msg, 'error');
+    });
+  });
+</script>
+</body>
+</html>

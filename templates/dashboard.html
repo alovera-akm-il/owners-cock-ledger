@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Submissives</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
+        <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+        <span class="hidden sm:inline">The Ledger</span>
+      </a>
+      <div class="hidden lg:flex items-center gap-6 text-sm">
+        <a href="/dashboard" class="text-slate-100 font-medium">Submissives</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <span class="hidden sm:inline text-sm text-slate-300">{{ display_name }}</span>
+      <div class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">{{ initial }}</div>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Submissives</h1>
+      <p class="text-sm text-slate-400 mt-1">Everyone currently linked to you</p>
+    </div>
+    <button id="open-invite-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950 flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      Invite submissive
+    </button>
+  </div>
+
+  <!-- ============ INVITE MODAL ============ -->
+  <div id="invite-modal-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full">
+      <div id="invite-setup" class="space-y-4">
+        <h3 class="text-sm font-semibold">Invite a submissive</h3>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Invite expires in</label>
+          <select id="invite-expires-hours" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            <option value="24">24 hours</option>
+            <option value="48" selected>48 hours</option>
+            <option value="72">72 hours</option>
+          </select>
+        </div>
+        <div id="invite-setup-error" class="hidden rounded-lg bg-red-600/10 border border-red-600/30 px-3 py-2 text-xs text-red-300"></div>
+        <div class="flex justify-end gap-2">
+          <button class="close-invite-modal-btn text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+          <button id="generate-invite-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Generate invite</button>
+        </div>
+      </div>
+      <div id="invite-reveal" class="hidden space-y-3">
+        <p class="text-xs font-semibold text-emerald-400">Invite created — copy it now, it won't be shown again</p>
+        <div class="flex items-center gap-2">
+          <code id="invite-token-value" class="flex-1 text-sm bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-emerald-300 overflow-x-auto whitespace-nowrap"></code>
+          <button id="copy-invite-btn" class="text-xs font-semibold text-slate-950 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-3 py-2 whitespace-nowrap">Copy</button>
+        </div>
+        <p id="invite-expires-note" class="text-xs text-slate-500"></p>
+        <div class="flex justify-end">
+          <button class="close-invite-modal-btn text-xs font-medium text-slate-400 px-3 py-2">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- roster -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
+          <th class="px-5 py-3 font-medium">Submissive</th>
+          <th class="px-5 py-3 font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800">
+        {% for row in roster %}
+        <tr>
+          <td class="px-5 py-4">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">{{ row.initial }}</div>
+              <div>
+                <p class="font-medium">{{ row.display_name }}</p>
+                <p class="text-xs text-slate-500">linked {{ row.linked_days }} days</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-5 py-4">
+            <span class="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Active
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if roster_is_empty %}
+        <tr>
+          <td colspan="2" class="px-5 py-8 text-center text-sm text-slate-500">
+            Nobody linked yet — invite a submissive to get started.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-xs text-slate-600 mt-6">
+    Lock status, verification, and open tasks will show up here once those parts of the app are built.
+  </p>
+
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  $('#logout-btn').on('click', function () {
+    $.ajax({
+      url: '/api/v1/auth/logout',
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).always(function () {
+      window.location = '/login';
+    });
+  });
+
+  $('#open-invite-btn').on('click', function () {
+    $('#invite-setup-error').addClass('hidden');
+    $('#invite-setup').removeClass('hidden').addClass('panel-fade');
+    $('#invite-reveal').addClass('hidden');
+    $('#invite-modal-backdrop').removeClass('hidden').addClass('panel-fade');
+  });
+  $('#invite-modal-backdrop').on('click', function (e) { if (e.target === this) $(this).addClass('hidden'); });
+  $('.close-invite-modal-btn').on('click', () => $('#invite-modal-backdrop').addClass('hidden'));
+
+  $('#generate-invite-btn').on('click', function () {
+    $('#invite-setup-error').addClass('hidden');
+    $.ajax({
+      url: '/api/v1/keyholder/invites',
+      method: 'POST',
+      contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: JSON.stringify({ expires_in_hours: parseInt($('#invite-expires-hours').val(), 10) }),
+    }).done(function (res) {
+      $('#invite-token-value').text(res.token);
+      $('#invite-expires-note').text('Expires ' + new Date(res.expires_at).toLocaleString() + '. Send it to them however you\'d normally communicate — they redeem it at /invites/redeem.');
+      $('#invite-setup').addClass('hidden');
+      $('#invite-reveal').removeClass('hidden').addClass('panel-fade');
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
+      $('#invite-setup-error').removeClass('hidden').text(msg);
+    });
+  });
+
+  $('#copy-invite-btn').on('click', function () {
+    navigator.clipboard.writeText($('#invite-token-value').text());
+    $(this).text('Copied!');
+    setTimeout(() => $(this).text('Copy'), 1500);
+  });
+</script>
+</body>
+</html>

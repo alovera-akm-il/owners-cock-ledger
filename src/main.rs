@@ -3,6 +3,7 @@ mod auth;
 mod db;
 mod domain;
 mod ops;
+mod web;
 
 use std::io::Write;
 
@@ -74,6 +75,8 @@ fn build_router(pool: db::Pool) -> Router {
                 .merge(api::invites::router())
                 .merge(api::roster::router()),
         )
+        .merge(web::router())
+        .nest_service("/static", tower_http::services::ServeDir::new("static"))
         .layer(axum::middleware::from_fn(auth::csrf::csrf_protect))
         .with_state(pool)
 }
@@ -241,6 +244,33 @@ mod tests {
 
         async fn get(&mut self, path: &str) -> (StatusCode, serde_json::Value) {
             self.request("GET", path, None).await
+        }
+
+        /// For HTML pages and redirects, where the body isn't JSON and the
+        /// `Location` header matters.
+        async fn get_page(&mut self, path: &str) -> (StatusCode, Option<String>, String) {
+            let mut builder = Request::builder().method("GET").uri(path);
+            if !self.cookies.is_empty() {
+                builder = builder.header(header::COOKIE, self.cookie_header());
+            }
+            let response = self
+                .app
+                .clone()
+                .oneshot(builder.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let location = response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            (
+                status,
+                location,
+                String::from_utf8_lossy(&bytes).into_owned(),
+            )
         }
 
         async fn post(
@@ -425,5 +455,120 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn login_page_renders() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool);
+        let (status, _, body) = client.get_page("/login").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Sign in"));
+    }
+
+    #[tokio::test]
+    async fn redeem_invite_page_renders() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool);
+        let (status, _, body) = client.get_page("/invites/redeem").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Create account"));
+    }
+
+    #[tokio::test]
+    async fn dashboard_redirects_to_login_when_unauthenticated() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool);
+        let (status, location, _) = client.get_page("/dashboard").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/login"));
+    }
+
+    #[tokio::test]
+    async fn index_redirects_by_auth_state() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "kh7@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool);
+
+        let (status, location, _) = client.get_page("/").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/login"));
+
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh7@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, location, _) = client.get_page("/").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/dashboard"));
+    }
+
+    #[tokio::test]
+    async fn dashboard_renders_real_roster_data_for_authenticated_keyholder() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "kh8@example.test", "correct horse battery staple");
+        let mut keyholder = TestClient::new(pool.clone());
+        keyholder.get("/health").await;
+        keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh8@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (_, invite_body) = keyholder
+            .post("/api/v1/keyholder/invites", serde_json::json!({}))
+            .await;
+        let token = invite_body["token"].as_str().unwrap().to_string();
+
+        let mut submissive = TestClient::new(pool.clone());
+        submissive.get("/health").await;
+        submissive
+            .post(
+                "/api/v1/auth/invites/redeem",
+                serde_json::json!({
+                    "token": token,
+                    "email": "roster-sub@example.test",
+                    "password": "another strong password",
+                    "display_name": "Roster Sub",
+                }),
+            )
+            .await;
+
+        let (status, _, body) = keyholder.get_page("/dashboard").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Roster Sub"));
+        assert!(body.contains("KH")); // the logged-in keyholder's own display name
+    }
+
+    #[tokio::test]
+    async fn dashboard_shows_empty_state_with_no_roster() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "kh9@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool);
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh9@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, _, body) = client.get_page("/dashboard").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Nobody linked yet"));
+    }
+
+    #[tokio::test]
+    async fn static_assets_are_served() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool);
+        let (status, _, body) = client.get_page("/static/css/app.css").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!body.is_empty());
     }
 }

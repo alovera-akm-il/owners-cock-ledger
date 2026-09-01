@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Sign In</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+  <div class="min-h-full flex items-center justify-center px-4">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-8">
+        <div class="mx-auto h-12 w-12 rounded-xl bg-amber-600 flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+          </svg>
+        </div>
+        <h1 class="text-xl font-semibold tracking-tight">The Ledger</h1>
+        <p class="text-sm text-slate-400 mt-1">Private confinement &amp; verification tracker</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+
+        <form id="login-form" class="space-y-4">
+          <div id="login-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="username" placeholder="you@example.com"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+          </div>
+
+          <button id="login-submit-btn" type="submit" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+            Sign in
+          </button>
+
+          <p class="text-xs text-center pt-1">
+            <button id="forgot-password-btn" type="button" class="text-slate-500 hover:text-slate-300">Forgot password?</button>
+          </p>
+          <p class="text-xs text-center text-slate-500">
+            Have an invite code from your Keyholder?
+            <a href="/invites/redeem" class="text-amber-500 hover:text-amber-400 font-medium">Redeem it</a>
+          </p>
+        </form>
+
+        <div id="forgot-password-note" class="hidden text-center space-y-4">
+          <p class="text-sm">Password recovery isn't self-service on this server yet.</p>
+          <p class="text-xs text-slate-500">Ask your Keyholder, or a server admin can force a reset directly on the box (<code>admin reset-password</code>).</p>
+          <button id="back-from-forgot-btn" type="button" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-1">
+            &larr; Back to sign in
+          </button>
+        </div>
+
+      </div>
+
+      <p class="text-center text-[11px] text-slate-600 mt-6">
+        Self-hosted instance &middot; sessions are private to this server &middot; no data leaves this device
+      </p>
+    </div>
+  </div>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function showMessage(text, tone) {
+    const cls = tone === 'error'
+      ? 'bg-red-600/10 border border-red-600/30 text-red-300'
+      : 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300';
+    $('#login-message').attr('class', 'rounded-lg px-3 py-2 text-xs ' + cls).text(text);
+  }
+
+  $('#login-form').on('submit', function (e) {
+    e.preventDefault();
+    $('#login-message').addClass('hidden');
+    $.ajax({
+      url: '/api/v1/auth/login',
+      method: 'POST',
+      contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: JSON.stringify({ email: $('#email').val(), password: $('#password').val() }),
+    }).done(function (res) {
+      if (res.role === 'keyholder') {
+        window.location = '/dashboard';
+      } else {
+        showMessage("Signed in — but there's no submissive dashboard built yet in this version.", 'ok');
+      }
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
+      showMessage(msg, 'error');
+    });
+  });
+
+  $('#forgot-password-btn').on('click', function () {
+    $('#login-form').addClass('hidden');
+    $('#forgot-password-note').removeClass('hidden').addClass('panel-fade');
+  });
+  $('#back-from-forgot-btn').on('click', function () {
+    $('#forgot-password-note').addClass('hidden');
+    $('#login-form').removeClass('hidden').addClass('panel-fade');
+  });
+</script>
+</body>
+</html>
