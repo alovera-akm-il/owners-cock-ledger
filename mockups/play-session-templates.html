@@ -245,16 +245,16 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
-  $('#assign-btn').on('click', () => $('#assign-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  $('#assign-btn').on('click', () => $('#assign-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' }));
   $('#cancel-assign').on('click', () => $('#assign-form').addClass('hidden'));
 
   const ASSIGN_BUTTON_LABEL = { scheduled: 'Schedule session', live: 'Start session now', retro: 'Log session' };
@@ -267,11 +267,11 @@
 
   $('#new-btn').on('click', function () {
     $('#form-heading').text('New template');
-    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#new-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   $('.edit-template-btn').on('click', function () {
     $('#form-heading').text('Editing template');
-    $('#new-form').removeClass('hidden')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#new-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
 

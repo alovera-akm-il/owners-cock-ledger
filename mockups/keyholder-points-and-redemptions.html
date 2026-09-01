@@ -138,12 +138,12 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
@@ -155,7 +155,7 @@
       $(this).remove();
       if ($('#pending-requests .redemption-row').length === 0) {
         $('#pending-requests').addClass('hidden');
-        $('#no-pending-requests').removeClass('hidden');
+        $('#no-pending-requests').removeClass('hidden').addClass('panel-fade');
       }
       const status = approved
         ? `<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">approved just now</span>`

@@ -547,65 +547,65 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
-  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').fadeToggle(120); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
-  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+  $(document).on('click', function () { $('#notif-panel').fadeOut(120); });
 
   $('#pause-timer-btn').on('click', function () {
     $('#countdown-block').addClass('hidden');
-    $('#pause-setup-form').removeClass('hidden');
+    $('#pause-setup-form').removeClass('hidden').addClass('panel-fade');
     $(this).addClass('hidden');
     $('#pause-message-input').val('').trigger('focus');
   });
   $('#cancel-pause-setup').on('click', function () {
     $('#pause-setup-form').addClass('hidden');
-    $('#countdown-block').removeClass('hidden');
-    $('#pause-timer-btn').removeClass('hidden');
+    $('#countdown-block').removeClass('hidden').addClass('panel-fade');
+    $('#pause-timer-btn').removeClass('hidden').addClass('panel-fade');
   });
   $('#confirm-pause-btn').on('click', function () {
     const msg = $('#pause-message-input').val().trim();
     $('#pause-setup-form').addClass('hidden');
     if (msg) {
-      $('#paused-message-display').text('"' + msg + '"').removeClass('hidden');
+      $('#paused-message-display').text('"' + msg + '"').removeClass('hidden').addClass('panel-fade');
     } else {
       $('#paused-message-display').addClass('hidden');
     }
     $('#edit-pause-message-input').val(msg);
-    $('#paused-block').removeClass('hidden');
+    $('#paused-block').removeClass('hidden').addClass('panel-fade');
   });
   $('#resume-timer-btn').on('click', function () {
     $('#paused-block').addClass('hidden');
     $('#edit-pause-message-form').addClass('hidden');
-    $('#countdown-block').removeClass('hidden');
-    $('#pause-timer-btn').removeClass('hidden');
+    $('#countdown-block').removeClass('hidden').addClass('panel-fade');
+    $('#pause-timer-btn').removeClass('hidden').addClass('panel-fade');
   });
 
   $('#edit-pause-message-btn').on('click', function () {
     $('#paused-block').addClass('hidden');
-    $('#edit-pause-message-form').removeClass('hidden');
+    $('#edit-pause-message-form').removeClass('hidden').addClass('panel-fade');
   });
   $('#cancel-edit-pause-message').on('click', function () {
     $('#edit-pause-message-form').addClass('hidden');
-    $('#paused-block').removeClass('hidden');
+    $('#paused-block').removeClass('hidden').addClass('panel-fade');
   });
   $('#save-pause-message-btn').on('click', function () {
     const msg = $('#edit-pause-message-input').val().trim();
     if (msg) {
-      $('#paused-message-display').text('"' + msg + '"').removeClass('hidden');
+      $('#paused-message-display').text('"' + msg + '"').removeClass('hidden').addClass('panel-fade');
     } else {
       $('#paused-message-display').addClass('hidden');
     }
     $('#edit-pause-message-form').addClass('hidden');
-    $('#paused-block').removeClass('hidden');
+    $('#paused-block').removeClass('hidden').addClass('panel-fade');
   });
 
   $('.edit-escalation-btn').on('click', function () {
@@ -631,7 +631,7 @@
   function openModal(id) {
     $('.modal-panel').addClass('hidden');
     $('#' + id).removeClass('hidden');
-    $('#modal-backdrop').removeClass('hidden');
+    $('#modal-backdrop').removeClass('hidden').addClass('panel-fade');
   }
   function closeModal() {
     $('#modal-backdrop').addClass('hidden');
@@ -651,7 +651,7 @@
     $('#open-record-unlock-btn').text('Start confinement').removeClass('bg-slate-800 hover:bg-slate-700').addClass('bg-amber-600 hover:bg-amber-500 text-slate-950');
   });
 
-  $('#adjust-timer-btn').on('click', () => $('#adjust-timer-form').removeClass('hidden'));
+  $('#adjust-timer-btn').on('click', () => $('#adjust-timer-form').removeClass('hidden').addClass('panel-fade'));
   $('#cancel-adjust-timer').on('click', () => $('#adjust-timer-form').addClass('hidden'));
   $('#apply-adjust-timer').on('click', function () {
     const btn = $(this), original = btn.text();
@@ -667,16 +667,16 @@
   $('#review-keep-btn').on('click', () => $('#review-needed-banner').slideUp(150));
   $('#review-adjust-btn').on('click', function () {
     $('#review-needed-banner').slideUp(150);
-    $('#adjust-timer-form').removeClass('hidden');
+    $('#adjust-timer-form').removeClass('hidden').addClass('panel-fade');
   });
 
   function openPolicyEdit() {
     $('#policy-view').addClass('hidden');
-    $('#policy-edit-form').removeClass('hidden');
+    $('#policy-edit-form').removeClass('hidden').addClass('panel-fade');
   }
   function closePolicyEdit() {
     $('#policy-edit-form').addClass('hidden');
-    $('#policy-view').removeClass('hidden');
+    $('#policy-view').removeClass('hidden').addClass('panel-fade');
   }
   $('#edit-policy-btn, #policy-edit-toggle').on('click', openPolicyEdit);
   $('#policy-cancel-btn').on('click', closePolicyEdit);

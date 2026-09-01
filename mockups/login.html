@@ -116,11 +116,11 @@
   // {requires_2fa: true}.
   $('#login-submit-btn').on('click', function () {
     $('#login-step-password').addClass('hidden');
-    $('#login-step-2fa').removeClass('hidden');
+    $('#login-step-2fa').removeClass('hidden').addClass('panel-fade');
   });
   $('#back-to-password-btn').on('click', function () {
     $('#login-step-2fa').addClass('hidden');
-    $('#login-step-password').removeClass('hidden');
+    $('#login-step-password').removeClass('hidden').addClass('panel-fade');
   });
   $('#tfa-verify-btn').on('click', function () {
     // demo only: a real app routes by the account's actual role

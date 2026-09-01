@@ -154,18 +154,18 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
-  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').fadeToggle(120); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
-  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+  $(document).on('click', function () { $('#notif-panel').fadeOut(120); });
 
   $('#request-new-code-btn').on('click', function () {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -180,13 +180,13 @@
   $('#mode-verification').on('click', function () {
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');
     $('#mode-task').removeClass('bg-slate-800').addClass('text-slate-400');
-    $('#context-verification').removeClass('hidden');
+    $('#context-verification').removeClass('hidden').addClass('panel-fade');
     $('#context-task, #context-checkin-note').addClass('hidden');
   });
   $('#mode-task').on('click', function () {
     $(this).addClass('bg-slate-800').removeClass('text-slate-400');
     $('#mode-verification').removeClass('bg-slate-800').addClass('text-slate-400');
-    $('#context-task, #context-checkin-note').removeClass('hidden');
+    $('#context-task, #context-checkin-note').removeClass('hidden').addClass('panel-fade');
     $('#context-verification').addClass('hidden');
     selectMedia('video'); // this task's proof_media_types only allows video
   });
@@ -195,7 +195,7 @@
     $('.media-tab').removeClass('bg-slate-800').addClass('text-slate-400');
     $('#media-' + kind).addClass('bg-slate-800').removeClass('text-slate-400');
     $('#upload-photo, #upload-video, #upload-voice').addClass('hidden');
-    $('#upload-' + kind).removeClass('hidden');
+    $('#upload-' + kind).removeClass('hidden').addClass('panel-fade');
   }
   $('#media-photo').on('click', () => selectMedia('photo'));
   $('#media-video').on('click', () => selectMedia('video'));

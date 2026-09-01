@@ -250,6 +250,12 @@ CDN dependency anywhere, full stop, not just for Tailwind/jQuery:
     rather than just appearing — used only for the deliberate
     "add one" action, never for a form's initial population, so it
     doesn't turn into page-load entrance animation by accident.
+  Applied consistently, not just where it happened to be added first:
+  every panel/form reveal across the app uses panel fade, every tab
+  switch fades its revealed content in, and the notification/mobile
+  navigation dropdowns actually slide/fade open and closed instead of
+  snapping — the same jQuery `.slideToggle()`/`.fadeToggle()` a real
+  implementation would reach for, not a mockup-only shortcut.
   Every one of these collapses to nothing under
   `prefers-reduced-motion: reduce` — a real accessibility
   consideration, not an afterthought. Applied broadly: every "Save"

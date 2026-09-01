@@ -117,17 +117,17 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
   $('.redeem-btn').on('click', function () {
-    $(this).closest('.flex').fadeOut(200, () => $('#pending-redemption').removeClass('hidden'));
+    $(this).closest('.flex').fadeOut(200, () => $('#pending-redemption').removeClass('hidden').addClass('panel-fade'));
   });
 </script>
 </body>

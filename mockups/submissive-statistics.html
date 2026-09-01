@@ -208,18 +208,18 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
-  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').fadeToggle(120); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
-  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+  $(document).on('click', function () { $('#notif-panel').fadeOut(120); });
 </script>
 </body>
 </html>

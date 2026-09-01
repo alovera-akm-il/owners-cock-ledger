@@ -401,19 +401,19 @@
 <script>
   $('#mobile-menu-btn').on('click', function (e) {
     e.stopPropagation();
-    $('#mobile-menu').toggleClass('hidden');
+    $('#mobile-menu').slideToggle(150);
     $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
   });
   $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
   $(document).on('click', function () {
-    $('#mobile-menu').addClass('hidden');
+    $('#mobile-menu').slideUp(150);
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
 
-  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').fadeToggle(120); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
-  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+  $(document).on('click', function () { $('#notif-panel').fadeOut(120); });
 
   $('.save-inline-btn').on('click', function () {
     const btn = $(this), original = btn.text();
@@ -428,12 +428,13 @@
         $(t).toggleClass('bg-slate-800', t === tabSel).toggleClass('text-slate-400', t !== tabSel);
         $(tabs[t]).toggleClass('hidden', t !== tabSel);
       });
+      $(tabs[tabSel]).addClass('panel-fade');
     });
   });
 
   function tfaShow(stateId) {
     $('#tfa-state-off, #tfa-state-setup, #tfa-state-recovery, #tfa-state-on').addClass('hidden');
-    $('#' + stateId).removeClass('hidden');
+    $('#' + stateId).removeClass('hidden').addClass('panel-fade');
   }
   $('#tfa-start-setup-btn').on('click', () => tfaShow('tfa-state-setup'));
   $('#tfa-cancel-setup-btn').on('click', () => tfaShow('tfa-state-off'));
@@ -446,7 +447,7 @@
     $(this).text('Codes regenerated ✓');
     setTimeout(() => $(this).text('Regenerate recovery codes'), 1500);
   });
-  $('#tfa-open-disable-btn').on('click', () => $('#tfa-disable-form').removeClass('hidden'));
+  $('#tfa-open-disable-btn').on('click', () => $('#tfa-disable-form').removeClass('hidden').addClass('panel-fade'));
   $('#tfa-cancel-disable-btn').on('click', () => $('#tfa-disable-form').addClass('hidden'));
   $('#tfa-confirm-disable-btn').on('click', function () {
     tfaShow('tfa-state-off');
@@ -458,9 +459,9 @@
     $(this).text('Enabled ✓').prop('disabled', true).removeClass('bg-amber-600 hover:bg-amber-500').addClass('bg-emerald-600 cursor-default');
   });
 
-  $('#new-token-btn').on('click', () => { $('#new-token-form').removeClass('hidden'); $('#token-reveal').addClass('hidden'); });
+  $('#new-token-btn').on('click', () => { $('#new-token-form').removeClass('hidden').addClass('panel-fade'); $('#token-reveal').addClass('hidden'); });
   $('#cancel-token').on('click', () => $('#new-token-form').addClass('hidden'));
-  $('#create-token').on('click', () => { $('#new-token-form').addClass('hidden'); $('#token-reveal').removeClass('hidden'); });
+  $('#create-token').on('click', () => { $('#new-token-form').addClass('hidden'); $('#token-reveal').removeClass('hidden').addClass('panel-fade'); });
   $('#copy-token').on('click', function () {
     $(this).text('Copied!');
     setTimeout(() => $(this).text('Copy'), 1500);

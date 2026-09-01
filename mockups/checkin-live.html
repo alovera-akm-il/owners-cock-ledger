@@ -163,7 +163,7 @@
     flash();
     log('Color set to ' + color.toUpperCase());
     if (color === 'red') {
-      $('#escalation-note').removeClass('hidden');
+      $('#escalation-note').removeClass('hidden').addClass('panel-fade');
       log('→ safety alert auto-raised (raised_via: system)');
     } else {
       $('#escalation-note').addClass('hidden');

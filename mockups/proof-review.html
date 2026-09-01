@@ -140,9 +140,9 @@
 </main>
 
 <script>
-  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').toggleClass('hidden'); });
+  $('#notif-bell').on('click', function (e) { e.stopPropagation(); $('#notif-panel').fadeToggle(120); });
   $('#notif-panel').on('click', function (e) { e.stopPropagation(); });
-  $(document).on('click', function () { $('#notif-panel').addClass('hidden'); });
+  $(document).on('click', function () { $('#notif-panel').fadeOut(120); });
 
   $('.decision-btn').on('click', function () {
     $('.decision-btn').removeClass('ring-2 ring-offset-2 ring-offset-slate-900');
@@ -154,13 +154,13 @@
   $('#tab-existing').on('click', function () {
     $(this).addClass('bg-slate-800 font-medium').removeClass('text-slate-400');
     $('#tab-new').removeClass('bg-slate-800 font-medium').addClass('text-slate-400');
-    $('#panel-existing').removeClass('hidden');
+    $('#panel-existing').removeClass('hidden').addClass('panel-fade');
     $('#panel-new').addClass('hidden');
   });
   $('#tab-new').on('click', function () {
     $(this).addClass('bg-slate-800 font-medium').removeClass('text-slate-400');
     $('#tab-existing').removeClass('bg-slate-800 font-medium').addClass('text-slate-400');
-    $('#panel-new').removeClass('hidden');
+    $('#panel-new').removeClass('hidden').addClass('panel-fade');
     $('#panel-existing').addClass('hidden');
   });
 </script>
