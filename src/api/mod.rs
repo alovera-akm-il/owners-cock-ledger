@@ -17,6 +17,7 @@ pub mod proofs;
 pub mod recurring_tasks;
 pub mod roster;
 pub mod safety;
+pub mod stats;
 pub mod templates;
 pub mod toys;
 pub mod verification;

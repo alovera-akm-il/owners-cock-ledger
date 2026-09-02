@@ -15,6 +15,7 @@ pub mod push;
 pub mod recurring_tasks;
 pub mod rewards_punishments;
 pub mod safety;
+pub mod stats;
 pub mod toys;
 pub mod two_factor;
 pub mod users;

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Statistics</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/submissive">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <div class="hidden sm:flex items-center gap-6 text-sm">
+        <a href="/submissive" class="text-slate-400 hover:text-slate-200">My Status</a>
+        <a href="/submissive/submit-proof" class="text-slate-400 hover:text-slate-200">Submit proof</a>
+        <a href="/submissive/toys" class="text-slate-400 hover:text-slate-200">My Toys</a>
+        <a href="/submissive/play-sessions" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="/submissive/limits" class="text-slate-400 hover:text-slate-200">My Limits</a>
+        <a href="/submissive/statistics" class="text-slate-100 font-medium">Statistics</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
+          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+            <span class="text-xs font-semibold">Notifications</span>
+            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <div id="notif-panel-list"></div>
+        </div>
+      </div>
+      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight">Statistics</h1>
+    <select id="period-select" class="bg-slate-900 border border-slate-800 rounded-lg text-sm px-3 py-2 text-slate-200">
+      <option value="all" selected>All time</option>
+      <option value="365d">Last 12 months</option>
+      <option value="90d">Last 90 days</option>
+      <option value="30d">Last 30 days</option>
+    </select>
+  </div>
+
+  <div id="stats-root">
+    <p class="text-sm text-slate-500">Loading…</p>
+  </div>
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  $('#logout-btn').on('click', function () {
+    $.ajax({ url: '/api/v1/auth/logout', method: 'POST', headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' } })
+      .always(function () { window.location = '/login'; });
+  });
+
+  function fmtDuration(seconds) {
+    seconds = Math.max(0, Math.round(seconds));
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return days + 'd' + (hours > 0 ? ' ' + hours + 'h' : '');
+    if (hours > 0) return hours + 'h' + (minutes > 0 ? ' ' + minutes + 'm' : '');
+    return minutes + 'm';
+  }
+
+  function statCard(label, value, sub) {
+    const $card = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+    $card.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text(label));
+    $card.append($('<p class="text-3xl font-bold text-slate-100">').text(value));
+    if (sub) $card.append($('<p class="text-xs text-slate-500 mt-1">').text(sub));
+    return $card;
+  }
+
+  function dl(rows) {
+    const $dl = $('<dl class="text-sm space-y-2.5">');
+    rows.forEach(function (r) {
+      const $row = $('<div class="flex items-center justify-between">');
+      $row.append($('<dt>').addClass(r.cls || 'text-slate-400').text(r.label));
+      $row.append($('<dd class="font-medium">').text(r.value));
+      $dl.append($row);
+    });
+    return $dl;
+  }
+
+  function renderStatistics($root, s) {
+    $root.empty();
+
+    $root.append($('<h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">').text('This period'));
+
+    const pctOfBest = s.personal_best_streak_seconds > 0
+      ? Math.min(100, Math.round((s.current_streak_seconds / s.personal_best_streak_seconds) * 100))
+      : 0;
+    const $hero = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-6 mb-4">');
+    const $heroTop = $('<div class="flex items-start justify-between mb-4">');
+    const $heroLeft = $('<div>');
+    $heroLeft.append($('<p class="text-sm text-slate-400">').text('Current chastity streak'));
+    $heroLeft.append($('<p class="text-4xl font-bold text-slate-100 mt-1">').text(fmtDuration(s.current_streak_seconds)));
+    $heroTop.append($heroLeft);
+    $hero.append($heroTop);
+    const $heroMeta = $('<div class="flex items-center justify-between text-xs mb-1.5">');
+    $heroMeta.append($('<span class="text-slate-400">').text(pctOfBest + '% of personal best (' + fmtDuration(s.personal_best_streak_seconds) + ')'));
+    if (s.current_streak_seconds < s.personal_best_streak_seconds) {
+      $heroMeta.append($('<span class="text-amber-400 font-medium">').text(fmtDuration(s.personal_best_streak_seconds - s.current_streak_seconds) + ' to beat it'));
+    }
+    $hero.append($heroMeta);
+    const $bar = $('<div class="h-2 rounded-full bg-slate-800 overflow-hidden">');
+    $bar.append($('<div class="h-full bg-sky-500 rounded-full">').css('width', pctOfBest + '%'));
+    $hero.append($bar);
+    $root.append($hero);
+
+    const $row1 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">');
+    $row1.append(statCard('Consistency', s.consistency_pct + '%', 'Time spent locked, this period'));
+    $row1.append(statCard('Best period', fmtDuration(s.session_lengths.longest_seconds), 'Longest completed session, this period'));
+    $root.append($row1);
+
+    const $row2 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">');
+    const $lengths = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+    $lengths.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Session lengths'));
+    $lengths.append(dl([
+      { label: 'Shortest', value: fmtDuration(s.session_lengths.shortest_seconds) },
+      { label: 'Longest', value: fmtDuration(s.session_lengths.longest_seconds) },
+      { label: 'Average', value: fmtDuration(s.session_lengths.average_seconds) },
+    ]));
+    $row2.append($lengths);
+    const $verif = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+    $verif.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Verification compliance'));
+    $verif.append(dl([
+      { label: 'Verified', value: s.verification.verified, cls: 'text-emerald-400' },
+      { label: 'Failed', value: s.verification.failed, cls: 'text-red-400' },
+      { label: 'Missed window', value: s.verification.missed, cls: 'text-slate-400' },
+    ]));
+    $row2.append($verif);
+    $root.append($row2);
+
+    const $row3 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">');
+    const $tasks = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+    $tasks.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Tasks'));
+    $tasks.append(dl([
+      { label: 'Assigned', value: s.tasks.assigned },
+      { label: 'Completed', value: s.tasks.completed, cls: 'text-emerald-400' },
+      { label: 'Failed', value: s.tasks.failed, cls: 'text-red-400' },
+      { label: 'Escalated from those', value: s.tasks.escalated, cls: 'text-amber-400' },
+    ]));
+    $row3.append($tasks);
+    const $rpt = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+    $rpt.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Rewards, punishments & timer'));
+    $rpt.append(dl([
+      { label: 'Rewards given', value: s.rewards_given },
+      { label: 'Punishments given', value: s.punishments_given },
+      { label: 'Added by punishments', value: fmtDuration(s.timer_adjustments.added_seconds), cls: 'text-amber-400' },
+      { label: 'Removed by Keyholder', value: fmtDuration(s.timer_adjustments.removed_seconds), cls: 'text-emerald-400' },
+    ]));
+    $row3.append($rpt);
+    $root.append($row3);
+
+    $root.append($('<h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">').text('Global (all time, regardless of filter)'));
+    const $row4 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">');
+    $row4.append(statCard('Longest session ever', fmtDuration(s.personal_best_streak_seconds), 'Your personal best, all time'));
+    $row4.append(statCard('Total locked (lifetime)', fmtDuration(s.lifetime_locked_seconds), 'Cumulative across every session'));
+    $root.append($row4);
+  }
+
+  function loadStats() {
+    const period = $('#period-select').val();
+    $.ajax({
+      url: '/api/v1/submissive/stats?period=' + period,
+      method: 'GET',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).done(function (stats) {
+      renderStatistics($('#stats-root'), stats);
+    }).fail(function () {
+      $('#stats-root').html('<p class="text-sm text-red-400">Could not load statistics.</p>');
+    });
+  }
+  $('#period-select').on('change', loadStats);
+  loadStats();
+</script>
+</body>
+</html>

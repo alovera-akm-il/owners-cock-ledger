@@ -571,6 +571,78 @@ async fn keyholder_recurring_tasks_page(
 }
 
 #[derive(Template)]
+#[template(path = "keyholder_submissive_statistics.html")]
+struct KeyholderSubmissiveStatisticsTemplate {
+    submissive_id: String,
+    submissive_display_name: String,
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/submissives/{id}/statistics` — client-side fetched,
+/// same shell pattern as `keyholder_toy_catalog_page`.
+async fn keyholder_submissive_statistics_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(submissive_id): Path<String>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    let keyholder_id = user.user_id.clone();
+    let target_id = submissive_id.clone();
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
+        let conn = pool.get()?;
+        if links::active_or_paused_link_for_keyholder(&conn, &keyholder_id, &target_id)?.is_none() {
+            return Ok(None);
+        }
+        let display_name: String = conn.query_row(
+            "SELECT display_name FROM users WHERE id = ?1",
+            params![target_id],
+            |row| row.get(0),
+        )?;
+        Ok(Some(display_name))
+    })
+    .await;
+
+    let Ok(Ok(Some(submissive_display_name))) = result else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    render(KeyholderSubmissiveStatisticsTemplate {
+        submissive_id,
+        submissive_display_name,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
+#[template(path = "submissive_statistics.html")]
+struct SubmissiveStatisticsTemplate {
+    display_name: String,
+    initial: String,
+}
+
+async fn submissive_statistics_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Submissive {
+        return Redirect::to("/dashboard").into_response();
+    }
+
+    render(SubmissiveStatisticsTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
 #[template(path = "submissive_toys.html")]
 struct SubmissiveToysTemplate {
     display_name: String,
@@ -1090,6 +1162,7 @@ pub fn router() -> axum::Router<db::AppState> {
             get(assignment_proof_page),
         )
         .route("/submissive/toys", get(submissive_toys_page))
+        .route("/submissive/statistics", get(submissive_statistics_page))
         .route("/keyholder/submissives/{id}", get(submissive_detail_page))
         .route(
             "/keyholder/submissives/{id}/toys",
@@ -1098,6 +1171,10 @@ pub fn router() -> axum::Router<db::AppState> {
         .route(
             "/keyholder/submissives/{id}/recurring-tasks",
             get(keyholder_recurring_tasks_page),
+        )
+        .route(
+            "/keyholder/submissives/{id}/statistics",
+            get(keyholder_submissive_statistics_page),
         )
         .route("/keyholder/review", get(review_queue_page))
         .route("/keyholder/safety-alerts", get(safety_alerts_page))

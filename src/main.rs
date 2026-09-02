@@ -125,7 +125,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::checkins::router())
                 .merge(api::play_sessions::router())
                 .merge(api::limits::router())
-                .merge(api::recurring_tasks::router()),
+                .merge(api::recurring_tasks::router())
+                .merge(api::stats::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -5177,6 +5178,104 @@ mod tests {
                 &format!("/api/v1/keyholder/recurring-tasks/{rule_id}"),
                 serde_json::json!({"active": false}),
             )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// `GET /submissive/stats` and `GET /keyholder/submissives/{id}/stats`
+    /// (03-api-design.md §15) — both share one aggregation, so a
+    /// completed task, an open confinement session, and a bad `period`
+    /// exercise the same numbers both roles are meant to see identically.
+    #[tokio::test]
+    async fn statistics_reflect_activity_identically_for_both_roles() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-stats@example.test",
+            "sub-stats@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, device) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "steel"}),
+            )
+            .await;
+        let device_id = device["id"].as_str().unwrap().to_string();
+        keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+
+        let (_, task) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/assignments"),
+                serde_json::json!({
+                    "kind": "task", "title": "Log it", "completion_type": "acknowledge_only",
+                    "default_deadline_seconds": 3600
+                }),
+            )
+            .await;
+        let task_id = task["id"].as_str().unwrap().to_string();
+        submissive
+            .patch(
+                &format!("/api/v1/submissive/assignments/{task_id}/acknowledge"),
+                serde_json::json!({}),
+            )
+            .await;
+        keyholder
+            .patch(
+                &format!("/api/v1/keyholder/assignments/{task_id}"),
+                serde_json::json!({"status": "completed"}),
+            )
+            .await;
+
+        // Bad period is rejected up front, for both roles.
+        let (status, _) = submissive.get("/api/v1/submissive/stats?period=6w").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/stats?period=6w"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        let (status, sub_view) = submissive.get("/api/v1/submissive/stats").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(sub_view["period"], "all");
+        assert_eq!(sub_view["tasks"]["assigned"], 1);
+        assert_eq!(sub_view["tasks"]["completed"], 1);
+        assert!(sub_view["current_streak_seconds"].as_i64().unwrap() >= 0);
+        assert!(sub_view["lifetime_locked_seconds"].as_i64().unwrap() >= 0);
+
+        // A Keyholder sees exactly the same shape for the same submissive
+        // — one shared mental model of "the numbers," not two rollups.
+        let (status, kh_view) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/stats"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(kh_view, sub_view);
+
+        // Ownership scoping: an unrelated Keyholder can't see this submissive's stats.
+        seed_keyholder(
+            &pool,
+            "kh-stats-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-stats-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_kh
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/stats"))
             .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
