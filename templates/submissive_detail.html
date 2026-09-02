@@ -158,6 +158,17 @@
     <button id="save-notes-btn" class="mt-2 text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save notes</button>
   </div>
 
+  <!-- structured limits (read-only, same visibility as the free-text limits above) -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold">Rated Limits</p>
+      <a href="/keyholder/limit-items" class="text-xs text-amber-500 hover:text-amber-400">Manage catalog →</a>
+    </div>
+    <div id="limits-view" class="space-y-1.5 text-sm">
+      <p class="text-slate-500 text-xs">Loading…</p>
+    </div>
+  </div>
+
   {% if points_enabled %}
   <!-- points -->
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -374,6 +385,29 @@
     $view.append(fieldRow('Emergency contact', p.emergency_contact));
     $view.append(fieldRow('Timezone', p.timezone));
     $('#keyholder-notes').val(p.keyholder_notes || '');
+  });
+
+  const RATING_BADGE = {
+    hard: 'text-[11px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full',
+    soft: 'text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full',
+    okay: 'text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full',
+  };
+  apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/limit-ratings').done(function (list) {
+    const $view = $('#limits-view').empty();
+    const rated = list.filter(i => i.rating);
+    if (rated.length === 0) {
+      $view.append($('<p class="text-slate-500 text-xs">').text('Nothing rated yet.'));
+      return;
+    }
+    rated.forEach(function (item) {
+      const $row = $('<div class="flex items-center justify-between">');
+      const $left = $('<span>').text(item.label + ' ');
+      $left.append($('<span class="text-slate-500 text-xs">').text('(' + item.category + ')'));
+      $row.append($left);
+      $row.append($('<span>').attr('class', RATING_BADGE[item.rating]).text(item.rating));
+      $view.append($row);
+      if (item.notes) $view.append($('<p class="text-xs text-slate-500 mb-1.5">').text(item.notes));
+    });
   });
 
   function showProfileMsg(text, ok) {

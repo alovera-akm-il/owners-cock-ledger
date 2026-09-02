@@ -26,6 +26,7 @@
         <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
         <a href="/keyholder/checkin-templates" class="text-slate-400 hover:text-slate-200">Check-ins</a>
         <a href="/keyholder/play-session-templates" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="/keyholder/limit-items" class="text-slate-400 hover:text-slate-200">Limits</a>
         <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
       </div>
     </div>
@@ -76,6 +77,7 @@
       <input id="f-name" type="text" placeholder="Name" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
       <input id="f-category" type="text" placeholder="Category (e.g. Vibrator, Chastity, Impact)" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
     </div>
+    <div id="limit-warning" class="hidden rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300"></div>
     <div class="grid sm:grid-cols-3 gap-3">
       <input id="f-material" type="text" placeholder="Material" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
       <input id="f-brand" type="text" placeholder="Brand" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
@@ -120,10 +122,34 @@
     apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
   });
 
+  // Advisory, non-blocking cross-check against this submissive's
+  // hard/soft-rated structured limits (06-future-extensions.md §9) —
+  // never a hard block, the Keyholder remains the final authority.
+  let hardSoftRatedTerms = null;
+  function loadRatedTerms() {
+    apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/limit-ratings').done(function (list) {
+      hardSoftRatedTerms = list
+        .filter(function (i) { return i.rating === 'hard' || i.rating === 'soft'; })
+        .map(function (i) { return { term: (i.category + ' ' + i.label).toLowerCase(), rating: i.rating, label: i.label }; });
+    });
+  }
+  loadRatedTerms();
+
+  $('#f-category').on('input', function () {
+    const value = $(this).val().trim().toLowerCase();
+    $('#limit-warning').addClass('hidden');
+    if (!value || !hardSoftRatedTerms) return;
+    const hit = hardSoftRatedTerms.find(function (t) { return t.term.indexOf(value) !== -1 || value.indexOf(t.label.toLowerCase()) !== -1; });
+    if (hit) {
+      $('#limit-warning').text('Heads up: this touches a listed ' + hit.rating + ' limit ("' + hit.label + '"). Not a block — just worth checking in about.').removeClass('hidden');
+    }
+  });
+
   function resetForm() {
     $('#edit-toy-id').val('');
     $('#form-heading').text('Add toy');
     $('#form-message').addClass('hidden');
+    $('#limit-warning').addClass('hidden');
     ['name', 'category', 'material', 'brand', 'color', 'size-notes', 'storage-location', 'care-instructions', 'usage-notes', 'tags']
       .forEach(function (f) { $('#f-' + f).val(''); });
   }

@@ -3,6 +3,7 @@ pub mod audit;
 pub mod chastity;
 pub mod checkins;
 pub mod invites;
+pub mod limits;
 pub mod links;
 pub mod notifications;
 pub mod password_reset;

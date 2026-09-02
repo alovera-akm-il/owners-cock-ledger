@@ -123,7 +123,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::toys::router())
                 .merge(api::points::router())
                 .merge(api::checkins::router())
-                .merge(api::play_sessions::router()),
+                .merge(api::play_sessions::router())
+                .merge(api::limits::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -4651,5 +4652,176 @@ mod tests {
             collected.contains("event: session_ended"),
             "expected a session_ended SSE event, got: {collected}"
         );
+    }
+
+    /// 06-future-extensions.md §9: the structured hard/soft limits
+    /// catalog and per-submissive ratings — global seed visibility, a
+    /// Keyholder's own additions scoped to only their own submissives,
+    /// the submissive-owned rating lifecycle (set/upsert/clear), and
+    /// the same read-only visibility split the free-text limits fields
+    /// already have.
+    #[tokio::test]
+    async fn structured_limits_catalog_and_rating_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-limits@example.test",
+            "sub-limits@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        // Global seed items are visible to a fresh Keyholder with no
+        // additions of their own yet.
+        let (status, items) = keyholder.get("/api/v1/keyholder/limit-items").await;
+        assert_eq!(status, StatusCode::OK);
+        let items = items.as_array().unwrap();
+        assert!(items.iter().any(|i| i["id"] == "seed-impact-paddle"));
+        assert!(items.iter().all(|i| i["is_global"] == true));
+
+        // Keyholder adds their own item.
+        let (status, custom) = keyholder
+            .post(
+                "/api/v1/keyholder/limit-items",
+                serde_json::json!({"category": "House rules", "label": "No phone during scenes"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(custom["is_global"], false);
+        let custom_id = custom["id"].as_str().unwrap().to_string();
+
+        // A second, unrelated Keyholder never sees it, and can't edit it.
+        seed_keyholder(
+            &pool,
+            "kh-limits-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-limits-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (_, other_items) = other_kh.get("/api/v1/keyholder/limit-items").await;
+        assert!(
+            !other_items
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|i| i["id"] == custom_id)
+        );
+        let (status, _) = other_kh
+            .patch(
+                &format!("/api/v1/keyholder/limit-items/{custom_id}"),
+                serde_json::json!({"label": "hijacked"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        // Nor can anyone edit a global seed item through this path.
+        let (status, _) = keyholder
+            .patch(
+                "/api/v1/keyholder/limit-items/seed-impact-paddle",
+                serde_json::json!({"label": "hijacked"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // Submissive sees both the seed items and the Keyholder's own
+        // addition, all unrated so far.
+        let (status, sub_items) = submissive.get("/api/v1/submissive/limit-items").await;
+        assert_eq!(status, StatusCode::OK);
+        let sub_items = sub_items.as_array().unwrap();
+        assert!(sub_items.iter().any(|i| i["id"] == custom_id));
+        assert!(sub_items.iter().all(|i| i["rating"].is_null()));
+
+        // Invalid rating value is rejected.
+        let (status, _) = submissive
+            .request(
+                "PUT",
+                "/api/v1/submissive/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "bogus"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Submissive rates the seed item hard and their own custom item soft.
+        let (status, _) = submissive
+            .request(
+                "PUT",
+                "/api/v1/submissive/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "hard", "notes": "never"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = submissive
+            .request(
+                "PUT",
+                &format!("/api/v1/submissive/limit-ratings/{custom_id}"),
+                Some(serde_json::json!({"rating": "soft"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Upserting the same item replaces rather than duplicating.
+        let (status, _) = submissive
+            .request(
+                "PUT",
+                "/api/v1/submissive/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "soft"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, sub_items) = submissive.get("/api/v1/submissive/limit-items").await;
+        let paddle = sub_items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "seed-impact-paddle")
+            .unwrap();
+        assert_eq!(paddle["rating"], "soft");
+
+        // The Keyholder sees the same ratings, read-only, for this submissive.
+        let (status, kh_view) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/limit-ratings"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let kh_view = kh_view.as_array().unwrap();
+        let paddle = kh_view
+            .iter()
+            .find(|i| i["id"] == "seed-impact-paddle")
+            .unwrap();
+        assert_eq!(paddle["rating"], "soft");
+        let custom_view = kh_view.iter().find(|i| i["id"] == custom_id).unwrap();
+        assert_eq!(custom_view["rating"], "soft");
+        // Still-unrated items show up too, explicitly not-rated rather
+        // than omitted.
+        assert!(
+            kh_view
+                .iter()
+                .any(|i| i["id"] == "seed-impact-cane" && i["rating"].is_null())
+        );
+
+        // Clearing a rating returns it to "not discussed."
+        let (status, _) = submissive
+            .request(
+                "DELETE",
+                "/api/v1/submissive/limit-ratings/seed-impact-paddle",
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, sub_items) = submissive.get("/api/v1/submissive/limit-items").await;
+        let paddle = sub_items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "seed-impact-paddle")
+            .unwrap();
+        assert!(paddle["rating"].is_null());
     }
 }

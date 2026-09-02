@@ -8,6 +8,7 @@ pub mod auth;
 pub mod chastity;
 pub mod checkins;
 pub mod invites;
+pub mod limits;
 pub mod notifications;
 pub mod play_sessions;
 pub mod points;

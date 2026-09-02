@@ -98,6 +98,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0026_points.sql")),
         M::up(include_str!("../../migrations/0027_checkins.sql")),
         M::up(include_str!("../../migrations/0028_play_sessions.sql")),
+        M::up(include_str!("../../migrations/0029_limits.sql")),
     ])
 }
 
