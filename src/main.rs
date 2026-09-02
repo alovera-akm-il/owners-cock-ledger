@@ -289,6 +289,31 @@ fn run_deadline_sweep_tick(pool: &db::Pool) {
             tracing::error!(error = %e, "still-paused sweep tick failed");
         }
     }
+
+    match domain::links::run_end_request_escalation_sweep_tick(&conn) {
+        Ok(escalations) => {
+            for req in escalations {
+                let _ = notify::notify_sync(
+                    pool,
+                    &conn,
+                    notify::Event {
+                        user_id: &req.keyholder_id,
+                        link_id: Some(&req.link_id),
+                        notification_type: "link.end_request_reminder",
+                        title: "Still waiting on your response to an end request",
+                        body: req.reason.as_deref(),
+                        link_path: None,
+                        related_entity_type: Some("keyholder_submissive_links"),
+                        related_entity_id: Some(&req.link_id),
+                        push: true,
+                    },
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "end-request escalation sweep tick failed");
+        }
+    }
 }
 
 fn spawn_deadline_sweeper_task(pool: db::Pool) {
@@ -2294,6 +2319,114 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         // The ended link no longer shows up in the active roster.
+        let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
+        assert_eq!(roster.as_array().unwrap().len(), 0);
+    }
+
+    /// 06-future-extensions.md §2: self-service link ending, the
+    /// request-not-action shape. Covers the full round trip — request,
+    /// duplicate rejection, the Keyholder's read side, decline (with
+    /// the note reaching the submissive, and the link staying active),
+    /// re-request after a decline, withdrawal, and finally a request
+    /// that's actually accepted (ending the link and clearing the
+    /// request fields as a side effect).
+    #[tokio::test]
+    async fn link_end_request_lifecycle_request_decline_withdraw_and_accept() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-endreq@example.test",
+            "sub-endreq@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        // Requesting works and notifies the Keyholder.
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/link/end-request",
+                serde_json::json!({"reason": "need some space"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "link.end_requested")
+        );
+
+        // A second request while one's pending is rejected.
+        let (status, _) = submissive
+            .post("/api/v1/submissive/link/end-request", serde_json::json!({}))
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // The Keyholder can see it.
+        let (status, pending) = keyholder.get("/api/v1/keyholder/link-end-requests").await;
+        assert_eq!(status, StatusCode::OK);
+        let pending = pending.as_array().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0]["submissive_id"], sub_id);
+        assert_eq!(pending[0]["reason"], "need some space");
+        assert!(pending[0]["escalated_at"].is_null());
+
+        // Declining clears it, delivers the note, and leaves the link active.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link/end-request/decline"),
+                serde_json::json!({"response_note": "let's talk first"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, pending) = keyholder.get("/api/v1/keyholder/link-end-requests").await;
+        assert_eq!(pending.as_array().unwrap().len(), 0);
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        let declined = sub_feed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["type"] == "link.end_request_declined")
+            .expect("submissive was notified of the decline");
+        assert_eq!(declined["body"], "let's talk first");
+        let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
+        assert_eq!(roster.as_array().unwrap().len(), 1);
+
+        // Declining isn't final — a fresh request reopens it.
+        let (status, _) = submissive
+            .post("/api/v1/submissive/link/end-request", serde_json::json!({}))
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, pending) = keyholder.get("/api/v1/keyholder/link-end-requests").await;
+        assert_eq!(pending.as_array().unwrap().len(), 1);
+
+        // The submissive can withdraw their own request at any time.
+        let (status, _) = submissive
+            .request("DELETE", "/api/v1/submissive/link/end-request", None)
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, pending) = keyholder.get("/api/v1/keyholder/link-end-requests").await;
+        assert_eq!(pending.as_array().unwrap().len(), 0);
+        // Withdrawing when nothing's pending is a harmless no-op.
+        let (status, _) = submissive
+            .request("DELETE", "/api/v1/submissive/link/end-request", None)
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Accepting: the existing PATCH .../link {status:"ended"} route
+        // is the acceptance path — no separate "approve" endpoint.
+        submissive
+            .post("/api/v1/submissive/link/end-request", serde_json::json!({}))
+            .await;
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link"),
+                serde_json::json!({"status": "ended"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
         assert_eq!(roster.as_array().unwrap().len(), 0);
     }

@@ -128,7 +128,50 @@
       </select>
       <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-2">Assign</button>
     </form>
-    <p class="text-xs text-slate-600 mt-2">Ad-hoc (not-from-catalog) assignments aren't in this UI yet — build a template first.</p>
+    <button id="toggle-adhoc-btn" type="button" class="text-xs text-slate-500 hover:text-slate-300 mt-2">+ Assign ad-hoc (no catalog template) →</button>
+
+    <form id="adhoc-form" class="hidden space-y-3 mt-3 pt-3 border-t border-slate-800">
+      <div id="adhoc-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+      <select id="adhoc-kind" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="task">Task</option>
+        <option value="reward">Reward</option>
+        <option value="punishment">Punishment</option>
+      </select>
+      <input id="adhoc-title" type="text" placeholder="Title" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <textarea id="adhoc-description" rows="2" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+
+      <div id="adhoc-task-fields" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <select id="adhoc-completion-type" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            <option value="acknowledge_only">Acknowledge only</option>
+            <option value="proof_required">Proof required</option>
+          </select>
+          <input id="adhoc-deadline-hours" type="number" min="0.5" step="0.5" value="24" placeholder="Deadline (hours)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div id="adhoc-proof-media-wrap" class="hidden flex gap-2 text-sm">
+          <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+            <input type="checkbox" class="adhoc-media" value="photo"> Photo
+          </label>
+          <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+            <input type="checkbox" class="adhoc-media" value="video"> Video
+          </label>
+          <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+            <input type="checkbox" class="adhoc-media" value="voice"> Voice
+          </label>
+        </div>
+      </div>
+
+      <div id="adhoc-effect-fields" class="hidden space-y-2">
+        <div class="flex gap-3 text-sm">
+          <label class="flex items-center gap-1.5"><input type="radio" name="adhoc-effect" value="grant" checked> Just a record</label>
+          <label id="adhoc-effect-time-label" class="flex items-center gap-1.5"><input type="radio" name="adhoc-effect" value="time_extension"> Time extension</label>
+        </div>
+        <input id="adhoc-effect-hours" type="number" min="0" step="0.5" placeholder="Hours" class="hidden w-full max-w-[10rem] bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+
+      <input id="adhoc-points-delta" type="number" step="1" placeholder="Points delta (optional)" class="w-full max-w-[10rem] bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-2">Assign ad-hoc</button>
+    </form>
   </div>
 
   <!-- open assignments -->
@@ -141,9 +184,61 @@
 
   <!-- verification policy -->
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
-    <p class="text-sm font-semibold mb-2">Verification schedule</p>
-    <p class="text-sm text-slate-400">{{ frequency_kind }}</p>
-    <p class="text-xs text-slate-600 mt-1">Full schedule editing isn't in this build yet — the default is on-demand-only.</p>
+    <p class="text-sm font-semibold mb-3">Verification schedule</p>
+    <div id="policy-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
+    <div class="space-y-3">
+      <select id="policy-frequency-kind" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="on_demand_only">On demand only — no scheduled prompts</option>
+        <option value="interval_hours">Every N hours</option>
+        <option value="fixed_times_daily">Fixed times daily</option>
+        <option value="random_within_window">Random time within a daily window</option>
+      </select>
+
+      <div id="policy-interval-fields" class="hidden">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Every how many hours</label>
+        <input id="policy-interval-hours" type="number" min="1" step="1" value="24" class="w-full max-w-[10rem] bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+
+      <div id="policy-fixed-times-fields" class="hidden grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">First time (UTC)</label>
+          <input id="policy-fixed-time-1" type="time" value="09:00" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Second time (UTC, optional)</label>
+          <input id="policy-fixed-time-2" type="time" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+      </div>
+
+      <div id="policy-window-fields" class="hidden grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Window start (UTC)</label>
+          <input id="policy-window-start" type="time" value="08:00" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Window end (UTC)</label>
+          <input id="policy-window-end" type="time" value="22:00" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+      </div>
+
+      <label id="policy-allow-on-demand-wrap" class="hidden flex items-center gap-2 text-sm">
+        <input id="policy-allow-on-demand" type="checkbox">
+        Also allow requesting a code on demand, outside the schedule
+      </label>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Code expires after (minutes)</label>
+          <input id="policy-code-ttl" type="number" min="1" step="1" value="15" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Grace period (minutes)</label>
+          <input id="policy-grace-period" type="number" min="0" step="1" value="10" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+      </div>
+
+      <button id="save-policy-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save schedule</button>
+    </div>
   </div>
 
   <!-- profile -->
@@ -197,6 +292,18 @@
   {% endif %}
 
   <!-- link settings -->
+  <div id="end-request-panel" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
+    <p id="end-request-heading" class="text-sm font-semibold text-amber-400 mb-1">{{ display_name }} has requested to end the link</p>
+    <p id="end-request-reason" class="text-sm text-slate-300 mb-1"></p>
+    <p id="end-request-meta" class="text-xs text-slate-500 mb-3"></p>
+    <div id="end-request-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
+    <textarea id="decline-note" rows="2" placeholder="Optional note back to them (why, or what you'd like to talk about first)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-300 mb-2"></textarea>
+    <div class="flex items-center gap-3">
+      <button id="decline-end-request-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-2">Decline (keep the link)</button>
+      <span class="text-xs text-slate-500">Or use "End link" below to accept — ending already is the approval.</span>
+    </div>
+  </div>
+
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
     <div class="flex items-center justify-between mb-3">
       <p class="text-sm font-semibold">Link settings</p>
@@ -337,6 +444,71 @@
       .fail(function (xhr) { showAssignMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not assign.', false); });
   });
 
+  // ---------- Ad-hoc assignment (no catalog template) ----------
+  $('#toggle-adhoc-btn').on('click', function () {
+    $('#adhoc-form').toggleClass('hidden');
+  });
+
+  function updateAdhocFieldVisibility() {
+    const kind = $('#adhoc-kind').val();
+    $('#adhoc-task-fields').toggleClass('hidden', kind !== 'task');
+    $('#adhoc-effect-fields').toggleClass('hidden', kind === 'task');
+    if (kind === 'reward') {
+      $('#adhoc-effect-time-label').html('<input type="radio" name="adhoc-effect" value="time_reduction"> Time reduction');
+    } else if (kind === 'punishment') {
+      $('#adhoc-effect-time-label').html('<input type="radio" name="adhoc-effect" value="time_extension"> Time extension');
+    }
+  }
+  $('#adhoc-kind').on('change', updateAdhocFieldVisibility);
+  updateAdhocFieldVisibility();
+
+  $('#adhoc-completion-type').on('change', function () {
+    $('#adhoc-proof-media-wrap').toggleClass('hidden', $(this).val() !== 'proof_required');
+  });
+
+  $(document).on('change', 'input[name="adhoc-effect"]', function () {
+    $('#adhoc-effect-hours').toggleClass('hidden', $(this).val() === 'grant');
+  });
+
+  function showAdhocMsg(text, ok) {
+    $('#adhoc-message').attr('class', 'rounded-lg px-3 py-2 text-xs ' + (ok ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300' : 'bg-red-600/10 border border-red-600/30 text-red-300')).removeClass('hidden').text(text);
+  }
+
+  $('#adhoc-form').on('submit', function (e) {
+    e.preventDefault();
+    const kind = $('#adhoc-kind').val();
+    const title = $('#adhoc-title').val().trim();
+    if (!title) { showAdhocMsg('Title is required.', false); return; }
+    const payload = { kind: kind, title: title, description: $('#adhoc-description').val() || null };
+    const pointsDelta = parseInt($('#adhoc-points-delta').val(), 10);
+    if (!isNaN(pointsDelta)) payload.points_delta = pointsDelta;
+
+    if (kind === 'task') {
+      const completionType = $('#adhoc-completion-type').val();
+      payload.completion_type = completionType;
+      if (completionType === 'proof_required') {
+        const media = $('.adhoc-media:checked').map(function () { return this.value; }).get();
+        if (media.length === 0) { showAdhocMsg('Pick at least one accepted proof type.', false); return; }
+        payload.proof_media_types = media;
+      }
+      const hours = parseFloat($('#adhoc-deadline-hours').val());
+      if (!isNaN(hours)) payload.default_deadline_seconds = Math.round(hours * 3600);
+    } else {
+      const effect = $('input[name="adhoc-effect"]:checked').val();
+      payload.effect_kind = effect;
+      if (effect === 'time_extension' || effect === 'time_reduction') {
+        const hours = parseFloat($('#adhoc-effect-hours').val());
+        if (isNaN(hours)) { showAdhocMsg('Enter the number of hours.', false); return; }
+        if (effect === 'time_extension') payload.time_extension_seconds = Math.round(hours * 3600);
+        else payload.time_reduction_seconds = Math.round(hours * 3600);
+      }
+    }
+
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/assignments', payload)
+      .done(function () { window.location.reload(); })
+      .fail(function (xhr) { showAdhocMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not assign.', false); });
+  });
+
   function renderAssignments(list) {
     const $list = $('#assignments-list').empty();
     const open = list.filter(a => !['completed', 'failed', 'revoked', 'applied'].includes(a.status));
@@ -369,6 +541,74 @@
   }
 
   apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/assignments').done(renderAssignments);
+
+  // ---------- Verification schedule ----------
+  function updatePolicyFieldVisibility() {
+    const kind = $('#policy-frequency-kind').val();
+    $('#policy-interval-fields').toggleClass('hidden', kind !== 'interval_hours');
+    $('#policy-fixed-times-fields').toggleClass('hidden', kind !== 'fixed_times_daily');
+    $('#policy-window-fields').toggleClass('hidden', kind !== 'random_within_window');
+    $('#policy-allow-on-demand-wrap').toggleClass('hidden', kind === 'on_demand_only');
+  }
+  $('#policy-frequency-kind').on('change', updatePolicyFieldVisibility);
+
+  apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/verification-policy').done(function (p) {
+    $('#policy-frequency-kind').val(p.frequency_kind);
+    $('#policy-code-ttl').val(Math.round(p.code_ttl_seconds / 60));
+    $('#policy-grace-period').val(Math.round(p.grace_period_seconds / 60));
+    const v = p.frequency_value || {};
+    if (p.frequency_kind === 'interval_hours' && v.hours) $('#policy-interval-hours').val(v.hours);
+    if (p.frequency_kind === 'fixed_times_daily' && v.times) {
+      $('#policy-fixed-time-1').val(v.times[0] || '');
+      $('#policy-fixed-time-2').val(v.times[1] || '');
+    }
+    if (p.frequency_kind === 'random_within_window') {
+      if (v.start) $('#policy-window-start').val(v.start);
+      if (v.end) $('#policy-window-end').val(v.end);
+    }
+    $('#policy-allow-on-demand').prop('checked', !!v.allow_on_demand);
+    updatePolicyFieldVisibility();
+  });
+
+  $('#save-policy-btn').on('click', function () {
+    $('#policy-message').addClass('hidden');
+    const kind = $('#policy-frequency-kind').val();
+    let frequencyValue = {};
+    if (kind === 'interval_hours') {
+      frequencyValue = { hours: parseInt($('#policy-interval-hours').val(), 10) || 24 };
+    } else if (kind === 'fixed_times_daily') {
+      const times = [$('#policy-fixed-time-1').val(), $('#policy-fixed-time-2').val()].filter(Boolean);
+      if (times.length === 0) {
+        $('#policy-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-red-600/10 border border-red-600/30 text-red-300').text('At least one time is required.').removeClass('hidden');
+        return;
+      }
+      frequencyValue = { times: times };
+    } else if (kind === 'random_within_window') {
+      const start = $('#policy-window-start').val(), end = $('#policy-window-end').val();
+      if (!start || !end) {
+        $('#policy-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-red-600/10 border border-red-600/30 text-red-300').text('Both window start and end are required.').removeClass('hidden');
+        return;
+      }
+      frequencyValue = { start: start, end: end };
+    }
+    if (kind !== 'on_demand_only') {
+      frequencyValue.allow_on_demand = $('#policy-allow-on-demand').is(':checked');
+    }
+    const payload = {
+      frequency_kind: kind,
+      frequency_value: frequencyValue,
+      code_ttl_seconds: Math.round((parseFloat($('#policy-code-ttl').val()) || 15) * 60),
+      grace_period_seconds: Math.round((parseFloat($('#policy-grace-period').val()) || 10) * 60),
+    };
+    apiCall('PUT', '/api/v1/keyholder/submissives/' + subId + '/verification-policy', payload)
+      .done(function () {
+        $('#policy-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-emerald-600/10 border border-emerald-600/30 text-emerald-300').text('Saved.').removeClass('hidden');
+      })
+      .fail(function (xhr) {
+        const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not save the schedule.';
+        $('#policy-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-red-600/10 border border-red-600/30 text-red-300').text(msg).removeClass('hidden');
+      });
+  });
 
   function fieldRow(label, value) {
     return $('<div>').append(
@@ -407,6 +647,36 @@
       $row.append($('<span>').attr('class', RATING_BADGE[item.rating]).text(item.rating));
       $view.append($row);
       if (item.notes) $view.append($('<p class="text-xs text-slate-500 mb-1.5">').text(item.notes));
+    });
+  });
+
+  function loadEndRequest() {
+    apiCall('GET', '/api/v1/keyholder/link-end-requests').done(function (list) {
+      const req = list.find(function (r) { return r.submissive_id === subId; });
+      if (!req) {
+        $('#end-request-panel').addClass('hidden');
+        return;
+      }
+      $('#end-request-reason').text(req.reason || 'No reason given.');
+      const requestedAgo = new Date(req.requested_at).toLocaleString();
+      $('#end-request-meta').text(
+        'Requested ' + requestedAgo + (req.escalated_at ? ' — overdue for a response.' : '.')
+      );
+      $('#end-request-panel').removeClass('hidden');
+    });
+  }
+  loadEndRequest();
+
+  $('#decline-end-request-btn').on('click', function () {
+    $('#end-request-message').addClass('hidden');
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/link/end-request/decline', {
+      response_note: $('#decline-note').val() || null,
+    }).done(function () {
+      $('#decline-note').val('');
+      loadEndRequest();
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not decline.';
+      $('#end-request-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-red-600/10 border border-red-600/30 text-red-300').text(msg).removeClass('hidden');
     });
   });
 

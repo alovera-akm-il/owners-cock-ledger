@@ -16,7 +16,7 @@ use crate::db::Pool;
 use crate::domain::chastity::{confinement, devices};
 use crate::domain::points;
 use crate::domain::rewards_punishments::{assignments, templates};
-use crate::domain::verification::{codes, policy};
+use crate::domain::verification::codes;
 use crate::domain::{links, proofs};
 
 fn render<T: Template>(tpl: T) -> Response {
@@ -283,7 +283,6 @@ struct SubmissiveDetailTemplate {
     target_release_text: Option<String>,
     overdue: bool,
     clock_paused: bool,
-    frequency_kind: String,
     keyholder_display_name: String,
     keyholder_initial: String,
     link_id: String,
@@ -330,7 +329,6 @@ async fn submissive_detail_page(
             })
             .collect::<Vec<_>>();
         let status = confinement::status_for(&conn, &target_id)?;
-        let p = policy::get_for_link(&conn, &link_id)?;
         let link_status: String = conn.query_row(
             "SELECT status FROM keyholder_submissive_links WHERE id = ?1",
             params![link_id],
@@ -342,7 +340,6 @@ async fn submissive_detail_page(
             display_name,
             device_list,
             status,
-            p,
             link_id,
             link_status,
             settings,
@@ -355,7 +352,6 @@ async fn submissive_detail_page(
         display_name,
         device_list,
         status,
-        p,
         link_id,
         link_status,
         settings,
@@ -374,7 +370,6 @@ async fn submissive_detail_page(
         target_release_text: status.time_remaining_seconds.map(fmt_duration),
         overdue: status.overdue,
         clock_paused: status.clock_paused,
-        frequency_kind: p.map(|p| p.frequency_kind).unwrap_or_default(),
         link_id,
         link_status,
         self_report_allowed: settings.self_report_allowed,

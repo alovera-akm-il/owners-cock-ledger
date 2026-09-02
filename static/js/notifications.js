@@ -72,6 +72,61 @@
     });
   }
 
+  // Impossible-to-miss escalated link-end-request banner
+  // (06-future-extensions.md §2) — checked on every authenticated
+  // page load via this shared script, not just a dismissible
+  // notification. Keyholder-only, so this gates on the caller's own
+  // role first rather than firing the (guaranteed-403-for-a-
+  // submissive) request unconditionally — a 403 would still be
+  // handled fine by `.fail()`, but it'd also show up as a "failed to
+  // load resource" line in the browser console on every single
+  // submissive page load, which this avoids entirely.
+  function initEndRequestBanner() {
+    apiCall('GET', '/api/v1/auth/me').done(function (me) {
+      if (me.role !== 'keyholder') {
+        return;
+      }
+      loadEndRequestBanner();
+    });
+  }
+
+  function loadEndRequestBanner() {
+    apiCall('GET', '/api/v1/keyholder/link-end-requests')
+      .done(function (list) {
+        const escalated = (list || []).filter(function (r) {
+          return r.escalated_at;
+        });
+        if (escalated.length === 0) {
+          return;
+        }
+        const names = escalated
+          .map(function (r) {
+            return r.submissive_display_name;
+          })
+          .join(', ');
+        const $banner = $('<div>')
+          .attr('id', 'end-request-escalation-banner')
+          .attr(
+            'class',
+            'bg-red-950 border-b border-red-800 text-red-200 text-sm px-4 py-2.5 flex items-center justify-center gap-2 text-center'
+          )
+          .append(
+            $('<span>').text(
+              (escalated.length === 1 ? names : escalated.length + ' submissives') +
+                ' requested to end the link over a week ago and you haven’t responded yet.'
+            )
+          )
+          .append(
+            $('<a href="/dashboard" class="underline font-semibold shrink-0">').text('Review now →')
+          );
+        $('body').prepend($banner);
+      })
+      .fail(function () {
+        // Only reachable after the role check above already passed —
+        // a network hiccup here just means no banner this load.
+      });
+  }
+
   function initBell() {
     if ($('#notif-bell-btn').length === 0) {
       return;
@@ -169,5 +224,6 @@
   $(function () {
     initBell();
     initPushPrompt();
+    initEndRequestBanner();
   });
 })();

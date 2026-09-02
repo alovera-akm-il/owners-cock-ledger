@@ -6,6 +6,8 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::domain::audit;
+
 const DEFAULT_CODE_TTL_SECS: i64 = 15 * 60;
 const DEFAULT_GRACE_PERIOD_SECS: i64 = 10 * 60;
 
@@ -19,6 +21,24 @@ pub fn active_link_for_submissive(
     conn.query_row(
         "SELECT id FROM keyholder_submissive_links
          WHERE submissive_id = ?1 AND status = 'active'",
+        params![submissive_id],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
+/// Like `active_link_for_submissive`, but also reaches a `paused`
+/// link — needed for the end-request flow (06-future-extensions.md
+/// §2), which stays reachable through a pause the same way it stays
+/// reachable through one on the Keyholder side
+/// (`active_or_paused_link_for_keyholder`).
+pub fn active_or_paused_link_for_submissive(
+    conn: &Connection,
+    submissive_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT id FROM keyholder_submissive_links
+         WHERE submissive_id = ?1 AND status IN ('active', 'paused')",
         params![submissive_id],
         |row| row.get(0),
     )
@@ -108,6 +128,248 @@ pub fn force_end(conn: &Connection, link_id: &str) -> rusqlite::Result<bool> {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum RequestEndError {
+    #[error("no active or paused link")]
+    NoLink,
+    #[error("a request is already pending")]
+    AlreadyPending,
+    #[error(transparent)]
+    Db(#[from] rusqlite::Error),
+}
+
+/// `POST /submissive/link/end-request` (06-future-extensions.md §2) —
+/// a request, not an action: doesn't itself change `status`, doesn't
+/// touch anything else operative about the link. Returns the link id
+/// so the caller can resolve the Keyholder to notify.
+pub fn request_end(
+    conn: &Connection,
+    submissive_id: &str,
+    reason: Option<&str>,
+) -> Result<String, RequestEndError> {
+    let Some(link_id) = active_or_paused_link_for_submissive(conn, submissive_id)? else {
+        return Err(RequestEndError::NoLink);
+    };
+    let already_pending: bool = conn.query_row(
+        "SELECT end_requested_at IS NOT NULL FROM keyholder_submissive_links WHERE id = ?1",
+        params![link_id],
+        |row| row.get(0),
+    )?;
+    if already_pending {
+        return Err(RequestEndError::AlreadyPending);
+    }
+    conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET end_requested_at = ?1, end_requested_by_user_id = ?2, end_request_reason = ?3,
+             end_request_escalated_at = NULL
+         WHERE id = ?4",
+        params![crate::auth::session::now(), submissive_id, reason, link_id],
+    )?;
+    Ok(link_id)
+}
+
+/// `DELETE /submissive/link/end-request` — the submissive withdraws
+/// their own request at any time, no confirmation from the Keyholder
+/// needed. Returns the link id if there was something to withdraw,
+/// `None` if there wasn't (no link, or nothing pending) — either way
+/// a no-op the caller can treat as success.
+pub fn withdraw_end_request(
+    conn: &Connection,
+    submissive_id: &str,
+) -> rusqlite::Result<Option<String>> {
+    let Some(link_id) = active_or_paused_link_for_submissive(conn, submissive_id)? else {
+        return Ok(None);
+    };
+    let affected = conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET end_requested_at = NULL, end_requested_by_user_id = NULL,
+             end_request_reason = NULL, end_request_escalated_at = NULL
+         WHERE id = ?1 AND end_requested_at IS NOT NULL",
+        params![link_id],
+    )?;
+    Ok(if affected > 0 { Some(link_id) } else { None })
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DeclineEndRequestError {
+    #[error("no such link, or nothing pending on it")]
+    NotFound,
+    #[error(transparent)]
+    Db(#[from] rusqlite::Error),
+}
+
+/// `POST /keyholder/submissives/{id}/link/end-request/decline` —
+/// clears the request without ending the link; audit-logged so a
+/// dismissed request is never just silently gone. Declining isn't
+/// final — a fresh `request_end` can always reopen it. Returns the
+/// submissive id so the caller can notify them, `response_note` and
+/// all.
+pub fn decline_end_request(
+    conn: &Connection,
+    link_id: &str,
+    keyholder_id: &str,
+) -> Result<String, DeclineEndRequestError> {
+    let submissive_id: Option<String> = conn
+        .query_row(
+            "SELECT submissive_id FROM keyholder_submissive_links
+             WHERE id = ?1 AND keyholder_id = ?2 AND end_requested_at IS NOT NULL",
+            params![link_id, keyholder_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(submissive_id) = submissive_id else {
+        return Err(DeclineEndRequestError::NotFound);
+    };
+    conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET end_requested_at = NULL, end_requested_by_user_id = NULL,
+             end_request_reason = NULL, end_request_escalated_at = NULL
+         WHERE id = ?1",
+        params![link_id],
+    )?;
+    audit::record(
+        conn,
+        audit::Entry {
+            actor: audit::Actor::User(keyholder_id),
+            link_id: Some(link_id),
+            action: "link.end_request_declined",
+            entity_type: "keyholder_submissive_links",
+            entity_id: link_id,
+            detail: None,
+        },
+    )?;
+    Ok(submissive_id)
+}
+
+pub struct PendingEndRequest {
+    pub link_id: String,
+    pub keyholder_id: String,
+    pub submissive_id: String,
+    pub submissive_display_name: String,
+    pub requested_at: i64,
+    pub reason: Option<String>,
+    pub escalated_at: Option<i64>,
+}
+
+/// Every link with a pending end-request that this Keyholder owns —
+/// the read side of the whole flow (the decline endpoint, and the
+/// "impossible to miss on every page load" banner once escalated).
+pub fn pending_end_requests_for_keyholder(
+    conn: &Connection,
+    keyholder_id: &str,
+) -> rusqlite::Result<Vec<PendingEndRequest>> {
+    let mut stmt = conn.prepare(
+        "SELECT l.id, l.keyholder_id, l.submissive_id, u.display_name, l.end_requested_at,
+                l.end_request_reason, l.end_request_escalated_at
+         FROM keyholder_submissive_links l
+         JOIN users u ON u.id = l.submissive_id
+         WHERE l.keyholder_id = ?1 AND l.end_requested_at IS NOT NULL
+         ORDER BY l.end_requested_at ASC",
+    )?;
+    stmt.query_map(params![keyholder_id], |row| {
+        Ok(PendingEndRequest {
+            link_id: row.get(0)?,
+            keyholder_id: row.get(1)?,
+            submissive_id: row.get(2)?,
+            submissive_display_name: row.get(3)?,
+            requested_at: row.get(4)?,
+            reason: row.get(5)?,
+            escalated_at: row.get(6)?,
+        })
+    })?
+    .collect()
+}
+
+/// The submissive-facing read side — their own link's pending
+/// request, if any, so the account page can render its current state
+/// on load rather than only reactively after they just submitted one.
+pub fn own_pending_end_request(
+    conn: &Connection,
+    submissive_id: &str,
+) -> rusqlite::Result<Option<PendingEndRequest>> {
+    conn.query_row(
+        "SELECT l.id, l.keyholder_id, l.submissive_id, u.display_name, l.end_requested_at,
+                l.end_request_reason, l.end_request_escalated_at
+         FROM keyholder_submissive_links l
+         JOIN users u ON u.id = l.submissive_id
+         WHERE l.submissive_id = ?1 AND l.end_requested_at IS NOT NULL",
+        params![submissive_id],
+        |row| {
+            Ok(PendingEndRequest {
+                link_id: row.get(0)?,
+                keyholder_id: row.get(1)?,
+                submissive_id: row.get(2)?,
+                submissive_display_name: row.get(3)?,
+                requested_at: row.get(4)?,
+                reason: row.get(5)?,
+                escalated_at: row.get(6)?,
+            })
+        },
+    )
+    .optional()
+}
+
+const END_REQUEST_ESCALATION_THRESHOLD_SECS: i64 = 7 * 24 * 3600;
+const END_REQUEST_REMINDER_INTERVAL_SECS: i64 = 24 * 3600;
+
+/// Runs on the same tick as the deadline sweeper
+/// (08-punishments-and-deadlines.md §9's reasoning for not warranting
+/// a third background task): every link with a request pending 7
+/// days or more gets `end_request_escalated_at` set (once), and every
+/// already-escalated link that hasn't had a
+/// `link.end_request_reminder` notification in the last 24h is
+/// reported again — the caller fires that same notification type
+/// either way, since "just crossed the 7-day mark" and "still
+/// escalated a day later" both read as the same reminder to a
+/// Keyholder who hasn't acted.
+pub fn run_end_request_escalation_sweep_tick(
+    conn: &Connection,
+) -> rusqlite::Result<Vec<PendingEndRequest>> {
+    let now_ts = crate::auth::session::now();
+    conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET end_request_escalated_at = ?1
+         WHERE end_requested_at IS NOT NULL AND end_request_escalated_at IS NULL
+           AND end_requested_at <= ?2",
+        params![now_ts, now_ts - END_REQUEST_ESCALATION_THRESHOLD_SECS],
+    )?;
+
+    let mut stmt = conn.prepare(
+        "SELECT l.id, l.keyholder_id, l.submissive_id, u.display_name, l.end_requested_at,
+                l.end_request_reason, l.end_request_escalated_at
+         FROM keyholder_submissive_links l
+         JOIN users u ON u.id = l.submissive_id
+         WHERE l.end_requested_at IS NOT NULL AND l.end_request_escalated_at IS NOT NULL",
+    )?;
+    let escalated: Vec<PendingEndRequest> = stmt
+        .query_map(params![], |row| {
+            Ok(PendingEndRequest {
+                link_id: row.get(0)?,
+                keyholder_id: row.get(1)?,
+                submissive_id: row.get(2)?,
+                submissive_display_name: row.get(3)?,
+                requested_at: row.get(4)?,
+                reason: row.get(5)?,
+                escalated_at: row.get(6)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut out = Vec::new();
+    for req in escalated {
+        if crate::domain::notifications::exists_for_related_entity_since(
+            conn,
+            "link.end_request_reminder",
+            &req.link_id,
+            now_ts - END_REQUEST_REMINDER_INTERVAL_SECS,
+        )? {
+            continue;
+        }
+        out.push(req);
+    }
+    Ok(out)
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum SetStatusError {
     #[error("link not found or not yours")]
     NotFound,
@@ -148,8 +410,16 @@ pub fn set_status(
     }
 
     if new_status == "ended" {
+        // Ending a link with a pending end-request clears the request
+        // fields as a side effect of the same transaction — the
+        // request is now moot, ending already *is* the approval
+        // (06-future-extensions.md §2).
         conn.execute(
-            "UPDATE keyholder_submissive_links SET status = ?1, ended_at = ?2 WHERE id = ?3",
+            "UPDATE keyholder_submissive_links
+             SET status = ?1, ended_at = ?2, end_requested_at = NULL,
+                 end_requested_by_user_id = NULL, end_request_reason = NULL,
+                 end_request_escalated_at = NULL
+             WHERE id = ?3",
             params![new_status, crate::auth::session::now(), link_id],
         )?;
     } else {
@@ -419,5 +689,195 @@ mod tests {
         let settings = settings_for_link(&conn, &link_id).unwrap();
         assert!(settings.self_report_allowed);
         assert!(!settings.catalog_visible_to_submissive);
+    }
+
+    #[test]
+    fn request_end_rejects_a_second_pending_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        let requested_link_id = request_end(&conn, &sub, Some("need space")).unwrap();
+        assert_eq!(requested_link_id, link_id);
+
+        assert!(matches!(
+            request_end(&conn, &sub, None),
+            Err(RequestEndError::AlreadyPending)
+        ));
+
+        let pending = pending_end_requests_for_keyholder(&conn, &kh).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].reason.as_deref(), Some("need space"));
+        assert!(pending[0].escalated_at.is_none());
+    }
+
+    #[test]
+    fn withdraw_end_request_clears_it_and_allows_a_fresh_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        create(&conn, &kh, &sub).unwrap();
+
+        // Nothing to withdraw yet.
+        assert_eq!(withdraw_end_request(&conn, &sub).unwrap(), None);
+
+        request_end(&conn, &sub, None).unwrap();
+        assert!(withdraw_end_request(&conn, &sub).unwrap().is_some());
+        assert!(
+            pending_end_requests_for_keyholder(&conn, &kh)
+                .unwrap()
+                .is_empty()
+        );
+
+        // A fresh request works fine after withdrawal.
+        request_end(&conn, &sub, Some("still thinking about it")).unwrap();
+        assert_eq!(
+            pending_end_requests_for_keyholder(&conn, &kh)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn decline_end_request_clears_it_without_ending_the_link_and_is_auditable() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+        request_end(&conn, &sub, None).unwrap();
+
+        // Someone else's decline attempt fails.
+        assert!(matches!(
+            decline_end_request(&conn, &link_id, "someone-else"),
+            Err(DeclineEndRequestError::NotFound)
+        ));
+
+        let declined_submissive_id = decline_end_request(&conn, &link_id, &kh).unwrap();
+        assert_eq!(declined_submissive_id, sub);
+        assert!(
+            pending_end_requests_for_keyholder(&conn, &kh)
+                .unwrap()
+                .is_empty()
+        );
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "active");
+
+        let audit_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM audit_log WHERE entity_id = ?1 AND action = 'link.end_request_declined'",
+                params![link_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(audit_count, 1);
+
+        // Declining isn't final — a fresh request can reopen it.
+        request_end(&conn, &sub, None).unwrap();
+        assert_eq!(
+            pending_end_requests_for_keyholder(&conn, &kh)
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // A second decline attempt (nothing pending) fails too.
+        withdraw_end_request(&conn, &sub).unwrap();
+        assert!(matches!(
+            decline_end_request(&conn, &link_id, &kh),
+            Err(DeclineEndRequestError::NotFound)
+        ));
+    }
+
+    #[test]
+    fn ending_a_link_with_a_pending_request_clears_it_as_a_side_effect() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+        request_end(&conn, &sub, Some("done")).unwrap();
+
+        set_status(&conn, &link_id, &kh, "ended").unwrap();
+
+        let (requested_at, requested_by): (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT end_requested_at, end_requested_by_user_id FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(requested_at.is_none());
+        assert!(requested_by.is_none());
+    }
+
+    #[test]
+    fn escalation_sweep_escalates_after_seven_days_and_dedupes_reminders_within_24h() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+        request_end(&conn, &sub, None).unwrap();
+
+        // Freshly requested — not old enough to escalate yet.
+        assert!(
+            run_end_request_escalation_sweep_tick(&conn)
+                .unwrap()
+                .is_empty()
+        );
+
+        // Back-date the request past the 7-day threshold.
+        conn.execute(
+            "UPDATE keyholder_submissive_links SET end_requested_at = ?1 WHERE id = ?2",
+            params![
+                crate::auth::session::now() - END_REQUEST_ESCALATION_THRESHOLD_SECS - 10,
+                link_id
+            ],
+        )
+        .unwrap();
+
+        let escalated = run_end_request_escalation_sweep_tick(&conn).unwrap();
+        assert_eq!(escalated.len(), 1);
+        assert_eq!(escalated[0].link_id, link_id);
+        let pending = pending_end_requests_for_keyholder(&conn, &kh).unwrap();
+        assert!(pending[0].escalated_at.is_some());
+
+        // A second tick with no reminder notification recorded yet
+        // still reports it (nothing to dedupe against).
+        let escalated_again = run_end_request_escalation_sweep_tick(&conn).unwrap();
+        assert_eq!(escalated_again.len(), 1);
+
+        // Once a reminder notification is recorded, the sweep goes
+        // quiet until the 24h window passes.
+        crate::domain::notifications::create(
+            &conn,
+            crate::domain::notifications::NewNotification {
+                user_id: &kh,
+                link_id: Some(&link_id),
+                notification_type: "link.end_request_reminder",
+                title: "Still waiting on your response",
+                body: None,
+                link_path: None,
+                related_entity_type: Some("keyholder_submissive_links"),
+                related_entity_id: Some(&link_id),
+            },
+        )
+        .unwrap();
+        assert!(
+            run_end_request_escalation_sweep_tick(&conn)
+                .unwrap()
+                .is_empty()
+        );
     }
 }
