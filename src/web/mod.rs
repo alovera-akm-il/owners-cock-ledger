@@ -873,6 +873,80 @@ async fn assignment_proof_page(
     })
 }
 
+#[derive(Template)]
+#[template(path = "play_session_templates.html")]
+struct PlaySessionTemplatesTemplate {
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/play-session-templates` — client-fetched, same shell
+/// pattern as `checkin_templates_page`.
+async fn play_session_templates_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    render(PlaySessionTemplatesTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
+#[template(path = "submissive_play_sessions.html")]
+struct SubmissivePlaySessionsTemplate {
+    display_name: String,
+    initial: String,
+}
+
+async fn submissive_play_sessions_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Submissive {
+        return Redirect::to("/dashboard").into_response();
+    }
+
+    render(SubmissivePlaySessionsTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
+#[template(path = "play_session_detail.html")]
+struct PlaySessionDetailTemplate {
+    session_id: String,
+    is_keyholder: bool,
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/play-sessions/{id}` and `/submissive/play-sessions/{id}`
+/// — both routes share one template; the page fetches the session
+/// itself client-side from the role-appropriate API route and renders
+/// the judgement panel only for a Keyholder.
+async fn play_session_detail_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(session_id): Path<String>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+
+    render(PlaySessionDetailTemplate {
+        session_id,
+        is_keyholder: user.role == Role::Keyholder,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
 pub fn router() -> axum::Router<db::AppState> {
     use axum::routing::get;
     axum::Router::new()
@@ -897,5 +971,21 @@ pub fn router() -> axum::Router<db::AppState> {
         .route("/keyholder/catalog", get(catalog_page))
         .route("/keyholder/checkin-templates", get(checkin_templates_page))
         .route("/checkins/new", get(submit_checkin_page))
+        .route(
+            "/keyholder/play-session-templates",
+            get(play_session_templates_page),
+        )
+        .route(
+            "/submissive/play-sessions",
+            get(submissive_play_sessions_page),
+        )
+        .route(
+            "/keyholder/play-sessions/{id}",
+            get(play_session_detail_page),
+        )
+        .route(
+            "/submissive/play-sessions/{id}",
+            get(play_session_detail_page),
+        )
         .route("/account", get(account_settings_page))
 }

@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Play Session Templates</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <div class="hidden lg:flex items-center gap-6 text-sm">
+        <a href="/dashboard" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="/keyholder/catalog" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
+        <a href="/keyholder/checkin-templates" class="text-slate-400 hover:text-slate-200">Check-ins</a>
+        <a href="/keyholder/play-session-templates" class="text-slate-100 font-medium">Play Sessions</a>
+        <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
+          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+            <span class="text-xs font-semibold">Notifications</span>
+            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <div id="notif-panel-list"></div>
+        </div>
+      </div>
+      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Play Session Templates</h1>
+      <p class="text-sm text-slate-400 mt-1">Reusable shapes — pick real toys and times when you assign one</p>
+    </div>
+    <div class="flex gap-2">
+      <button id="assign-btn" class="rounded-lg border border-slate-700 hover:border-slate-600 px-4 py-2 text-sm font-medium text-slate-200">Assign a session</button>
+      <button id="new-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">+ New template</button>
+    </div>
+  </div>
+
+  <!-- assign session panel -->
+  <div id="assign-form" class="hidden rounded-xl border border-sky-700/40 bg-sky-500/5 p-5 mb-6 space-y-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-sky-400">Assign a session</p>
+    <div id="assign-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+    <div class="grid grid-cols-2 gap-3">
+      <select id="assign-submissive" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></select>
+      <select id="assign-template" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="">Ad-hoc, no template</option>
+      </select>
+    </div>
+    <input id="assign-title" type="text" placeholder="Title (required for ad-hoc, or to override the template's)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
+        <input type="radio" name="log-mode" value="scheduled" checked> Schedule for later
+      </label>
+      <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
+        <input type="radio" name="log-mode" value="live"> Start live now
+      </label>
+      <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-sky-600">
+        <input type="radio" name="log-mode" value="retro"> Log something that already happened
+      </label>
+    </div>
+    <div id="retro-fields" class="hidden grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Started at</label>
+        <input id="assign-started-at" type="datetime-local" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Ended at</label>
+        <input id="assign-ended-at" type="datetime-local" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Toys from their catalog</label>
+      <div id="assign-toys" class="flex flex-wrap gap-2 text-xs text-slate-500">Pick a submissive first.</div>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button id="cancel-assign" type="button" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button id="assign-submit-btn" class="text-xs font-semibold text-slate-950 bg-sky-500 hover:bg-sky-400 rounded-lg px-4 py-2">Schedule session</button>
+    </div>
+  </div>
+
+  <!-- new/edit template form -->
+  <div id="new-form" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
+    <p id="form-heading" class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
+    <input type="hidden" id="edit-template-id" value="" />
+    <div id="form-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+    <input id="form-title" type="text" placeholder="Title" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <textarea id="form-setup-notes" rows="2" placeholder="Setup notes — prep, read before starting" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+    <input id="form-categories" type="text" placeholder="Suggested toy categories, comma separated (e.g. Estim, restraint)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Planned duration (minutes)</label>
+        <input id="form-duration" type="number" min="0" placeholder="e.g. 60" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Mid-session check-in</label>
+        <select id="form-checkin-template" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option value="">None</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Check-in interval (minutes)</label>
+      <input id="form-interval" type="number" min="0" placeholder="e.g. 15" class="w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      <p class="text-[11px] text-slate-500 mt-1.5">A 60-minute session at a 15-minute interval generates 4 scheduled check-in slots up front.</p>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button id="cancel-new" type="button" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button id="save-template-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
+    </div>
+  </div>
+
+  <div id="template-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <div class="px-5 py-6 text-center text-sm text-slate-500">Loading…</div>
+  </div>
+
+  <div class="mt-6">
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Recent sessions</p>
+    <div id="session-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+      <div class="px-5 py-6 text-center text-sm text-slate-500">Loading…</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  function apiCall(method, path, body) {
+    return $.ajax({
+      url: path, method: method, contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+  function errorMessage(xhr, fallback) {
+    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
+  }
+  function showMessage(sel, text, ok) {
+    $(sel).attr('class', 'rounded-lg px-3 py-2 text-xs ' + (ok ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300' : 'bg-red-600/10 border border-red-600/30 text-red-300')).text(text).removeClass('hidden');
+  }
+
+  $('#logout-btn').on('click', function () {
+    apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
+  });
+
+  const STATUS_LABEL = {
+    scheduled: ['scheduled', 'bg-slate-800 text-slate-400'],
+    in_progress: ['in progress', 'bg-emerald-500/10 text-emerald-400'],
+    pending_judgement: ['awaiting judgement', 'bg-amber-500/10 text-amber-400'],
+    completed: ['completed', 'bg-slate-800 text-slate-400'],
+    cancelled: ['cancelled', 'bg-slate-800 text-slate-500'],
+  };
+
+  // ---- Templates ----
+
+  function templateRow(t) {
+    const $row = $('<div class="flex items-center justify-between px-5 py-4">');
+    const $left = $('<div>');
+    $left.append($('<p class="text-sm font-medium">').text(t.title));
+    if (t.setup_notes) $left.append($('<p class="text-xs text-slate-500 mt-0.5 mb-2">').text(t.setup_notes));
+    const $tags = $('<div class="flex flex-wrap items-center gap-1.5">');
+    (t.suggested_toy_categories || []).forEach(function (c) {
+      $tags.append($('<span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">').text(c));
+    });
+    if (t.planned_duration_seconds) {
+      $tags.append($('<span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">').text(Math.round(t.planned_duration_seconds / 60) + ' min planned'));
+    }
+    if (t.checkin_interval_seconds) {
+      $tags.append($('<span class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">').text('check-in every ' + Math.round(t.checkin_interval_seconds / 60) + ' min'));
+    }
+    $left.append($tags);
+    $row.append($left);
+
+    const $right = $('<div class="flex items-center gap-3 shrink-0">');
+    if (!t.active) $right.append($('<span class="text-[11px] text-slate-500">').text('inactive'));
+    const $edit = $('<button class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">').text('Edit');
+    $edit.on('click', function () { openEditTemplateForm(t); });
+    $right.append($edit);
+    row_toggle_button(t, $right);
+    $row.append($right);
+    return $row;
+  }
+
+  function row_toggle_button(t, $right) {
+    if (t.active) {
+      const $b = $('<button class="text-xs font-medium text-slate-400 hover:text-red-400">').text('Deactivate');
+      $b.on('click', function () { apiCall('PATCH', '/api/v1/keyholder/play-session-templates/' + t.id, { active: false }).done(loadTemplates); });
+      $right.append($b);
+    } else {
+      const $b = $('<button class="text-xs font-semibold text-amber-500 border border-amber-700/50 hover:bg-amber-500/10 rounded-lg px-2.5 py-1">').text('Reactivate');
+      $b.on('click', function () { apiCall('PATCH', '/api/v1/keyholder/play-session-templates/' + t.id, { active: true }).done(loadTemplates); });
+      $right.append($b);
+    }
+  }
+
+  let allTemplates = [];
+  let allCheckinTemplates = [];
+
+  function loadTemplates() {
+    apiCall('GET', '/api/v1/keyholder/play-session-templates').done(function (list) {
+      allTemplates = list;
+      const $list = $('#template-list').empty();
+      if (list.length === 0) {
+        $list.append($('<div class="px-5 py-6 text-center text-sm text-slate-500">').text('No play session templates yet.'));
+      } else {
+        list.forEach(function (t) { $list.append(templateRow(t)); });
+      }
+      const $sel = $('#assign-template');
+      $sel.find('option[value!=""]').remove();
+      list.filter(t => t.active).forEach(function (t) {
+        $sel.append($('<option>').val(t.id).text(t.title));
+      });
+    });
+  }
+
+  function loadCheckinTemplatesForForm() {
+    apiCall('GET', '/api/v1/keyholder/checkin-templates').done(function (list) {
+      allCheckinTemplates = list;
+      const $sel = $('#form-checkin-template');
+      $sel.find('option[value!=""]').remove();
+      list.filter(t => t.active).forEach(function (t) {
+        $sel.append($('<option>').val(t.id).text(t.title));
+      });
+    });
+  }
+
+  $('#new-btn').on('click', function () {
+    $('#edit-template-id').val('');
+    $('#form-heading').text('New template');
+    $('#form-message').addClass('hidden');
+    $('#form-title, #form-setup-notes, #form-categories, #form-duration, #form-interval').val('');
+    $('#form-checkin-template').val('');
+    $('#new-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+
+  function openEditTemplateForm(t) {
+    $('#edit-template-id').val(t.id);
+    $('#form-heading').text('Editing template');
+    $('#form-message').addClass('hidden');
+    $('#form-title').val(t.title);
+    $('#form-setup-notes').val(t.setup_notes || '');
+    $('#form-categories').val((t.suggested_toy_categories || []).join(', '));
+    $('#form-duration').val(t.planned_duration_seconds ? Math.round(t.planned_duration_seconds / 60) : '');
+    $('#form-interval').val(t.checkin_interval_seconds ? Math.round(t.checkin_interval_seconds / 60) : '');
+    $('#form-checkin-template').val(t.checkin_template_id || '');
+    $('#new-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  $('#save-template-btn').on('click', function () {
+    $('#form-message').addClass('hidden');
+    const title = $('#form-title').val();
+    if (!title) { showMessage('#form-message', 'Title is required.', false); return; }
+    const categories = $('#form-categories').val().split(',').map(s => s.trim()).filter(Boolean);
+    const durationMin = parseFloat($('#form-duration').val());
+    const intervalMin = parseFloat($('#form-interval').val());
+    const payload = {
+      title: title,
+      setup_notes: $('#form-setup-notes').val() || null,
+      suggested_toy_categories: categories.length ? categories : null,
+      planned_duration_seconds: Number.isFinite(durationMin) ? Math.round(durationMin * 60) : null,
+      checkin_template_id: $('#form-checkin-template').val() || null,
+      checkin_interval_seconds: Number.isFinite(intervalMin) ? Math.round(intervalMin * 60) : null,
+    };
+    const editingId = $('#edit-template-id').val();
+    const request = editingId
+      ? apiCall('PATCH', '/api/v1/keyholder/play-session-templates/' + editingId, payload)
+      : apiCall('POST', '/api/v1/keyholder/play-session-templates', payload);
+    request.done(function () {
+      $('#new-form').addClass('hidden');
+      loadTemplates();
+    }).fail(function (xhr) {
+      showMessage('#form-message', errorMessage(xhr, 'Could not save template.'), false);
+    });
+  });
+
+  // ---- Assign a session ----
+
+  let submissives = [];
+
+  function loadSubmissivesForAssign() {
+    apiCall('GET', '/api/v1/keyholder/submissives').done(function (list) {
+      submissives = list;
+      const $sel = $('#assign-submissive').empty();
+      list.forEach(function (s) {
+        $sel.append($('<option>').val(s.submissive_id).text(s.display_name));
+      });
+      loadToysForAssign();
+    });
+  }
+
+  function loadToysForAssign() {
+    const subId = $('#assign-submissive').val();
+    const $toys = $('#assign-toys').empty();
+    if (!subId) { $toys.text('Pick a submissive first.'); return; }
+    apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/toys').done(function (list) {
+      $toys.empty();
+      if (list.length === 0) { $toys.text('No toys in their catalog yet.'); return; }
+      list.forEach(function (t) {
+        const $label = $('<label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs cursor-pointer has-[:checked]:border-amber-600">');
+        $label.append($('<input type="checkbox" class="assign-toy-cb">').val(t.id));
+        $label.append(' ' + t.name);
+        $toys.append($label);
+      });
+    });
+  }
+  $('#assign-submissive').on('change', loadToysForAssign);
+
+  $('#assign-btn').on('click', function () {
+    loadSubmissivesForAssign();
+    $('#assign-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('#cancel-assign').on('click', () => $('#assign-form').addClass('hidden'));
+
+  const ASSIGN_BUTTON_LABEL = { scheduled: 'Schedule session', live: 'Start session now', retro: 'Log session' };
+  $('input[name="log-mode"]').on('change', function () {
+    const mode = $('input[name="log-mode"]:checked').val();
+    $('#retro-fields').toggleClass('hidden', mode !== 'retro');
+    $('#assign-submit-btn').text(ASSIGN_BUTTON_LABEL[mode]);
+  });
+
+  function toLocalDatetimeIso(val) {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  $('#assign-submit-btn').on('click', function () {
+    $('#assign-message').addClass('hidden');
+    const subId = $('#assign-submissive').val();
+    if (!subId) { showMessage('#assign-message', 'Pick a submissive.', false); return; }
+    const templateId = $('#assign-template').val();
+    const title = $('#assign-title').val();
+    if (!templateId && !title) { showMessage('#assign-message', 'A title is required for an ad-hoc session.', false); return; }
+    const mode = $('input[name="log-mode"]:checked').val();
+    const toyIds = $('.assign-toy-cb:checked').map(function () { return $(this).val(); }).get();
+    const payload = {
+      template_id: templateId || null,
+      title: title || null,
+      toy_ids: toyIds,
+    };
+    if (mode === 'live') {
+      payload.started_at = new Date().toISOString();
+    } else if (mode === 'retro') {
+      const startedAt = toLocalDatetimeIso($('#assign-started-at').val());
+      const endedAt = toLocalDatetimeIso($('#assign-ended-at').val());
+      if (!startedAt || !endedAt) { showMessage('#assign-message', 'Both started-at and ended-at are required to log a past session.', false); return; }
+      payload.started_at = startedAt;
+      payload.ended_at = endedAt;
+    }
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/play-sessions', payload)
+      .done(function (session) {
+        window.location = '/keyholder/play-sessions/' + session.id;
+      })
+      .fail(function (xhr) {
+        showMessage('#assign-message', errorMessage(xhr, 'Could not create session.'), false);
+      });
+  });
+
+  // ---- Recent sessions ----
+
+  function sessionRow(s, submissiveName) {
+    const $a = $('<a class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">').attr('href', '/keyholder/play-sessions/' + s.id);
+    const $left = $('<div>');
+    const $title = $('<p class="text-sm font-medium">').text(s.title + ' ');
+    $title.append($('<span class="text-slate-500 font-normal">').text('· ' + submissiveName));
+    $left.append($title);
+    const sub = s.started_at ? ('Started ' + new Date(s.started_at).toLocaleString())
+      : ('Assigned ' + new Date(s.assigned_at).toLocaleString());
+    $left.append($('<p class="text-xs text-slate-500">').text(sub));
+    $a.append($left);
+    const label = STATUS_LABEL[s.status] || [s.status, 'bg-slate-800 text-slate-400'];
+    $a.append($('<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full">').addClass(label[1]).text(label[0]));
+    return $a;
+  }
+
+  function loadRecentSessions() {
+    apiCall('GET', '/api/v1/keyholder/submissives').done(function (subs) {
+      const $list = $('#session-list').empty();
+      if (subs.length === 0) {
+        $list.append($('<div class="px-5 py-6 text-center text-sm text-slate-500">').text('No submissives linked yet.'));
+        return;
+      }
+      const requests = subs.map(function (s) {
+        return apiCall('GET', '/api/v1/keyholder/submissives/' + s.submissive_id + '/play-sessions')
+          .then(function (list) { return list.map(function (session) { return { session: session, name: s.display_name }; }); });
+      });
+      $.when.apply($, requests).done(function () {
+        const results = requests.length === 1 ? [arguments[0]] : Array.prototype.slice.call(arguments);
+        let combined = [].concat.apply([], results);
+        combined.sort(function (a, b) { return b.session.assigned_at.localeCompare(a.session.assigned_at); });
+        combined = combined.slice(0, 10);
+        $list.empty();
+        if (combined.length === 0) {
+          $list.append($('<div class="px-5 py-6 text-center text-sm text-slate-500">').text('No play sessions yet.'));
+          return;
+        }
+        combined.forEach(function (c) { $list.append(sessionRow(c.session, c.name)); });
+      });
+    });
+  }
+
+  loadTemplates();
+  loadCheckinTemplatesForForm();
+  loadRecentSessions();
+</script>
+</body>
+</html>

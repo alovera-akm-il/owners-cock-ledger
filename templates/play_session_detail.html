@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Play Session</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="{% if is_keyholder %}/dashboard{% else %}/submissive{% endif %}">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <a href="{% if is_keyholder %}/keyholder/play-session-templates{% else %}/submissive/play-sessions{% endif %}" class="text-xs text-slate-400 hover:text-slate-200">&larr; Play Sessions</a>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
+          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+            <span class="text-xs font-semibold">Notifications</span>
+            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <div id="notif-panel-list"></div>
+        </div>
+      </div>
+      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full {% if is_keyholder %}bg-amber-600/10 text-amber-500 border border-amber-600/30{% else %}bg-sky-500/10 text-sky-400 border border-sky-500/30{% endif %} font-medium">{% if is_keyholder %}Keyholder{% else %}Submissive{% endif %}</span>
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <div id="loading" class="text-center text-sm text-slate-500 py-10">Loading…</div>
+
+  <div id="content" class="hidden">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h1 id="session-title" class="text-2xl font-semibold tracking-tight"></h1>
+        <p id="session-sub" class="text-sm text-slate-400 mt-1"></p>
+      </div>
+      <span id="status-badge" class="text-xs font-semibold px-3 py-1.5 rounded-full shrink-0"></span>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+
+        <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-xs font-medium text-slate-400 mb-3">Setup notes</p>
+          <p id="setup-notes" class="text-sm text-slate-300">—</p>
+          <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-800 text-sm">
+            <div><p class="text-xs text-slate-500 mb-0.5">Planned duration</p><p id="planned-duration" class="font-medium">—</p></div>
+            <div><p class="text-xs text-slate-500 mb-0.5">Started</p><p id="started-at" class="font-medium">—</p></div>
+            <div><p class="text-xs text-slate-500 mb-0.5">Ended</p><p id="ended-at" class="font-medium">—</p></div>
+          </div>
+        </div>
+
+        <div id="toys-panel" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-xs font-medium text-slate-400 mb-3">Toys used</p>
+          <div id="toys-list" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <div id="schedule-panel" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-xs font-medium text-slate-400">Mid-session check-ins</p>
+            <span id="schedule-progress" class="text-[11px] text-slate-500"></span>
+          </div>
+          <div id="schedule-list" class="space-y-2"></div>
+        </div>
+
+        {% if is_keyholder %}
+        <div id="judgement-panel" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 space-y-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-amber-500">Your judgement</p>
+          <div id="judgement-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+          <textarea id="judgement-notes" rows="3" placeholder="Notes on how the session went…" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2.5 text-slate-200"></textarea>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">Reward (optional)</label>
+              <select id="reward-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+                <option value="">None</option>
+                <option value="__custom__">Custom…</option>
+              </select>
+              <div id="reward-custom" class="hidden mt-2 space-y-2">
+                <input id="reward-title" type="text" placeholder="Title" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+                <input id="reward-description" type="text" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+                <label class="flex items-center gap-1.5 text-[11px] text-slate-400"><input id="reward-time-reduction" type="checkbox"> Reduce lock time by (hours):</label>
+                <input id="reward-hours" type="number" min="0" step="0.5" placeholder="e.g. 1" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">Punishment (optional)</label>
+              <select id="punishment-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+                <option value="">None</option>
+                <option value="__custom__">Custom…</option>
+              </select>
+              <div id="punishment-custom" class="hidden mt-2 space-y-2">
+                <input id="punishment-title" type="text" placeholder="Title" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+                <input id="punishment-description" type="text" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+                <label class="flex items-center gap-1.5 text-[11px] text-slate-400"><input id="punishment-time-extension" type="checkbox"> Extend lock time by (hours):</label>
+                <input id="punishment-hours" type="number" min="0" step="0.5" placeholder="e.g. 1" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+              </div>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500">Whatever you pick here creates a normal assignment, same as any other reward or punishment — it's just tagged as coming from this session.</p>
+          <div class="flex items-center justify-end gap-3">
+            <p id="judgement-saved-note" class="hidden text-xs text-emerald-400">✓ Saved — still pending judgement until you complete it</p>
+            <button id="save-judgement-btn" class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-3 py-2">Save judgement, decide completion later</button>
+            <button id="mark-completed-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Mark session completed</button>
+          </div>
+        </div>
+        {% else %}
+        <div id="waiting-panel" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
+          <p class="text-sm font-medium text-amber-400 mb-1">Waiting on your Keyholder</p>
+          <p class="text-sm text-slate-300">The session's over — they'll review it and let you know if anything's been granted or applied. You don't need to do anything else here.</p>
+        </div>
+        {% endif %}
+
+        <div id="completed-summary" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-xs font-medium text-slate-400 mb-2">{% if is_keyholder %}Judgement{% else %}Your Keyholder's judgement{% endif %}</p>
+          <p id="completed-notes" class="text-sm text-slate-300 mb-3"></p>
+          <div id="completed-consequences" class="flex flex-wrap gap-2"></div>
+        </div>
+
+      </div>
+
+      <div class="space-y-4">
+        <div id="actions-scheduled" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-2">
+          <p class="text-xs font-medium text-slate-400 mb-1">This session hasn't started yet</p>
+          <button id="start-session-btn" class="w-full rounded-lg bg-sky-500 hover:bg-sky-400 py-2 text-sm font-semibold text-slate-950">Start now</button>
+          {% if is_keyholder %}
+          <button id="cancel-session-btn" class="w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
+          {% else %}
+          <p class="text-[11px] text-slate-500 mt-1">Only your Keyholder can cancel a scheduled session.</p>
+          {% endif %}
+        </div>
+        <div id="actions-in-progress" class="hidden rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-5 space-y-2">
+          <p class="text-xs font-medium text-emerald-400 mb-1">Live now</p>
+          <button id="end-session-btn" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 py-2 text-sm font-semibold text-slate-950">End session</button>
+          {% if is_keyholder %}
+          <button id="cancel-session-btn-live" class="w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
+          {% endif %}
+        </div>
+        <div id="actions-pending" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
+          <p class="text-xs font-medium text-amber-400">Awaiting {% if is_keyholder %}your{% endif %} judgement</p>
+          {% if !is_keyholder %}<p class="text-xs text-slate-400 mt-1">Nothing to do on your end right now.</p>{% endif %}
+        </div>
+        <div id="actions-completed" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-xs font-medium text-slate-300">Session complete</p>
+        </div>
+        <div id="actions-cancelled" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <p class="text-xs font-medium text-slate-400">Session cancelled</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const SESSION_ID = '{{ session_id }}';
+  const IS_KEYHOLDER = {{ is_keyholder }};
+  const BASE = IS_KEYHOLDER ? '/api/v1/keyholder' : '/api/v1/submissive';
+
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  function apiCall(method, path, body) {
+    return $.ajax({
+      url: path, method: method, contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+  function errorMessage(xhr, fallback) {
+    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
+  }
+
+  $('#logout-btn').on('click', function () {
+    apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
+  });
+
+  const STATUS_LABEL = {
+    scheduled: ['Scheduled', 'bg-slate-800 text-slate-300'],
+    in_progress: ['In progress', 'bg-emerald-500/10 text-emerald-400'],
+    pending_judgement: ['Pending judgement', 'bg-amber-500/10 text-amber-400'],
+    completed: ['Completed', 'bg-slate-800 text-slate-400'],
+    cancelled: ['Cancelled', 'bg-slate-800 text-slate-500'],
+  };
+
+  let toyNames = {};
+  let checkinTemplateTitles = {};
+  let rewardTemplates = [];
+  let punishmentTemplates = [];
+
+  function fmtMinutes(seconds) {
+    if (!seconds) return '—';
+    return Math.round(seconds / 60) + ' min';
+  }
+
+  function renderSchedule(session) {
+    const schedule = session.checkin_schedule || [];
+    $('#schedule-panel').toggleClass('hidden', schedule.length === 0);
+    if (schedule.length === 0) return;
+    const done = schedule.filter(s => s.fulfilled_checkin_id).length;
+    $('#schedule-progress').text(done + ' of ' + schedule.length + ' done');
+    const $list = $('#schedule-list').empty();
+    schedule.forEach(function (slot) {
+      const label = checkinTemplateTitles[slot.checkin_template_id] || 'Check-in';
+      const $row = $('<div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800">');
+      $row.append($('<span class="text-sm text-slate-300">').text('Slot ' + slot.sequence_number + ' · +' + Math.round(slot.planned_offset_seconds / 60) + ' min (' + label + ')'));
+      if (slot.fulfilled_checkin_id) {
+        $row.append($('<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">').text('done ✓'));
+      } else {
+        $row.append($('<span class="text-[11px] text-slate-500">').text('not filled in yet'));
+      }
+      $list.append($row);
+    });
+  }
+
+  function renderToys(session) {
+    const ids = session.toy_ids || [];
+    $('#toys-panel').toggleClass('hidden', ids.length === 0);
+    const $list = $('#toys-list').empty();
+    ids.forEach(function (id) {
+      $list.append($('<span class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg">').text(toyNames[id] || id));
+    });
+  }
+
+  function renderConsequences(session) {
+    const $c = $('#completed-consequences').empty();
+    if (session.reward_assignment_id) {
+      $c.append($('<span class="text-xs bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-lg">').text('Reward assigned'));
+    }
+    if (session.punishment_assignment_id) {
+      $c.append($('<span class="text-xs bg-red-500/10 text-red-400 px-2.5 py-1 rounded-lg">').text('Punishment assigned'));
+    }
+  }
+
+  function renderActions(session) {
+    $('#actions-scheduled, #actions-in-progress, #actions-pending, #actions-completed, #actions-cancelled').addClass('hidden');
+    const key = session.status.replace('pending_judgement', 'pending').replace('in_progress', 'in-progress');
+    $('#actions-' + key).removeClass('hidden');
+  }
+
+  function render(session) {
+    $('#session-title').text(session.title);
+    $('#session-sub').text(session.template_id ? 'From a template' : 'Ad-hoc session');
+    const label = STATUS_LABEL[session.status] || [session.status, 'bg-slate-800 text-slate-400'];
+    const dot = session.status === 'in_progress' ? '<span class="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-live mr-1.5"></span>' : '';
+    $('#status-badge').removeClass().addClass('text-xs font-semibold px-3 py-1.5 rounded-full shrink-0 inline-flex items-center ' + label[1]).html(dot + label[0]);
+    $('#setup-notes').text(session.setup_notes || 'No setup notes.');
+    $('#planned-duration').text(fmtMinutes(session.planned_duration_seconds));
+    $('#started-at').text(session.started_at ? new Date(session.started_at).toLocaleString() : '—');
+    $('#ended-at').text(session.ended_at ? new Date(session.ended_at).toLocaleString() : '—');
+
+    renderToys(session);
+    renderSchedule(session);
+    renderActions(session);
+
+    const isPending = session.status === 'pending_judgement';
+    const isCompleted = session.status === 'completed';
+    {% if is_keyholder %}
+    $('#judgement-panel').toggleClass('hidden', !isPending);
+    if (isPending) {
+      $('#judgement-notes').val(session.judgement_notes || '');
+    }
+    {% else %}
+    $('#waiting-panel').toggleClass('hidden', !isPending);
+    {% endif %}
+    $('#completed-summary').toggleClass('hidden', !isCompleted);
+    if (isCompleted) {
+      $('#completed-notes').text(session.judgement_notes || 'No notes.');
+      renderConsequences(session);
+    }
+
+    $('#loading').addClass('hidden');
+    $('#content').removeClass('hidden');
+  }
+
+  let currentSession = null;
+
+  function loadSession() {
+    apiCall('GET', BASE + '/play-sessions/' + SESSION_ID).done(function (session) {
+      currentSession = session;
+      const toyPath = IS_KEYHOLDER
+        ? '/api/v1/keyholder/submissives/' + session.submissive_id + '/toys'
+        : '/api/v1/submissive/toys';
+      apiCall('GET', toyPath).done(function (list) {
+        list.forEach(function (t) { toyNames[t.id] = t.name; });
+      }).always(function () { render(session); });
+    }).fail(function () {
+      $('#loading').text('Could not load this session.');
+    });
+  }
+
+  function loadSupportingData() {
+    const checkinPath = IS_KEYHOLDER ? '/api/v1/keyholder/checkin-templates' : '/api/v1/submissive/checkin-templates';
+    const deferreds = [];
+    deferreds.push(apiCall('GET', checkinPath).done(function (list) {
+      list.forEach(function (t) { checkinTemplateTitles[t.id] = t.title; });
+    }));
+    if (IS_KEYHOLDER) {
+      deferreds.push(apiCall('GET', '/api/v1/keyholder/templates?kind=reward').done(function (list) {
+        rewardTemplates = list.filter(t => t.active);
+        rewardTemplates.forEach(function (t) {
+          $('#reward-select option[value="__custom__"]').before($('<option>').val(t.id).text(t.title));
+        });
+      }));
+      deferreds.push(apiCall('GET', '/api/v1/keyholder/templates?kind=punishment').done(function (list) {
+        punishmentTemplates = list.filter(t => t.active);
+        punishmentTemplates.forEach(function (t) {
+          $('#punishment-select option[value="__custom__"]').before($('<option>').val(t.id).text(t.title));
+        });
+      }));
+    }
+    $.when.apply($, deferreds).always(loadSession);
+  }
+
+  $('#start-session-btn').on('click', function () {
+    apiCall('POST', BASE + '/play-sessions/' + SESSION_ID + '/start').done(loadSession)
+      .fail(function (xhr) { alert(errorMessage(xhr, 'Could not start session.')); });
+  });
+  $('#end-session-btn').on('click', function () {
+    apiCall('POST', BASE + '/play-sessions/' + SESSION_ID + '/end', {}).done(loadSession)
+      .fail(function (xhr) { alert(errorMessage(xhr, 'Could not end session.')); });
+  });
+  $('#cancel-session-btn, #cancel-session-btn-live').on('click', function () {
+    if (!confirm('Cancel this session? No judgement applies — this is a "never mind," not a failure.')) return;
+    apiCall('PATCH', '/api/v1/keyholder/play-sessions/' + SESSION_ID + '/cancel').done(loadSession)
+      .fail(function (xhr) { alert(errorMessage(xhr, 'Could not cancel session.')); });
+  });
+
+  {% if is_keyholder %}
+  $('#reward-select').on('change', function () {
+    $('#reward-custom').toggleClass('hidden', $(this).val() !== '__custom__');
+  });
+  $('#punishment-select').on('change', function () {
+    $('#punishment-custom').toggleClass('hidden', $(this).val() !== '__custom__');
+  });
+
+  function buildConsequence(kind) {
+    const sel = $('#' + kind + '-select').val();
+    if (!sel) return undefined;
+    if (sel !== '__custom__') return { template_id: sel };
+    const title = $('#' + kind + '-title').val();
+    if (!title) return null; // invalid: custom chosen but no title
+    const useEffect = kind === 'reward' ? $('#reward-time-reduction').is(':checked') : $('#punishment-time-extension').is(':checked');
+    const c = {
+      title: title,
+      description: $('#' + kind + '-description').val() || null,
+      effect_kind: useEffect ? (kind === 'reward' ? 'time_reduction' : 'time_extension') : 'grant',
+    };
+    if (useEffect) {
+      const hours = parseFloat($('#' + kind + '-hours').val()) || 0;
+      const seconds = Math.round(hours * 3600);
+      if (kind === 'reward') c.time_reduction_seconds = seconds; else c.time_extension_seconds = seconds;
+    }
+    return c;
+  }
+
+  function submitJudgement(thenComplete) {
+    $('#judgement-message').addClass('hidden');
+    const reward = buildConsequence('reward');
+    const punishment = buildConsequence('punishment');
+    if (reward === null || punishment === null) {
+      $('#judgement-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text('A custom reward/punishment needs a title.').removeClass('hidden');
+      return;
+    }
+    const payload = { judgement_notes: $('#judgement-notes').val() || null, reward: reward, punishment: punishment };
+    apiCall('PATCH', '/api/v1/keyholder/play-sessions/' + SESSION_ID + '/judgement', payload).done(function () {
+      if (thenComplete) {
+        apiCall('PATCH', '/api/v1/keyholder/play-sessions/' + SESSION_ID + '/complete').done(loadSession)
+          .fail(function (xhr) { alert(errorMessage(xhr, 'Could not complete session.')); });
+      } else {
+        $('#judgement-saved-note').removeClass('hidden');
+        clearTimeout(window._judgementNoteTimer);
+        window._judgementNoteTimer = setTimeout(() => $('#judgement-saved-note').addClass('hidden'), 4000);
+        loadSession();
+      }
+    }).fail(function (xhr) {
+      $('#judgement-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(errorMessage(xhr, 'Could not save judgement.')).removeClass('hidden');
+    });
+  }
+  $('#save-judgement-btn').on('click', function () { submitJudgement(false); });
+  $('#mark-completed-btn').on('click', function () { submitJudgement(true); });
+  {% endif %}
+
+  loadSupportingData();
+</script>
+</body>
+</html>

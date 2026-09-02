@@ -245,6 +245,7 @@ impl From<play_sessions::ScheduleSlot> for ScheduleSlotResponse {
 struct SessionResponse {
     id: String,
     link_id: String,
+    submissive_id: String,
     template_id: Option<String>,
     title: String,
     setup_notes: Option<String>,
@@ -274,9 +275,13 @@ fn session_response(
         .into_iter()
         .map(Into::into)
         .collect();
+    let (_, submissive_id) = links::parties(conn, &s.link_id)
+        .map_err(|_| INTERNAL_ERROR)?
+        .ok_or(INTERNAL_ERROR)?;
     Ok(SessionResponse {
         id: s.id,
         link_id: s.link_id,
+        submissive_id,
         template_id: s.template_id,
         title: s.title,
         setup_notes: s.setup_notes,
