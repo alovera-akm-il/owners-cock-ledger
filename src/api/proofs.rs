@@ -338,7 +338,7 @@ async fn review_submission(
         return Err(BAD_REQUEST);
     }
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
-        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let submission = proofs::get(&conn, &submission_id)
             .map_err(|_| INTERNAL_ERROR)?
             .ok_or(NOT_FOUND)?;
@@ -349,8 +349,13 @@ async fn review_submission(
         // actually resolved (01-data-model.md §5).
         let reviewed_via = "session";
 
-        match proofs::review(
-            &conn,
+        // The same endpoint serves both ordinary verification and
+        // task-completion proof (04-verification-workflow.md §7) —
+        // review_proof does the submission update and, only when
+        // purpose='punishment_completion', the linked assignment's
+        // completed/failed transition and escalation, atomically.
+        match crate::domain::rewards_punishments::assignments::review_proof(
+            &mut conn,
             &submission_id,
             &submission.link_id,
             &req.status,
@@ -359,8 +364,10 @@ async fn review_submission(
             reviewed_via,
         ) {
             Ok(()) => Ok(StatusCode::NO_CONTENT),
-            Err(proofs::ReviewError::NotReviewable) => Err(CONFLICT),
-            Err(proofs::ReviewError::Db(_)) => Err(INTERNAL_ERROR),
+            Err(crate::domain::rewards_punishments::assignments::ReviewProofError::Proof(
+                proofs::ReviewError::NotReviewable,
+            )) => Err(CONFLICT),
+            Err(_) => Err(INTERNAL_ERROR),
         }
     })
     .await
