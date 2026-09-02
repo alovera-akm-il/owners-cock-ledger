@@ -2578,6 +2578,119 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn catalog_template_can_be_reactivated_edited_and_have_its_escalation_cleared() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-edit@example.test", "sub-edit@example.test")
+                .await;
+
+        let (_, fallback) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({"kind": "punishment", "title": "extra day locked", "effect_kind": "grant"}),
+            )
+            .await;
+        let fallback_id = fallback["id"].as_str().unwrap().to_string();
+
+        let (_, task) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({
+                    "kind": "task",
+                    "title": "cold shower",
+                    "completion_type": "acknowledge_only",
+                    "default_deadline_seconds": 3600,
+                    "on_failure_template_id": fallback_id,
+                }),
+            )
+            .await;
+        let task_id = task["id"].as_str().unwrap().to_string();
+        assert_eq!(task["on_failure_template_id"], fallback_id);
+
+        // Deactivate, then reactivate via a partial PATCH that only
+        // touches `active` — every other field must survive untouched.
+        keyholder
+            .patch(
+                &format!("/api/v1/keyholder/templates/{task_id}"),
+                serde_json::json!({"active": false}),
+            )
+            .await;
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/templates/{task_id}"),
+                serde_json::json!({"active": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder.get("/api/v1/keyholder/templates").await;
+        let reactivated = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == task_id)
+            .unwrap();
+        assert_eq!(reactivated["active"], true);
+        assert_eq!(reactivated["title"], "cold shower");
+        assert_eq!(reactivated["default_deadline_seconds"], 3600);
+        assert_eq!(reactivated["on_failure_template_id"], fallback_id);
+
+        // Full field edit: rename, and re-deadline.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/templates/{task_id}"),
+                serde_json::json!({"title": "cold shower, extended", "default_deadline_seconds": 7200}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder.get("/api/v1/keyholder/templates").await;
+        let edited = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == task_id)
+            .unwrap();
+        assert_eq!(edited["title"], "cold shower, extended");
+        assert_eq!(edited["default_deadline_seconds"], 7200);
+
+        // Explicit null clears the escalation chain without touching
+        // anything else.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/templates/{task_id}"),
+                serde_json::json!({"on_failure_template_id": null}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder.get("/api/v1/keyholder/templates").await;
+        let cleared = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == task_id)
+            .unwrap();
+        assert_eq!(cleared["on_failure_template_id"], serde_json::Value::Null);
+        assert_eq!(cleared["title"], "cold shower, extended");
+
+        // An edit that would leave the template in an invalid state is
+        // rejected with 422, and doesn't partially apply.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/templates/{fallback_id}"),
+                serde_json::json!({"effect_kind": "time_extension"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let (_, list) = keyholder.get("/api/v1/keyholder/templates").await;
+        let untouched = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == fallback_id)
+            .unwrap();
+        assert_eq!(untouched["effect_kind"], "grant");
+    }
+
+    #[tokio::test]
     async fn task_assignment_failure_escalates_to_a_time_extension_punishment() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) =

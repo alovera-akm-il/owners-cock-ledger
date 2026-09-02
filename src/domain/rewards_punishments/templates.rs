@@ -207,27 +207,128 @@ pub fn list_for_keyholder(
     }
 }
 
+/// A field left `None` here keeps its current value — the shape a
+/// caller who only wants to reactivate (`{"active": true}`) needs.
+/// `description`/`on_success_template_id`/`on_failure_template_id` are
+/// double-`Option`ed (see `crate::api::templates::deserialize_some`) so
+/// "omit this field" and "explicitly clear it" are distinguishable at
+/// the API boundary — the other fields have no UI path that needs to
+/// null them back out independently of setting a new value.
+#[derive(Default)]
+pub struct TemplateEdit<'a> {
+    pub title: Option<&'a str>,
+    pub description: Option<Option<&'a str>>,
+    pub severity: Option<i64>,
+    pub active: Option<bool>,
+    pub effect_kind: Option<&'a str>,
+    pub completion_type: Option<&'a str>,
+    pub proof_media_types: Option<&'a str>,
+    pub default_deadline_seconds: Option<i64>,
+    pub time_extension_seconds: Option<i64>,
+    pub time_reduction_seconds: Option<i64>,
+    pub on_success_template_id: Option<Option<&'a str>>,
+    pub on_failure_template_id: Option<Option<&'a str>>,
+    pub points_delta: Option<i64>,
+    pub points_cost: Option<i64>,
+}
+
 #[derive(Debug, Error)]
-pub enum UpdateError {
+pub enum EditError {
     #[error("template not found or not yours")]
     NotFound,
+    #[error(transparent)]
+    Validation(#[from] ValidationError),
     #[error(transparent)]
     Db(#[from] rusqlite::Error),
 }
 
-/// Deactivates a template — the only mutation exposed for now. Editing
-/// individual fields (title, deadline seconds, etc.) is real
-/// documented scope (`03-api-design.md` §7) but not built yet; this
-/// covers the one mutation every escalation-chain-cleanup workflow
-/// actually needs first.
-pub fn deactivate(conn: &Connection, id: &str, keyholder_id: &str) -> Result<(), UpdateError> {
-    let affected = conn.execute(
-        "UPDATE reward_punishment_templates SET active = 0 WHERE id = ?1 AND keyholder_id = ?2",
-        params![id, keyholder_id],
+/// `PATCH /keyholder/templates/{id}` (03-api-design.md §7): edits any
+/// combination of fields, re-validating the merged result against the
+/// same required-field rules `create` enforces — `kind` itself is
+/// immutable (changing it would invalidate whatever's already been
+/// copied onto past assignments, 01-data-model.md §6). Never rewrites
+/// past assignments either way; only future ones see the edit.
+pub fn update(
+    conn: &Connection,
+    id: &str,
+    keyholder_id: &str,
+    edit: TemplateEdit,
+) -> Result<(), EditError> {
+    let current = get(conn, id)?
+        .filter(|t| t.keyholder_id == keyholder_id)
+        .ok_or(EditError::NotFound)?;
+
+    let title = edit.title.unwrap_or(&current.title);
+    let description = edit.description.unwrap_or(current.description.as_deref());
+    let severity = edit.severity.or(current.severity);
+    let effect_kind = edit.effect_kind.or(current.effect_kind.as_deref());
+    let completion_type = edit.completion_type.or(current.completion_type.as_deref());
+    let proof_media_types = edit
+        .proof_media_types
+        .or(current.proof_media_types.as_deref());
+    let default_deadline_seconds = edit
+        .default_deadline_seconds
+        .or(current.default_deadline_seconds);
+    let time_extension_seconds = edit
+        .time_extension_seconds
+        .or(current.time_extension_seconds);
+    let time_reduction_seconds = edit
+        .time_reduction_seconds
+        .or(current.time_reduction_seconds);
+    let on_success_template_id = edit
+        .on_success_template_id
+        .unwrap_or(current.on_success_template_id.as_deref());
+    let on_failure_template_id = edit
+        .on_failure_template_id
+        .unwrap_or(current.on_failure_template_id.as_deref());
+    let points_delta = edit.points_delta.or(current.points_delta);
+    let points_cost = edit.points_cost.or(current.points_cost);
+    let active = edit.active.unwrap_or(current.active);
+
+    validate(&NewTemplate {
+        kind: &current.kind,
+        title,
+        description,
+        severity,
+        effect_kind,
+        completion_type,
+        proof_media_types,
+        default_deadline_seconds,
+        time_extension_seconds,
+        time_reduction_seconds,
+        on_success_template_id,
+        on_failure_template_id,
+        points_delta,
+        points_cost,
+    })?;
+
+    conn.execute(
+        "UPDATE reward_punishment_templates SET
+            title = ?1, description = ?2, severity = ?3, active = ?4,
+            effect_kind = ?5, completion_type = ?6, proof_media_types = ?7,
+            default_deadline_seconds = ?8, time_extension_seconds = ?9,
+            time_reduction_seconds = ?10, on_success_template_id = ?11,
+            on_failure_template_id = ?12, points_delta = ?13, points_cost = ?14
+         WHERE id = ?15 AND keyholder_id = ?16",
+        params![
+            title,
+            description,
+            severity,
+            active,
+            effect_kind,
+            completion_type,
+            proof_media_types,
+            default_deadline_seconds,
+            time_extension_seconds,
+            time_reduction_seconds,
+            on_success_template_id,
+            on_failure_template_id,
+            points_delta,
+            points_cost,
+            id,
+            keyholder_id,
+        ],
     )?;
-    if affected == 0 {
-        return Err(UpdateError::NotFound);
-    }
     Ok(())
 }
 
@@ -339,6 +440,18 @@ mod tests {
         ));
     }
 
+    fn deactivate(conn: &Connection, id: &str, keyholder_id: &str) -> Result<(), EditError> {
+        update(
+            conn,
+            id,
+            keyholder_id,
+            TemplateEdit {
+                active: Some(false),
+                ..Default::default()
+            },
+        )
+    }
+
     #[test]
     fn deactivate_leaves_the_row_gettable() {
         let (_dir, pool, kh) = temp_pool_with_keyholder();
@@ -356,7 +469,163 @@ mod tests {
         let conn = pool.get().unwrap();
         let id = create(&conn, &kh, base_task()).unwrap();
         let result = deactivate(&conn, &id, "someone-else");
-        assert!(matches!(result, Err(UpdateError::NotFound)));
+        assert!(matches!(result, Err(EditError::NotFound)));
+    }
+
+    #[test]
+    fn update_can_reactivate_without_touching_other_fields() {
+        let (_dir, pool, kh) = temp_pool_with_keyholder();
+        let conn = pool.get().unwrap();
+        let id = create(&conn, &kh, base_task()).unwrap();
+        deactivate(&conn, &id, &kh).unwrap();
+
+        update(
+            &conn,
+            &id,
+            &kh,
+            TemplateEdit {
+                active: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let t = get(&conn, &id).unwrap().unwrap();
+        assert!(t.active);
+        assert_eq!(t.title, "cold shower");
+        assert_eq!(t.default_deadline_seconds, Some(86_400));
+    }
+
+    #[test]
+    fn update_can_edit_title_and_deadline() {
+        let (_dir, pool, kh) = temp_pool_with_keyholder();
+        let conn = pool.get().unwrap();
+        let id = create(&conn, &kh, base_task()).unwrap();
+
+        update(
+            &conn,
+            &id,
+            &kh,
+            TemplateEdit {
+                title: Some("cold shower, extended"),
+                default_deadline_seconds: Some(3600),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let t = get(&conn, &id).unwrap().unwrap();
+        assert_eq!(t.title, "cold shower, extended");
+        assert_eq!(t.default_deadline_seconds, Some(3600));
+        // Untouched fields survive the edit.
+        assert_eq!(t.completion_type.as_deref(), Some("proof_required"));
+    }
+
+    #[test]
+    fn update_can_explicitly_clear_the_escalation_chain() {
+        let (_dir, pool, kh) = temp_pool_with_keyholder();
+        let conn = pool.get().unwrap();
+        let target_id = create(&conn, &kh, base_task()).unwrap();
+        let mut with_chain = base_task();
+        with_chain.title = "has a chain";
+        with_chain.on_failure_template_id = Some(&target_id);
+        let id = create(&conn, &kh, with_chain).unwrap();
+        assert!(
+            get(&conn, &id)
+                .unwrap()
+                .unwrap()
+                .on_failure_template_id
+                .is_some()
+        );
+
+        update(
+            &conn,
+            &id,
+            &kh,
+            TemplateEdit {
+                on_failure_template_id: Some(None),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(
+            get(&conn, &id)
+                .unwrap()
+                .unwrap()
+                .on_failure_template_id
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn update_rejects_a_combination_that_would_fail_validation() {
+        let (_dir, pool, kh) = temp_pool_with_keyholder();
+        let conn = pool.get().unwrap();
+        let id = create(
+            &conn,
+            &kh,
+            NewTemplate {
+                kind: "punishment",
+                title: "corner time",
+                description: None,
+                severity: None,
+                effect_kind: Some("grant"),
+                completion_type: None,
+                proof_media_types: None,
+                default_deadline_seconds: None,
+                time_extension_seconds: None,
+                time_reduction_seconds: None,
+                on_success_template_id: None,
+                on_failure_template_id: None,
+                points_delta: None,
+                points_cost: None,
+            },
+        )
+        .unwrap();
+
+        // Switching to time_extension without ever setting the seconds
+        // (neither previously nor in this edit) re-triggers the same
+        // required-field check `create` enforces.
+        let result = update(
+            &conn,
+            &id,
+            &kh,
+            TemplateEdit {
+                effect_kind: Some("time_extension"),
+                ..Default::default()
+            },
+        );
+        assert!(matches!(
+            result,
+            Err(EditError::Validation(
+                ValidationError::MissingTimeExtensionSeconds
+            ))
+        ));
+        // Rejected edits don't partially apply.
+        assert_eq!(
+            get(&conn, &id).unwrap().unwrap().effect_kind.as_deref(),
+            Some("grant")
+        );
+    }
+
+    #[test]
+    fn update_is_scoped_to_the_owning_keyholder() {
+        let (_dir, pool, kh) = temp_pool_with_keyholder();
+        let conn = pool.get().unwrap();
+        let id = create(&conn, &kh, base_task()).unwrap();
+
+        let result = update(
+            &conn,
+            &id,
+            "someone-else",
+            TemplateEdit {
+                title: Some("hijacked"),
+                ..Default::default()
+            },
+        );
+        assert!(matches!(result, Err(EditError::NotFound)));
+        assert_eq!(get(&conn, &id).unwrap().unwrap().title, "cold shower");
     }
 
     #[test]

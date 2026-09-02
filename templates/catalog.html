@@ -54,7 +54,7 @@
   </div>
 
   <div id="new-template-form-wrap" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
-    <p class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
+    <p id="template-form-heading" class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
     <form id="new-template-form" class="space-y-4">
       <div id="template-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
 
@@ -66,6 +66,7 @@
           <option value="reward">Reward</option>
         </select>
       </div>
+      <p id="tpl-kind-locked-note" class="hidden text-[11px] text-slate-500 -mt-2">Kind can't be changed after creation.</p>
       <textarea id="tpl-description" rows="2" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
 
       <!-- task fields -->
@@ -153,7 +154,7 @@
       </div>
 
       <div class="flex gap-2">
-        <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
+        <button type="submit" id="template-form-save-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
         <button type="button" id="cancel-template-btn" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
       </div>
     </form>
@@ -176,9 +177,12 @@
           </div>
         </div>
         {% if t.active %}
-        <button class="deactivate-btn text-xs font-medium text-slate-400 hover:text-red-400 shrink-0" data-id="{{ t.id }}">Deactivate</button>
+        <div class="flex items-center gap-2 shrink-0">
+          <button class="edit-template-btn text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1 transition-colors" data-id="{{ t.id }}">Edit</button>
+          <button class="deactivate-btn text-xs font-medium text-slate-400 hover:text-red-400" data-id="{{ t.id }}">Deactivate</button>
+        </div>
         {% else %}
-        <span class="text-xs text-slate-600 shrink-0">inactive</span>
+        <button class="reactivate-btn text-xs font-semibold text-amber-500 border border-amber-700/50 hover:bg-amber-500/10 rounded-lg px-2.5 py-1 transition-colors shrink-0" data-id="{{ t.id }}">Reactivate</button>
         {% endif %}
       </div>
       {% endfor %}
@@ -219,14 +223,79 @@
     $('.tab-panel[data-kind="' + activeKind + '"]').removeClass('hidden');
   });
 
-  // ---------- New template form ----------
-  $('#new-template-btn').on('click', function () {
-    $('#tpl-kind').val(activeKind);
+  // ---------- New / edit template form ----------
+  let editingId = null;
+  let allTemplates = [];
+
+  function resetTemplateForm() {
+    $('#tpl-title, #tpl-description').val('');
+    $('.tpl-media').prop('checked', false);
+    $('#tpl-on-success, #tpl-on-failure').val('');
+    $('#tpl-deadline-hours').val(24);
+    $('#tpl-extension-hours').val(6);
+    $('#tpl-reduction-hours').val(2);
+    $('#tpl-completion-type').val('acknowledge_only');
+    $('input[name="punishment-effect"][value="grant"]').prop('checked', true);
+    $('input[name="reward-effect"][value="grant"]').prop('checked', true);
+    $('#punishment-timeext-fields, #reward-timered-fields, #tpl-proof-media-wrap').addClass('hidden');
+  }
+
+  function openNewTemplateForm() {
+    editingId = null;
+    resetTemplateForm();
+    $('#template-form-heading').text('New template');
+    $('#template-form-save-btn').text('Save template');
+    $('#tpl-kind').prop('disabled', false).val(activeKind);
+    $('#tpl-kind-locked-note').addClass('hidden');
     syncKindFields();
     $('#new-template-form-wrap').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
+  }
+
+  function openEditTemplateForm(id) {
+    const t = allTemplates.find(x => x.id === id);
+    if (!t) return;
+    editingId = id;
+    resetTemplateForm();
+    $('#template-form-heading').text('Editing template');
+    $('#template-form-save-btn').text('Save changes');
+    $('#tpl-kind').prop('disabled', true).val(t.kind);
+    $('#tpl-kind-locked-note').removeClass('hidden');
+    syncKindFields();
+
+    $('#tpl-title').val(t.title);
+    $('#tpl-description').val(t.description || '');
+
+    if (t.kind === 'punishment') {
+      const effect = t.effect_kind || 'grant';
+      $('input[name="punishment-effect"][value="' + effect + '"]').prop('checked', true);
+      $('#punishment-timeext-fields').toggleClass('hidden', effect !== 'time_extension');
+      if (t.time_extension_seconds) $('#tpl-extension-hours').val(t.time_extension_seconds / 3600);
+    } else if (t.kind === 'reward') {
+      const effect = t.effect_kind || 'grant';
+      $('input[name="reward-effect"][value="' + effect + '"]').prop('checked', true);
+      $('#reward-timered-fields').toggleClass('hidden', effect !== 'time_reduction');
+      if (t.time_reduction_seconds) $('#tpl-reduction-hours').val(t.time_reduction_seconds / 3600);
+    } else {
+      $('#tpl-completion-type').val(t.completion_type || 'acknowledge_only');
+      const proofRequired = t.completion_type === 'proof_required';
+      $('#tpl-proof-media-wrap').toggle(proofRequired);
+      if (proofRequired && Array.isArray(t.proof_media_types)) {
+        t.proof_media_types.forEach(m => $('.tpl-media[value="' + m + '"]').prop('checked', true));
+      }
+      if (t.default_deadline_seconds) $('#tpl-deadline-hours').val(t.default_deadline_seconds / 3600);
+      $('#tpl-on-success').val(t.on_success_template_id || '');
+      $('#tpl-on-failure').val(t.on_failure_template_id || '');
+    }
+
+    $('#new-template-form-wrap').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  $('#new-template-btn').on('click', openNewTemplateForm);
   $('#cancel-template-btn').on('click', function () {
     $('#new-template-form-wrap').addClass('hidden');
+  });
+  $(document).on('click', '.edit-template-btn', function () {
+    openEditTemplateForm($(this).data('id'));
   });
 
   function syncKindFields() {
@@ -234,9 +303,6 @@
     $('#task-fields').toggle(kind === 'task');
     $('#punishment-fields').toggle(kind === 'punishment');
     $('#reward-fields').toggle(kind === 'reward');
-    $('input[name="punishment-effect"][value="grant"]').prop('checked', true);
-    $('input[name="reward-effect"][value="grant"]').prop('checked', true);
-    $('#punishment-timeext-fields, #reward-timered-fields').addClass('hidden');
   }
   $('#tpl-kind').on('change', syncKindFields);
   $('#tpl-completion-type').on('change', function () {
@@ -249,20 +315,28 @@
     $('#reward-timered-fields').toggleClass('hidden', $('input[name="reward-effect"]:checked').val() !== 'time_reduction');
   });
 
-  // Populate the on-success/on-failure pickers from the existing catalog.
-  apiCall('GET', '/api/v1/keyholder/templates').done(function (list) {
-    list.filter(t => t.active).forEach(function (t) {
-      const opt = $('<option>').val(t.id).text(t.title + ' (' + t.kind + ')');
-      if (t.kind !== 'punishment') $('#tpl-on-success').append(opt.clone());
-      if (t.kind !== 'reward') $('#tpl-on-failure').append(opt);
+  // Shared by the on-success/on-failure pickers and the Edit form's prefill.
+  function loadTemplates() {
+    return apiCall('GET', '/api/v1/keyholder/templates').done(function (list) {
+      allTemplates = list;
+      $('#tpl-on-success, #tpl-on-failure').each(function () {
+        $(this).find('option:not(:first)').remove();
+      });
+      list.filter(t => t.active).forEach(function (t) {
+        const opt = $('<option>').val(t.id).text(t.title + ' (' + t.kind + ')');
+        if (t.kind !== 'punishment') $('#tpl-on-success').append(opt.clone());
+        if (t.kind !== 'reward') $('#tpl-on-failure').append(opt);
+      });
     });
-  });
+  }
+  loadTemplates();
 
   $('#new-template-form').on('submit', function (e) {
     e.preventDefault();
     $('#template-message').addClass('hidden');
     const kind = $('#tpl-kind').val();
-    const payload = { kind: kind, title: $('#tpl-title').val(), description: $('#tpl-description').val() || null };
+    const payload = { title: $('#tpl-title').val(), description: $('#tpl-description').val() || null };
+    if (!editingId) payload.kind = kind;
 
     if (kind === 'punishment') {
       const effect = $('input[name="punishment-effect"]:checked').val();
@@ -278,13 +352,15 @@
         payload.proof_media_types = $('.tpl-media:checked').map(function () { return this.value; }).get();
       }
       payload.default_deadline_seconds = Math.round(parseFloat($('#tpl-deadline-hours').val()) * 3600);
-      const onSuccess = $('#tpl-on-success').val();
-      const onFailure = $('#tpl-on-failure').val();
-      if (onSuccess) payload.on_success_template_id = onSuccess;
-      if (onFailure) payload.on_failure_template_id = onFailure;
+      payload.on_success_template_id = $('#tpl-on-success').val() || null;
+      payload.on_failure_template_id = $('#tpl-on-failure').val() || null;
     }
 
-    apiCall('POST', '/api/v1/keyholder/templates', payload)
+    const request = editingId
+      ? apiCall('PATCH', '/api/v1/keyholder/templates/' + editingId, payload)
+      : apiCall('POST', '/api/v1/keyholder/templates', payload);
+
+    request
       .done(function () { window.location.reload(); })
       .fail(function (xhr) {
         const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not save.';
@@ -292,9 +368,14 @@
       });
   });
 
-  $('.deactivate-btn').on('click', function () {
+  $(document).on('click', '.deactivate-btn', function () {
     if (!confirm('Deactivate this template? Existing assignments keep working; it just stops being offered as a new choice.')) return;
     apiCall('PATCH', '/api/v1/keyholder/templates/' + $(this).data('id'), { active: false })
+      .done(function () { window.location.reload(); });
+  });
+
+  $(document).on('click', '.reactivate-btn', function () {
+    apiCall('PATCH', '/api/v1/keyholder/templates/' + $(this).data('id'), { active: true })
       .done(function () { window.location.reload(); });
   });
 </script>

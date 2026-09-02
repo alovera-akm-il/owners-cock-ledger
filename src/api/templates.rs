@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ApiError, INTERNAL_ERROR};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
-use crate::domain::rewards_punishments::templates::{self, CreateError, Template, UpdateError};
+use crate::domain::rewards_punishments::templates::{self, CreateError, EditError, Template};
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "template not found");
@@ -155,9 +155,38 @@ async fn create_template(
     .map_err(|_| INTERNAL_ERROR)?
 }
 
-#[derive(Deserialize)]
+/// Distinguishes "field omitted" (`None`, don't touch) from "field
+/// explicitly sent as `null`" (`Some(None)`, clear it) — the shape a
+/// PATCH needs for its nullable fields but that plain `Option<T>`
+/// cannot express, since serde maps both an absent key and an explicit
+/// `null` to `None` otherwise.
+fn deserialize_some<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+#[derive(Deserialize, Default)]
 pub struct PatchTemplateRequest {
+    title: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    description: Option<Option<String>>,
+    severity: Option<i64>,
     active: Option<bool>,
+    effect_kind: Option<String>,
+    completion_type: Option<String>,
+    proof_media_types: Option<serde_json::Value>,
+    default_deadline_seconds: Option<i64>,
+    time_extension_seconds: Option<i64>,
+    time_reduction_seconds: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    on_success_template_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    on_failure_template_id: Option<Option<String>>,
+    points_delta: Option<i64>,
+    points_cost: Option<i64>,
 }
 
 async fn patch_template(
@@ -170,18 +199,30 @@ async fn patch_template(
         .map_err(|_| FORBIDDEN)?;
     user.require_scope("manage:catalog")
         .map_err(|_| FORBIDDEN)?;
+    let proof_media_types = req.proof_media_types.as_ref().map(|v| v.to_string());
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
-        if req.active == Some(false) {
-            match templates::deactivate(&conn, &id, &user.user_id) {
-                Ok(()) => Ok(StatusCode::NO_CONTENT),
-                Err(UpdateError::NotFound) => Err(NOT_FOUND),
-                Err(UpdateError::Db(_)) => Err(INTERNAL_ERROR),
-            }
-        } else {
-            // Full field editing isn't built yet — deactivation is the
-            // one mutation the domain layer currently exposes.
-            Ok(StatusCode::NO_CONTENT)
+        let edit = templates::TemplateEdit {
+            title: req.title.as_deref(),
+            description: req.description.as_ref().map(|d| d.as_deref()),
+            severity: req.severity,
+            active: req.active,
+            effect_kind: req.effect_kind.as_deref(),
+            completion_type: req.completion_type.as_deref(),
+            proof_media_types: proof_media_types.as_deref(),
+            default_deadline_seconds: req.default_deadline_seconds,
+            time_extension_seconds: req.time_extension_seconds,
+            time_reduction_seconds: req.time_reduction_seconds,
+            on_success_template_id: req.on_success_template_id.as_ref().map(|v| v.as_deref()),
+            on_failure_template_id: req.on_failure_template_id.as_ref().map(|v| v.as_deref()),
+            points_delta: req.points_delta,
+            points_cost: req.points_cost,
+        };
+        match templates::update(&conn, &id, &user.user_id, edit) {
+            Ok(()) => Ok(StatusCode::NO_CONTENT),
+            Err(EditError::NotFound) => Err(NOT_FOUND),
+            Err(EditError::Validation(_)) => Err(UNPROCESSABLE),
+            Err(EditError::Db(_)) => Err(INTERNAL_ERROR),
         }
     })
     .await
