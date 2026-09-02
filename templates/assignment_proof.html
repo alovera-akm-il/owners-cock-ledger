@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Ledger — Submit Task Proof</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
+    <a class="flex items-center gap-2 font-semibold tracking-tight" href="/submissive">
+      <span class="h-7 w-7 rounded-lg bg-amber-600 flex items-center justify-center text-slate-950 text-xs font-bold">L</span>
+      <span class="hidden sm:inline">The Ledger</span>
+    </a>
+    <a href="/submissive" class="text-xs font-medium text-slate-400 hover:text-slate-200">&larr; Back to status</a>
+  </div>
+</nav>
+
+<main class="max-w-lg mx-auto px-6 py-8">
+  <h1 class="text-xl font-semibold tracking-tight mb-1">{{ title }}</h1>
+  <p class="text-sm text-slate-400 mb-6">Accepted proof: {{ accepted_media }}</p>
+
+  <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+    <form id="proof-form" class="space-y-4">
+      <div id="proof-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5" for="kind">Proof type</label>
+        <select id="kind" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          {% for m in media_options %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5" for="file">File</label>
+        <input id="file" type="file" accept="image/jpeg,image/png,video/mp4,video/webm,audio/webm,audio/mp4"
+          class="w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-200 file:text-xs" />
+      </div>
+
+      <button id="submit-btn" type="submit" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+        Submit
+      </button>
+    </form>
+  </div>
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  $('#proof-form').on('submit', function (e) {
+    e.preventDefault();
+    $('#proof-message').addClass('hidden');
+    const fileInput = $('#file')[0];
+    if (fileInput.files.length === 0) {
+      $('#proof-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text('Choose a file.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('kind', $('#kind').val());
+    formData.append('files', fileInput.files[0]);
+
+    $('#submit-btn').prop('disabled', true).text('Submitting…');
+    $.ajax({
+      url: '/api/v1/submissive/assignments/{{ assignment_id }}/proof',
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).done(function () {
+      window.location = '/submissive';
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
+      $('#proof-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(msg);
+      $('#submit-btn').prop('disabled', false).text('Submit');
+    });
+  });
+</script>
+</body>
+</html>

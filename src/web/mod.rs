@@ -14,6 +14,7 @@ use crate::auth::session::{self, CurrentUser, Role, SESSION_COOKIE_NAME};
 use crate::db;
 use crate::db::Pool;
 use crate::domain::chastity::{confinement, devices};
+use crate::domain::rewards_punishments::{assignments, templates};
 use crate::domain::verification::{codes, policy};
 use crate::domain::{links, proofs};
 
@@ -395,6 +396,150 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
     })
 }
 
+struct TemplateRow {
+    id: String,
+    title: String,
+    active: bool,
+    summary: String,
+}
+
+struct KindGroup {
+    label: &'static str,
+    items: Vec<TemplateRow>,
+}
+
+fn template_summary(t: &templates::Template) -> String {
+    match t.kind.as_str() {
+        "task" => {
+            let deadline = t
+                .default_deadline_seconds
+                .map(fmt_duration)
+                .unwrap_or_else(|| "no deadline".to_string());
+            match t.completion_type.as_deref() {
+                Some("proof_required") => {
+                    let media = t
+                        .proof_media_types
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+                        .map(|v| v.join(", "))
+                        .unwrap_or_default();
+                    format!("proof required ({media}) · {deadline}")
+                }
+                _ => format!("acknowledge only · {deadline}"),
+            }
+        }
+        "reward" => match t.effect_kind.as_deref() {
+            Some("time_reduction") => format!(
+                "reduces lock timer by {}",
+                fmt_duration(t.time_reduction_seconds.unwrap_or(0))
+            ),
+            _ => "direct grant".to_string(),
+        },
+        "punishment" => match t.effect_kind.as_deref() {
+            Some("time_extension") => format!(
+                "extends lock timer by {}",
+                fmt_duration(t.time_extension_seconds.unwrap_or(0))
+            ),
+            _ => "direct grant".to_string(),
+        },
+        _ => String::new(),
+    }
+}
+
+#[derive(Template)]
+#[template(path = "catalog.html")]
+struct CatalogTemplate {
+    kinds: Vec<KindGroup>,
+}
+
+async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    let keyholder_id = user.user_id.clone();
+    let all = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<templates::Template>> {
+        let conn = pool.get()?;
+        Ok(templates::list_for_keyholder(&conn, &keyholder_id, None)?)
+    })
+    .await;
+
+    let Ok(Ok(all)) = all else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
+    let mut kinds = Vec::new();
+    for (label, kind) in [
+        ("Tasks", "task"),
+        ("Rewards", "reward"),
+        ("Punishments", "punishment"),
+    ] {
+        let items = all
+            .iter()
+            .filter(|t| t.kind == kind)
+            .map(|t| TemplateRow {
+                id: t.id.clone(),
+                title: t.title.clone(),
+                active: t.active,
+                summary: template_summary(t),
+            })
+            .collect();
+        kinds.push(KindGroup { label, items });
+    }
+
+    render(CatalogTemplate { kinds })
+}
+
+#[derive(Template)]
+#[template(path = "assignment_proof.html")]
+struct AssignmentProofTemplate {
+    assignment_id: String,
+    title: String,
+    accepted_media: String,
+    media_options: Vec<String>,
+}
+
+async fn assignment_proof_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(assignment_id): Path<String>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Submissive {
+        return Redirect::to("/dashboard").into_response();
+    }
+
+    let target_id = assignment_id.clone();
+    let result =
+        tokio::task::spawn_blocking(move || -> anyhow::Result<Option<assignments::Assignment>> {
+            let conn = pool.get()?;
+            Ok(assignments::get(&conn, &target_id)?)
+        })
+        .await;
+
+    let Ok(Ok(Some(a))) = result else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let media_options: Vec<String> = a
+        .proof_media_types
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| vec!["photo".to_string()]);
+
+    render(AssignmentProofTemplate {
+        assignment_id,
+        title: a.title,
+        accepted_media: media_options.join(", "),
+        media_options,
+    })
+}
+
 pub fn router() -> axum::Router<db::AppState> {
     use axum::routing::get;
     axum::Router::new()
@@ -404,6 +549,11 @@ pub fn router() -> axum::Router<db::AppState> {
         .route("/dashboard", get(dashboard_page))
         .route("/submissive", get(submissive_dashboard_page))
         .route("/submissive/submit-proof", get(submit_proof_page))
+        .route(
+            "/submissive/assignments/{id}/proof",
+            get(assignment_proof_page),
+        )
         .route("/keyholder/submissives/{id}", get(submissive_detail_page))
         .route("/keyholder/review", get(review_queue_page))
+        .route("/keyholder/catalog", get(catalog_page))
 }

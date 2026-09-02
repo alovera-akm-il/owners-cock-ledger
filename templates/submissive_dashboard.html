@@ -74,6 +74,13 @@
     </div>
   </div>
 
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-3">Tasks, rewards &amp; punishments</p>
+    <ul id="assignments-list" class="divide-y divide-slate-800 text-sm">
+      <li class="py-2 text-slate-500">Loading…</li>
+    </ul>
+  </div>
+
   <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
     <div class="px-5 py-3 border-b border-slate-800">
       <p class="text-sm font-semibold">Recent submissions</p>
@@ -123,6 +130,42 @@
       $('#request-code-message').removeClass('hidden text-emerald-400').addClass('text-red-400').text(msg);
     });
   });
+
+  function apiCall(method, path, body) {
+    return $.ajax({
+      url: path, method: method, contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  function renderAssignments(list) {
+    const $list = $('#assignments-list').empty();
+    const open = list.filter(a => !['completed', 'failed', 'revoked', 'applied'].includes(a.status));
+    if (open.length === 0) {
+      $list.append($('<li class="py-2 text-slate-500">').text('Nothing open right now.'));
+      return;
+    }
+    open.forEach(function (a) {
+      const $li = $('<li class="py-2 flex items-center justify-between gap-3">');
+      $li.append($('<span>').text(a.title + ' · ' + a.kind + ' · ' + a.status));
+      const $actions = $('<span class="flex gap-2">');
+      if (a.status === 'assigned' && (a.kind !== 'task' || a.completion_type === 'acknowledge_only')) {
+        const $ack = $('<button class="text-xs text-amber-400 hover:text-amber-300">Acknowledge</button>');
+        $ack.on('click', function () {
+          apiCall('PATCH', '/api/v1/submissive/assignments/' + a.id + '/acknowledge', {}).done(function () { window.location.reload(); });
+        });
+        $actions.append($ack);
+      }
+      if (a.status === 'assigned' && a.kind === 'task' && a.completion_type === 'proof_required') {
+        $actions.append($('<a class="text-xs text-amber-400 hover:text-amber-300">').attr('href', '/submissive/assignments/' + a.id + '/proof').text('Submit proof'));
+      }
+      $li.append($actions);
+      $list.append($li);
+    });
+  }
+
+  apiCall('GET', '/api/v1/submissive/assignments').done(renderAssignments);
 </script>
 </body>
 </html>

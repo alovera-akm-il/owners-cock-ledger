@@ -78,6 +78,30 @@
     </form>
   </div>
 
+  <!-- assign from catalog -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold">Assign something</p>
+      <a href="/keyholder/catalog" class="text-xs text-amber-500 hover:text-amber-400">Manage catalog &rarr;</a>
+    </div>
+    <form id="assign-form" class="space-y-3">
+      <div id="assign-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+      <select id="assign-template" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+        <option value="">Choose from catalog…</option>
+      </select>
+      <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-2">Assign</button>
+    </form>
+    <p class="text-xs text-slate-600 mt-2">Ad-hoc (not-from-catalog) assignments aren't in this UI yet — build a template first.</p>
+  </div>
+
+  <!-- open assignments -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-3">Open tasks, rewards &amp; punishments</p>
+    <ul id="assignments-list" class="divide-y divide-slate-800 text-sm">
+      <li class="py-2 text-slate-500">Loading…</li>
+    </ul>
+  </div>
+
   <!-- verification policy -->
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
     <p class="text-sm font-semibold mb-2">Verification schedule</p>
@@ -158,6 +182,59 @@
       .done(function () { window.location.reload(); })
       .fail(function (xhr) { showMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not add device.', false); });
   });
+
+  function showAssignMsg(text, ok) {
+    $('#assign-message').attr('class', 'rounded-lg px-3 py-2 text-xs ' + (ok ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300' : 'bg-red-600/10 border border-red-600/30 text-red-300')).removeClass('hidden').text(text);
+  }
+
+  apiCall('GET', '/api/v1/keyholder/templates').done(function (list) {
+    list.filter(t => t.active).forEach(function (t) {
+      $('#assign-template').append($('<option>').val(JSON.stringify({ id: t.id, kind: t.kind })).text(t.title + ' (' + t.kind + ')'));
+    });
+  });
+
+  $('#assign-form').on('submit', function (e) {
+    e.preventDefault();
+    const raw = $('#assign-template').val();
+    if (!raw) { showAssignMsg('Pick something from the catalog first.', false); return; }
+    const chosen = JSON.parse(raw);
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/assignments', { kind: chosen.kind, template_id: chosen.id })
+      .done(function () { window.location.reload(); })
+      .fail(function (xhr) { showAssignMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not assign.', false); });
+  });
+
+  function renderAssignments(list) {
+    const $list = $('#assignments-list').empty();
+    const open = list.filter(a => !['completed', 'failed', 'revoked', 'applied'].includes(a.status));
+    if (open.length === 0) {
+      $list.append($('<li class="py-2 text-slate-500">').text('Nothing open right now.'));
+      return;
+    }
+    open.forEach(function (a) {
+      const $li = $('<li class="py-2 flex items-center justify-between gap-3">');
+      $li.append($('<span>').text(a.title + ' · ' + a.kind + ' · ' + a.status));
+      const $actions = $('<span class="flex gap-2">');
+      if (a.status === 'acknowledged' && (a.kind !== 'task' || a.completion_type === 'acknowledge_only')) {
+        const $complete = $('<button class="text-xs text-emerald-400 hover:text-emerald-300">Mark completed</button>');
+        $complete.on('click', function () {
+          apiCall('PATCH', '/api/v1/keyholder/assignments/' + a.id, { status: 'completed' }).done(function () { window.location.reload(); });
+        });
+        $actions.append($complete);
+      }
+      if (['assigned', 'acknowledged', 'proof_submitted'].includes(a.status)) {
+        const $revoke = $('<button class="text-xs text-red-400 hover:text-red-300">Revoke</button>');
+        $revoke.on('click', function () {
+          if (!confirm('Revoke this?')) return;
+          apiCall('PATCH', '/api/v1/keyholder/assignments/' + a.id, { status: 'revoked' }).done(function () { window.location.reload(); });
+        });
+        $actions.append($revoke);
+      }
+      $li.append($actions);
+      $list.append($li);
+    });
+  }
+
+  apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/assignments').done(renderAssignments);
 </script>
 </body>
 </html>
