@@ -133,6 +133,14 @@ pub fn record_successful_login(conn: &Connection, user_id: &str) -> rusqlite::Re
     Ok(())
 }
 
+/// `admin unlock-account <email>` (10-operations.md §5) — a convenience,
+/// not a necessity: the account already self-unlocks once `locked_until`
+/// passes. Same effect as a successful login clearing the counter, under
+/// a name that reflects why the CLI is calling it.
+pub fn unlock(conn: &Connection, user_id: &str) -> rusqlite::Result<()> {
+    record_successful_login(conn, user_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

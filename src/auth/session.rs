@@ -161,6 +161,17 @@ pub fn revoke(conn: &Connection, session_id: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Revokes every session for a user, with no exception — used by password
+/// reset (`10-operations.md` §5), a public/unauthenticated flow with no
+/// "caller's own session" to preserve, unlike an authenticated password
+/// change (`revoke_all_except`).
+pub fn revoke_all(conn: &Connection, user_id: &str) -> rusqlite::Result<usize> {
+    conn.execute(
+        "UPDATE sessions SET revoked_at = ?1 WHERE user_id = ?2 AND revoked_at IS NULL",
+        params![now(), user_id],
+    )
+}
+
 /// Revokes every *other* session for a user — used after a password
 /// change/reset (10-operations.md §1) and never called with the caller's
 /// own current session id.

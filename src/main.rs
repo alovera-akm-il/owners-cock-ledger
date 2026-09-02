@@ -41,6 +41,40 @@ enum AdminCommand {
         #[arg(long)]
         yes: bool,
     },
+    /// Issues a single-use password-reset token, printed once
+    /// (10-operations.md §5). Never sets a password itself.
+    ResetPassword {
+        email: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Force-clears 2FA for an account — the last resort for a lost
+    /// device with exhausted recovery codes (10-operations.md §5).
+    Disable2fa {
+        email: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Clears a login lockout immediately (10-operations.md §5).
+    UnlockAccount {
+        email: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Ends a link unilaterally — the escape hatch for a Keyholder who
+    /// never responds to an end-link request (06-future-extensions.md
+    /// §2, 10-operations.md §5).
+    ForceEndLink {
+        link_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Performs a live, safe backup of the database and blob directory
+    /// into one output directory (10-operations.md §4).
+    Backup {
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
 }
 
 fn init_tracing() {
@@ -200,6 +234,23 @@ async fn serve(pool: db::Pool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Shared confirmation friction for every admin recovery command
+/// (10-operations.md §5): print what's about to happen, require typing
+/// `echo_value` back, or skip entirely with `--yes` for scripted use.
+fn confirm_or_bail(prompt: &str, echo_value: &str, yes: bool) -> anyhow::Result<()> {
+    if yes {
+        return Ok(());
+    }
+    print!("{prompt} Type '{echo_value}' to confirm: ");
+    std::io::stdout().flush()?;
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    if input.trim() != echo_value {
+        anyhow::bail!("confirmation did not match — aborted, nothing changed");
+    }
+    Ok(())
+}
+
 /// `admin create-keyholder` (10-operations.md §5): the one CLI command
 /// that creates an account rather than recovering one — meant to run
 /// exactly once per deployment, before any invite can exist.
@@ -209,15 +260,11 @@ fn admin_create_keyholder(
     display_name: Option<String>,
     yes: bool,
 ) -> anyhow::Result<()> {
-    if !yes {
-        print!("Create a keyholder account for '{email}'? Type the email to confirm: ");
-        std::io::stdout().flush()?;
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        if input.trim() != email {
-            anyhow::bail!("confirmation did not match — aborted, no account created");
-        }
-    }
+    confirm_or_bail(
+        &format!("Create a keyholder account for '{email}'?"),
+        &email,
+        yes,
+    )?;
 
     let display_name = display_name.unwrap_or_else(|| "Keyholder".to_string());
     let temp_password = auth::token::generate();
@@ -252,6 +299,171 @@ fn admin_create_keyholder(
     Ok(())
 }
 
+fn find_account_or_bail(conn: &rusqlite::Connection, email: &str) -> anyhow::Result<String> {
+    domain::users::find_by_email(conn, email)?
+        .map(|a| a.id)
+        .ok_or_else(|| anyhow::anyhow!("no account found for {email}"))
+}
+
+/// `admin reset-password <email>` (10-operations.md §5): issues a
+/// single-use reset token and prints it once — never sets a password
+/// itself, mirroring invite redemption.
+fn admin_reset_password(pool: db::Pool, email: String, yes: bool) -> anyhow::Result<()> {
+    confirm_or_bail(
+        &format!("Issue a password reset token for '{email}'?"),
+        &email,
+        yes,
+    )?;
+
+    let conn = pool.get()?;
+    let user_id = find_account_or_bail(&conn, &email)?;
+    let issued = domain::password_reset::issue(
+        &conn,
+        &user_id,
+        domain::password_reset::RequestedVia::AdminCli,
+    )?;
+
+    domain::audit::record(
+        &conn,
+        domain::audit::Entry {
+            actor: domain::audit::Actor::AdminCli,
+            link_id: None,
+            action: "user.password_reset_issued_via_admin_cli",
+            entity_type: "users",
+            entity_id: &user_id,
+            detail: None,
+        },
+    )?;
+
+    println!(
+        "Password reset token for {email} (shown once): {}",
+        issued.token
+    );
+    println!(
+        "Expires at {}. Relay it to the account holder to redeem via POST /auth/password-reset/redeem.",
+        api::iso8601(issued.expires_at)
+    );
+    Ok(())
+}
+
+/// `admin disable-2fa <email>` (10-operations.md §5): the last resort
+/// for a lost authenticator device with exhausted recovery codes.
+fn admin_disable_2fa(pool: db::Pool, email: String, yes: bool) -> anyhow::Result<()> {
+    confirm_or_bail(&format!("Force-disable 2FA for '{email}'?"), &email, yes)?;
+
+    let conn = pool.get()?;
+    let user_id = find_account_or_bail(&conn, &email)?;
+    domain::two_factor::force_disable_for_user(&conn, &user_id)?;
+
+    domain::audit::record(
+        &conn,
+        domain::audit::Entry {
+            actor: domain::audit::Actor::AdminCli,
+            link_id: None,
+            action: "user.two_factor_disabled_via_admin_cli",
+            entity_type: "users",
+            entity_id: &user_id,
+            detail: None,
+        },
+    )?;
+
+    println!("2FA disabled for {email}.");
+    Ok(())
+}
+
+/// `admin unlock-account <email>` (10-operations.md §5): a convenience,
+/// not a necessity — the account already self-unlocks once
+/// `locked_until` passes.
+fn admin_unlock_account(pool: db::Pool, email: String, yes: bool) -> anyhow::Result<()> {
+    confirm_or_bail(&format!("Unlock the account for '{email}'?"), &email, yes)?;
+
+    let conn = pool.get()?;
+    let user_id = find_account_or_bail(&conn, &email)?;
+    domain::users::unlock(&conn, &user_id)?;
+
+    domain::audit::record(
+        &conn,
+        domain::audit::Entry {
+            actor: domain::audit::Actor::AdminCli,
+            link_id: None,
+            action: "user.unlocked_via_admin_cli",
+            entity_type: "users",
+            entity_id: &user_id,
+            detail: None,
+        },
+    )?;
+
+    println!("Account for {email} unlocked.");
+    Ok(())
+}
+
+/// `admin force-end-link <link_id>` (10-operations.md §5,
+/// 06-future-extensions.md §2): the Tier 2 escape hatch for a Keyholder
+/// who never responds to an end-link request.
+fn admin_force_end_link(pool: db::Pool, link_id: String, yes: bool) -> anyhow::Result<()> {
+    confirm_or_bail(&format!("Force-end link '{link_id}'?"), &link_id, yes)?;
+
+    let conn = pool.get()?;
+    if !domain::links::force_end(&conn, &link_id)? {
+        anyhow::bail!("no active or paused link found with id {link_id}");
+    }
+
+    domain::audit::record(
+        &conn,
+        domain::audit::Entry {
+            actor: domain::audit::Actor::AdminCli,
+            link_id: Some(&link_id),
+            action: "link.force_ended_via_admin_cli",
+            entity_type: "keyholder_submissive_links",
+            entity_id: &link_id,
+            detail: None,
+        },
+    )?;
+
+    println!("Link {link_id} ended.");
+    Ok(())
+}
+
+/// `admin backup --out <dir>` (10-operations.md §4): a live, online-safe
+/// copy of the SQLite database (via SQLite's own backup API, safe under
+/// WAL against a concurrently-running server) plus the blob directory,
+/// into one output directory. Not a background task or HTTP endpoint —
+/// the deployer wires this into cron/systemd themselves.
+fn admin_backup(pool: db::Pool, out: std::path::PathBuf) -> anyhow::Result<()> {
+    std::fs::create_dir_all(&out)?;
+
+    let conn = pool.get()?;
+    let db_dest = out.join("db.sqlite3");
+    conn.backup(rusqlite::MAIN_DB, &db_dest, None)?;
+    println!("Database backed up to {}", db_dest.display());
+
+    let blob_src = db::resolve_data_dir()?.join("blobs");
+    let blob_dest = out.join("blobs");
+    if blob_src.is_dir() {
+        copy_dir_recursive(&blob_src, &blob_dest)?;
+        println!("Blob directory backed up to {}", blob_dest.display());
+    } else {
+        std::fs::create_dir_all(&blob_dest)?;
+    }
+
+    println!("Backup complete: {}", out.display());
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let dest_path = dest.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest_path)?;
+        } else {
+            std::fs::copy(entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_tracing();
@@ -266,6 +478,11 @@ async fn main() -> anyhow::Result<()> {
                 display_name,
                 yes,
             } => admin_create_keyholder(pool, email, display_name, yes),
+            AdminCommand::ResetPassword { email, yes } => admin_reset_password(pool, email, yes),
+            AdminCommand::Disable2fa { email, yes } => admin_disable_2fa(pool, email, yes),
+            AdminCommand::UnlockAccount { email, yes } => admin_unlock_account(pool, email, yes),
+            AdminCommand::ForceEndLink { link_id, yes } => admin_force_end_link(pool, link_id, yes),
+            AdminCommand::Backup { out } => admin_backup(pool, out),
         },
     }
 }
@@ -903,6 +1120,524 @@ mod tests {
             )
             .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    fn totp_code_for(secret_base32: &str, account_name: &str) -> String {
+        use totp_rs::{Algorithm, Builder, Secret};
+        let totp = Builder::new()
+            .with_algorithm(Algorithm::SHA1)
+            .with_digits(6)
+            .with_skew(1)
+            .with_step_duration(30)
+            .with_secret(Secret::try_from_base32(secret_base32).unwrap())
+            .with_issuer(Some("Owner's Cock Ledger"))
+            .with_account_name(account_name)
+            .build()
+            .unwrap();
+        totp.generate_current().to_string()
+    }
+
+    #[tokio::test]
+    async fn two_factor_setup_confirm_and_login_challenge_round_trip() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "tfa1@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, status_body) = client.get("/api/v1/auth/2fa/status").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status_body["enabled"], false);
+
+        let (status, setup_body) = client
+            .post("/api/v1/auth/2fa/setup", serde_json::json!({}))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let secret = setup_body["secret"].as_str().unwrap().to_string();
+        assert!(
+            setup_body["otpauth_uri"]
+                .as_str()
+                .unwrap()
+                .starts_with("otpauth://")
+        );
+        assert!(!setup_body["qr_png_base64"].as_str().unwrap().is_empty());
+
+        let code = totp_code_for(&secret, "tfa1@example.test");
+        let (status, confirm_body) = client
+            .post(
+                "/api/v1/auth/2fa/confirm",
+                serde_json::json!({"code": code}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let recovery_codes = confirm_body["recovery_codes"].as_array().unwrap();
+        assert_eq!(recovery_codes.len(), 10);
+
+        let (status, status_body) = client.get("/api/v1/auth/2fa/status").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(status_body["enabled"], true);
+        assert_eq!(status_body["recovery_codes_remaining"], 10);
+
+        // A fresh login now returns a challenge instead of a session.
+        let mut fresh = TestClient::new(pool.clone());
+        fresh.get("/health").await;
+        let (status, login_body) = fresh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(login_body["requires_2fa"], true);
+        assert!(
+            !fresh
+                .cookies
+                .contains_key(auth::session::SESSION_COOKIE_NAME)
+        );
+        let challenge_token = login_body["challenge_token"].as_str().unwrap().to_string();
+
+        let login_code = totp_code_for(&secret, "tfa1@example.test");
+        let (status, _) = fresh
+            .post(
+                "/api/v1/auth/2fa/verify",
+                serde_json::json!({"challenge_token": challenge_token, "code": login_code}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            fresh
+                .cookies
+                .contains_key(auth::session::SESSION_COOKIE_NAME)
+        );
+    }
+
+    #[tokio::test]
+    async fn login_challenge_rejects_a_wrong_code() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "tfa2@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa2@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (_, setup_body) = client
+            .post("/api/v1/auth/2fa/setup", serde_json::json!({}))
+            .await;
+        let secret = setup_body["secret"].as_str().unwrap().to_string();
+        let code = totp_code_for(&secret, "tfa2@example.test");
+        client
+            .post(
+                "/api/v1/auth/2fa/confirm",
+                serde_json::json!({"code": code}),
+            )
+            .await;
+
+        let mut fresh = TestClient::new(pool.clone());
+        fresh.get("/health").await;
+        let (_, login_body) = fresh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa2@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let challenge_token = login_body["challenge_token"].as_str().unwrap().to_string();
+
+        let (status, _) = fresh
+            .post(
+                "/api/v1/auth/2fa/verify",
+                serde_json::json!({"challenge_token": challenge_token, "code": "000000"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn a_recovery_code_completes_a_login_challenge() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "tfa3@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa3@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (_, setup_body) = client
+            .post("/api/v1/auth/2fa/setup", serde_json::json!({}))
+            .await;
+        let secret = setup_body["secret"].as_str().unwrap().to_string();
+        let code = totp_code_for(&secret, "tfa3@example.test");
+        let (_, confirm_body) = client
+            .post(
+                "/api/v1/auth/2fa/confirm",
+                serde_json::json!({"code": code}),
+            )
+            .await;
+        let recovery_code = confirm_body["recovery_codes"][0]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let mut fresh = TestClient::new(pool.clone());
+        fresh.get("/health").await;
+        let (_, login_body) = fresh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa3@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let challenge_token = login_body["challenge_token"].as_str().unwrap().to_string();
+
+        let (status, _) = fresh
+            .post(
+                "/api/v1/auth/2fa/verify",
+                serde_json::json!({"challenge_token": challenge_token, "code": recovery_code}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn disabling_2fa_requires_both_password_and_a_live_code() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "tfa4@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tfa4@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (_, setup_body) = client
+            .post("/api/v1/auth/2fa/setup", serde_json::json!({}))
+            .await;
+        let secret = setup_body["secret"].as_str().unwrap().to_string();
+        let code = totp_code_for(&secret, "tfa4@example.test");
+        client
+            .post(
+                "/api/v1/auth/2fa/confirm",
+                serde_json::json!({"code": code}),
+            )
+            .await;
+
+        // Wrong password, valid-looking code shape: rejected.
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/2fa/disable",
+                serde_json::json!({"current_password": "totally wrong", "code": "000000"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        // Right password, wrong code: still rejected.
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/2fa/disable",
+                serde_json::json!({"current_password": "correct horse battery staple", "code": "000000"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            client.get("/api/v1/auth/2fa/status").await.1["enabled"],
+            true
+        );
+
+        // Right password, right code: succeeds.
+        let disable_code = totp_code_for(&secret, "tfa4@example.test");
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/2fa/disable",
+                serde_json::json!({"current_password": "correct horse battery staple", "code": disable_code}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert_eq!(
+            client.get("/api/v1/auth/2fa/status").await.1["enabled"],
+            false
+        );
+    }
+
+    #[tokio::test]
+    async fn password_reset_request_always_returns_202_regardless_of_account_existence() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/password-reset/request",
+                serde_json::json!({"email": "nobody-at-all@example.test"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn admin_issued_reset_token_can_be_redeemed_and_revokes_old_sessions() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "reset1@example.test", "correct horse battery staple");
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "reset1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let raw_token = {
+            let conn = pool.get().unwrap();
+            let user_id = domain::users::find_by_email(&conn, "reset1@example.test")
+                .unwrap()
+                .unwrap()
+                .id;
+            domain::password_reset::issue(
+                &conn,
+                &user_id,
+                domain::password_reset::RequestedVia::AdminCli,
+            )
+            .unwrap()
+            .token
+        };
+
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/password-reset/redeem",
+                serde_json::json!({"token": raw_token, "new_password": "a totally different password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // The session that existed before the reset is now revoked.
+        let (status, _) = client.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        // The new password works; the old one doesn't.
+        let mut fresh = TestClient::new(pool.clone());
+        fresh.get("/health").await;
+        let (status, _) = fresh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "reset1@example.test", "password": "a totally different password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, _) = fresh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "reset1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn redeeming_an_unknown_reset_token_is_rejected() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/password-reset/redeem",
+                serde_json::json!({"token": "not-a-real-token", "new_password": "whatever new password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn admin_reset_password_issues_a_redeemable_token_and_writes_an_audit_row() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "admin-reset@example.test",
+            "correct horse battery staple",
+        );
+
+        admin_reset_password(pool.clone(), "admin-reset@example.test".to_string(), true).unwrap();
+
+        let conn = pool.get().unwrap();
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM password_reset_tokens", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1);
+        let action: String = conn
+            .query_row(
+                "SELECT action FROM audit_log WHERE action = 'user.password_reset_issued_via_admin_cli'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(action, "user.password_reset_issued_via_admin_cli");
+    }
+
+    #[test]
+    fn admin_reset_password_fails_for_an_unknown_email() {
+        let (_dir, pool) = temp_pool();
+        let result = admin_reset_password(pool, "nobody@example.test".to_string(), true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn admin_disable_2fa_force_clears_an_enabled_credential() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "admin-2fa@example.test",
+            "correct horse battery staple",
+        );
+        let user_id = {
+            let conn = pool.get().unwrap();
+            domain::users::find_by_email(&conn, "admin-2fa@example.test")
+                .unwrap()
+                .unwrap()
+                .id
+        };
+        {
+            let mut conn = pool.get().unwrap();
+            let pending =
+                domain::two_factor::setup(&conn, &user_id, "admin-2fa@example.test").unwrap();
+            let code = totp_code_for(&pending.secret_base32, "admin-2fa@example.test");
+            domain::two_factor::confirm(&mut conn, &user_id, "admin-2fa@example.test", &code)
+                .unwrap();
+        }
+        assert!(
+            domain::two_factor::status(&pool.get().unwrap(), &user_id)
+                .unwrap()
+                .enabled
+        );
+
+        admin_disable_2fa(pool.clone(), "admin-2fa@example.test".to_string(), true).unwrap();
+
+        assert!(
+            !domain::two_factor::status(&pool.get().unwrap(), &user_id)
+                .unwrap()
+                .enabled
+        );
+    }
+
+    #[test]
+    fn admin_unlock_account_clears_a_lockout() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "admin-unlock@example.test",
+            "correct horse battery staple",
+        );
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "UPDATE users SET failed_login_count = 99, locked_until = 9999999999 WHERE email = 'admin-unlock@example.test'",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        admin_unlock_account(pool.clone(), "admin-unlock@example.test".to_string(), true).unwrap();
+
+        let conn = pool.get().unwrap();
+        let locked_until: Option<i64> = conn
+            .query_row(
+                "SELECT locked_until FROM users WHERE email = 'admin-unlock@example.test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(locked_until.is_none());
+    }
+
+    #[test]
+    fn admin_force_end_link_ends_the_link_and_fails_for_an_unknown_id() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "admin-fel@example.test",
+            "correct horse battery staple",
+        );
+        let (keyholder_id, submissive_id) = {
+            let conn = pool.get().unwrap();
+            let kh = domain::users::find_by_email(&conn, "admin-fel@example.test")
+                .unwrap()
+                .unwrap()
+                .id;
+            let sub_id = uuid::Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO users (id, email, password_hash, role, display_name, created_at)
+                 VALUES (?1, ?1 || '@example.test', 'hash', 'submissive', 'Sub', 0)",
+                rusqlite::params![sub_id],
+            )
+            .unwrap();
+            (kh, sub_id)
+        };
+        let link_id = {
+            let conn = pool.get().unwrap();
+            domain::links::create(&conn, &keyholder_id, &submissive_id).unwrap()
+        };
+
+        admin_force_end_link(pool.clone(), link_id.clone(), true).unwrap();
+
+        let conn = pool.get().unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM keyholder_submissive_links WHERE id = ?1",
+                rusqlite::params![link_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "ended");
+        drop(conn);
+
+        let result = admin_force_end_link(pool, "not-a-real-link-id".to_string(), true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn admin_backup_copies_the_database_and_blob_directory() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(&pool, "backup@example.test", "correct horse battery staple");
+
+        let data_dir = tempfile::tempdir().unwrap();
+        let blob_dir = data_dir.path().join("blobs");
+        std::fs::create_dir_all(&blob_dir).unwrap();
+        std::fs::write(blob_dir.join("example.bin"), b"blob contents").unwrap();
+
+        // admin_backup resolves the blob directory via resolve_data_dir(),
+        // same as the running server does; the guard restores DATA_DIR on
+        // drop (including on panic) so a failing assertion below can't
+        // leak process-global env state into later tests.
+        struct DataDirGuard;
+        impl Drop for DataDirGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    std::env::remove_var("DATA_DIR");
+                }
+            }
+        }
+        unsafe {
+            std::env::set_var("DATA_DIR", data_dir.path());
+        }
+        let _guard = DataDirGuard;
+
+        let out_dir = tempfile::tempdir().unwrap();
+        admin_backup(pool, out_dir.path().to_path_buf()).unwrap();
+
+        assert!(out_dir.path().join("db.sqlite3").is_file());
+        assert!(out_dir.path().join("blobs/example.bin").is_file());
+        assert_eq!(
+            std::fs::read(out_dir.path().join("blobs/example.bin")).unwrap(),
+            b"blob contents"
+        );
     }
 
     #[tokio::test]

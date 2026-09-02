@@ -2,9 +2,11 @@ pub mod audit;
 pub mod chastity;
 pub mod invites;
 pub mod links;
+pub mod password_reset;
 pub mod proofs;
 pub mod rewards_punishments;
 pub mod safety;
+pub mod two_factor;
 pub mod users;
 pub mod verification;
 

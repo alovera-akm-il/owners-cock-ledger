@@ -93,6 +93,20 @@ pub fn create(
     Ok(link_id)
 }
 
+/// `admin force-end-link <link_id>` (10-operations.md §5,
+/// 06-future-extensions.md §2) — the Tier 2 escape hatch for a Keyholder
+/// who never responds to an end-link request at all. Ends an `active` or
+/// `paused` link unilaterally; returns `false` if no such link exists to
+/// end (already ended, or the id doesn't exist).
+pub fn force_end(conn: &Connection, link_id: &str) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE keyholder_submissive_links SET status = 'ended', ended_at = ?1
+         WHERE id = ?2 AND status IN ('active', 'paused')",
+        params![crate::auth::session::now(), link_id],
+    )?;
+    Ok(affected > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +166,26 @@ mod tests {
         create(&conn, &kh1, &sub).unwrap();
         let second = create(&conn, &kh2, &sub);
         assert!(second.is_err());
+    }
+
+    #[test]
+    fn force_end_ends_an_active_link_and_is_idempotent_false_after() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        assert!(force_end(&conn, &link_id).unwrap());
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "ended");
+
+        assert!(!force_end(&conn, &link_id).unwrap());
     }
 }
