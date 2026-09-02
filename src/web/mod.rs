@@ -163,6 +163,7 @@ struct RecentSubmission {
 #[template(path = "submissive_dashboard.html")]
 struct SubmissiveDashboardTemplate {
     display_name: String,
+    initial: String,
     locked: bool,
     time_remaining_text: Option<String>,
     overdue: bool,
@@ -208,6 +209,7 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
     };
 
     render(SubmissiveDashboardTemplate {
+        initial: initial_of(&user.display_name),
         display_name: user.display_name,
         locked: status.locked,
         time_remaining_text: status.time_remaining_seconds.map(fmt_duration),
@@ -228,6 +230,8 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
 #[derive(Template)]
 #[template(path = "submit_proof.html")]
 struct SubmitProofTemplate {
+    display_name: String,
+    initial: String,
     current_code_id: Option<String>,
     current_code: Option<String>,
 }
@@ -253,6 +257,8 @@ async fn submit_proof_page(State(pool): State<Pool>, jar: CookieJar) -> Response
 
     let current_code = current_code.ok().and_then(|r| r.ok()).flatten();
     render(SubmitProofTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
         current_code_id: current_code.as_ref().map(|c| c.id.clone()),
         current_code: current_code.map(|c| c.code),
     })
@@ -277,6 +283,8 @@ struct SubmissiveDetailTemplate {
     overdue: bool,
     clock_paused: bool,
     frequency_kind: String,
+    keyholder_display_name: String,
+    keyholder_initial: String,
 }
 
 async fn submissive_detail_page(
@@ -334,6 +342,8 @@ async fn submissive_detail_page(
         overdue: status.overdue,
         clock_paused: status.clock_paused,
         frequency_kind: p.map(|p| p.frequency_kind).unwrap_or_default(),
+        keyholder_initial: initial_of(&user.display_name),
+        keyholder_display_name: user.display_name,
     })
 }
 
@@ -352,6 +362,8 @@ struct ReviewQueueItem {
 struct ProofReviewTemplate {
     pending: Vec<ReviewQueueItem>,
     pending_is_empty: bool,
+    display_name: String,
+    initial: String,
 }
 
 async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
@@ -393,6 +405,8 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
     render(ProofReviewTemplate {
         pending_is_empty: pending.is_empty(),
         pending,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
     })
 }
 
@@ -532,6 +546,8 @@ fn template_badges(
 #[template(path = "catalog.html")]
 struct CatalogTemplate {
     kinds: Vec<KindGroup>,
+    display_name: String,
+    initial: String,
 }
 
 async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
@@ -578,7 +594,11 @@ async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
         kinds.push(KindGroup { kind, label, items });
     }
 
-    render(CatalogTemplate { kinds })
+    render(CatalogTemplate {
+        kinds,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
 }
 
 #[derive(Template)]
@@ -618,6 +638,8 @@ struct AssignmentProofTemplate {
     title: String,
     accepted_media: String,
     media_options: Vec<String>,
+    display_name: String,
+    initial: String,
 }
 
 async fn assignment_proof_page(
@@ -655,6 +677,8 @@ async fn assignment_proof_page(
         title: a.title,
         accepted_media: media_options.join(", "),
         media_options,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
     })
 }
 
