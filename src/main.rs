@@ -2,6 +2,7 @@ mod api;
 mod auth;
 mod db;
 mod domain;
+mod live;
 mod notify;
 mod ops;
 mod storage;
@@ -314,6 +315,7 @@ async fn serve(pool: db::Pool) -> anyhow::Result<()> {
     let state = db::AppState {
         pool,
         blob_dir: db::BlobDir(blob_dir),
+        play_session_streams: live::PlaySessionStreams::default(),
     };
     let app = build_router(state);
 
@@ -601,10 +603,15 @@ mod tests {
         _blob_dir: Option<tempfile::TempDir>,
     }
 
-    fn test_app_state(pool: db::Pool, blob_dir: std::path::PathBuf) -> Router {
+    fn test_app_state(
+        pool: db::Pool,
+        blob_dir: std::path::PathBuf,
+        play_session_streams: live::PlaySessionStreams,
+    ) -> Router {
         let state = db::AppState {
             pool,
             blob_dir: db::BlobDir(blob_dir),
+            play_session_streams,
         };
         build_router(state)
     }
@@ -612,7 +619,11 @@ mod tests {
     impl TestClient {
         fn new(pool: db::Pool) -> Self {
             let blob_dir = tempfile::tempdir().unwrap();
-            let app = test_app_state(pool, blob_dir.path().to_path_buf());
+            let app = test_app_state(
+                pool,
+                blob_dir.path().to_path_buf(),
+                live::PlaySessionStreams::default(),
+            );
             Self {
                 app,
                 cookies: HashMap::new(),
@@ -622,10 +633,16 @@ mod tests {
 
         /// For two `TestClient`s standing in for two different people
         /// hitting the same running server — they must share one blob
-        /// dir, the way one real process's `AppState` does, or a file
-        /// one of them uploads is invisible to the other.
-        fn new_with_blob_dir(pool: db::Pool, blob_dir: &std::path::Path) -> Self {
-            let app = test_app_state(pool, blob_dir.to_path_buf());
+        /// dir and one `PlaySessionStreams` registry, the way one real
+        /// process's `AppState` does, or a file one of them uploads (or
+        /// a live SSE event one of them publishes) is invisible to the
+        /// other.
+        fn new_with_blob_dir(
+            pool: db::Pool,
+            blob_dir: &std::path::Path,
+            play_session_streams: live::PlaySessionStreams,
+        ) -> Self {
+            let app = test_app_state(pool, blob_dir.to_path_buf(), play_session_streams);
             Self {
                 app,
                 cookies: HashMap::new(),
@@ -1813,7 +1830,11 @@ mod tests {
         let (_dir, pool) = temp_pool();
         seed_keyholder(&pool, "kh6@example.test", "correct horse battery staple");
         let blob_dir = tempfile::tempdir().unwrap();
-        let app = test_app_state(pool, blob_dir.path().to_path_buf());
+        let app = test_app_state(
+            pool,
+            blob_dir.path().to_path_buf(),
+            live::PlaySessionStreams::default(),
+        );
         let response = app
             .oneshot(
                 Request::builder()
@@ -1965,8 +1986,13 @@ mod tests {
         submissive_email: &str,
     ) -> (TestClient, TestClient, tempfile::TempDir) {
         let blob_dir = tempfile::tempdir().unwrap();
+        let play_session_streams = live::PlaySessionStreams::default();
         seed_keyholder(pool, keyholder_email, "correct horse battery staple");
-        let mut keyholder = TestClient::new_with_blob_dir(pool.clone(), blob_dir.path());
+        let mut keyholder = TestClient::new_with_blob_dir(
+            pool.clone(),
+            blob_dir.path(),
+            play_session_streams.clone(),
+        );
         keyholder.get("/health").await;
         keyholder
             .post(
@@ -1980,7 +2006,8 @@ mod tests {
             .await;
         let token = invite_body["token"].as_str().unwrap().to_string();
 
-        let mut submissive = TestClient::new_with_blob_dir(pool.clone(), blob_dir.path());
+        let mut submissive =
+            TestClient::new_with_blob_dir(pool.clone(), blob_dir.path(), play_session_streams);
         submissive.get("/health").await;
         submissive
             .post(
@@ -4433,5 +4460,196 @@ mod tests {
         let schedule = detail["checkin_schedule"].as_array().unwrap();
         assert!(!schedule[0]["fulfilled_checkin_id"].is_null());
         assert!(schedule[1]["fulfilled_checkin_id"].is_null());
+    }
+
+    /// 13-checkins.md §5: the live-session check-in SSE stream. Covers
+    /// the gating (refused unless `in_progress`, and unless the caller
+    /// is on the session's own link) plus the two real events it ever
+    /// sends: a `checkin_update` when a matching check-in is written,
+    /// and a closing `session_ended` once the session leaves
+    /// `in_progress`, after which the connection itself closes.
+    #[tokio::test]
+    async fn play_session_checkin_sse_stream_delivers_updates_and_closes_on_end() {
+        use http_body_util::BodyExt;
+
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-sse@example.test", "sub-sse@example.test")
+                .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, checkin_template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({"title": "Live check", "auto_escalate_on_red": false, "fields": []}),
+            )
+            .await;
+        let checkin_template_id = checkin_template["id"].as_str().unwrap().to_string();
+
+        // A scheduled (not yet started) session's stream is refused.
+        let (_, scheduled_session) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({"title": "Not started"}),
+            )
+            .await;
+        let scheduled_id = scheduled_session["id"].as_str().unwrap().to_string();
+        let scheduled_resp = keyholder
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/play-sessions/{scheduled_id}/checkin-stream"
+                    ))
+                    .header(header::COOKIE, keyholder.cookie_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(scheduled_resp.status(), StatusCode::CONFLICT);
+
+        // Start a live session.
+        let (_, session) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({"title": "Live scene", "started_at": "2024-01-01T00:00:00Z"}),
+            )
+            .await;
+        let session_id = session["id"].as_str().unwrap().to_string();
+        assert_eq!(session["status"], "in_progress");
+
+        // An unrelated keyholder can't open the stream — 404, not 403.
+        seed_keyholder(
+            &pool,
+            "kh-sse-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-sse-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let other_resp = other_kh
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/v1/play-sessions/{session_id}/checkin-stream"))
+                    .header(header::COOKIE, other_kh.cookie_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(other_resp.status(), StatusCode::NOT_FOUND);
+
+        // Open the real stream as the keyholder.
+        let stream_resp = keyholder
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/v1/play-sessions/{session_id}/checkin-stream"))
+                    .header(header::COOKIE, keyholder.cookie_header())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stream_resp.status(), StatusCode::OK);
+        let content_type = stream_resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(content_type.starts_with("text/event-stream"));
+        let body = stream_resp.into_body();
+
+        // Reading frames runs as a background task so the submissive's
+        // checkin POST below can happen concurrently, the same way a
+        // real second browser tab would.
+        let read_task = tokio::spawn(async move {
+            let mut body = body;
+            let mut collected = String::new();
+            loop {
+                match tokio::time::timeout(std::time::Duration::from_secs(5), body.frame()).await {
+                    Ok(Some(Ok(frame))) => {
+                        if let Some(bytes) = frame.data_ref() {
+                            collected.push_str(&String::from_utf8_lossy(bytes));
+                            if collected.contains("event: checkin_update") {
+                                return (collected, Some(body));
+                            }
+                        }
+                    }
+                    _ => return (collected, None),
+                }
+            }
+        });
+
+        // Give the stream a moment to actually register its
+        // subscription before publishing — the same race any real
+        // client has.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/checkins",
+                serde_json::json!({
+                    "template_id": checkin_template_id,
+                    "color": "green",
+                    "field_values": {},
+                    "related_play_session_id": session_id
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (collected, body) = tokio::time::timeout(std::time::Duration::from_secs(5), read_task)
+            .await
+            .expect("read task did not finish in time")
+            .unwrap();
+        assert!(
+            collected.contains("event: checkin_update"),
+            "expected a checkin_update SSE event, got: {collected}"
+        );
+        let mut body = body.expect("stream should still be open after one event");
+
+        // Ending the session sends the closing event and the stream
+        // itself ends — nothing is "live" once status leaves
+        // in_progress (13-checkins.md §5).
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/end"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let mut collected = String::new();
+        loop {
+            match tokio::time::timeout(std::time::Duration::from_secs(5), body.frame()).await {
+                Ok(Some(Ok(frame))) => {
+                    if let Some(bytes) = frame.data_ref() {
+                        collected.push_str(&String::from_utf8_lossy(bytes));
+                    }
+                }
+                Ok(None) => break,
+                Ok(Some(Err(e))) => panic!("stream error: {e}"),
+                Err(_) => panic!("stream did not close after the session ended"),
+            }
+        }
+        assert!(
+            collected.contains("event: session_ended"),
+            "expected a session_ended SSE event, got: {collected}"
+        );
     }
 }

@@ -10,6 +10,7 @@ use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
 use crate::domain::{checkins, links, play_sessions};
+use crate::live::PlaySessionStreams;
 use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
@@ -303,6 +304,7 @@ fn valid_color(c: &str) -> bool {
 
 async fn create_for_keyholder(
     State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
     Path(submissive_id): Path<String>,
     Json(req): Json<CreateCheckinRequest>,
@@ -353,11 +355,14 @@ async fn create_for_keyholder(
         .map_err(|_| INTERNAL_ERROR)??;
 
     notify_checkin_submitted(&pool, &checkin, &keyholder_id, alert_id.as_deref()).await;
-    Ok(Json(checkin.into()))
+    let response: CheckinResponse = checkin.into();
+    publish_checkin_update(&streams, &response);
+    Ok(Json(response))
 }
 
 async fn create_own(
     State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
     Json(req): Json<CreateCheckinRequest>,
 ) -> Result<Json<CheckinResponse>, ApiError> {
@@ -409,7 +414,20 @@ async fn create_own(
         .map_err(|_| INTERNAL_ERROR)??;
 
     notify_checkin_submitted(&pool, &checkin, &keyholder_id, alert_id.as_deref()).await;
-    Ok(Json(checkin.into()))
+    let response: CheckinResponse = checkin.into();
+    publish_checkin_update(&streams, &response);
+    Ok(Json(response))
+}
+
+/// Fans out a created/updated check-in over the live-session SSE
+/// stream (13-checkins.md §5) when it's attached to a play session —
+/// a no-op if nobody has that stream open right now.
+fn publish_checkin_update(streams: &PlaySessionStreams, response: &CheckinResponse) {
+    if let Some(play_session_id) = &response.related_play_session_id
+        && let Ok(payload) = serde_json::to_string(response)
+    {
+        streams.publish_checkin(play_session_id, payload);
+    }
 }
 
 /// 09-notifications.md §3: `checkin.submitted` (push only if red),
@@ -553,6 +571,7 @@ fn require_reachable_checkin(
 
 async fn patch_checkin(
     State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
     Path(id): Path<String>,
     Json(req): Json<PatchCheckinRequest>,
@@ -636,6 +655,7 @@ async fn patch_checkin(
         .await;
     }
 
+    publish_checkin_update(&streams, &updated.into());
     Ok(StatusCode::NO_CONTENT)
 }
 

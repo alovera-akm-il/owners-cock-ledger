@@ -1,20 +1,28 @@
 //! Play sessions and their templates (03-api-design.md §10,
 //! 14-play-sessions.md). Live start/end can be done by either role for
 //! their own link; template management, judgement, completion, and
-//! cancellation are Keyholder-only. The check-in SSE stream
-//! (`GET /play-sessions/{id}/checkin-stream`) is Phase 7 and
-//! deliberately not built here.
+//! cancellation are Keyholder-only. Also owns the check-in SSE stream
+//! (`GET /play-sessions/{id}/checkin-stream`, 13-checkins.md §5,
+//! Phase 7) — narrowly scoped real-time fan-out for two people
+//! watching the same in-progress session, distinct from the
+//! notification feed everything else uses.
+
+use std::convert::Infallible;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
+use futures_core::Stream;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
 use crate::domain::{links, play_sessions};
+use crate::live::{self, PlaySessionStreams};
 use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
@@ -527,9 +535,13 @@ struct EndSessionRequest {
     safety_check_ok: Option<bool>,
 }
 
-/// `POST .../play-sessions/{id}/end` — either role, own link.
+/// `POST .../play-sessions/{id}/end` — either role, own link. Also
+/// the point where a live check-in SSE stream (if anyone has one open
+/// for this session) gets its closing event — nothing is "live" once
+/// the session leaves `in_progress`.
 async fn end_session(
     State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
     Path(id): Path<String>,
     Json(req): Json<EndSessionRequest>,
@@ -552,6 +564,8 @@ async fn end_session(
     })
     .await
     .map_err(|_| INTERNAL_ERROR)??;
+
+    streams.publish_session_ended(&session.id);
 
     let _ = notify::notify(
         &pool,
@@ -705,26 +719,80 @@ async fn complete_session(
 /// (not in the trigger matrix).
 async fn cancel_session(
     State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
-    tokio::task::spawn_blocking(move || -> Result<Json<SessionResponse>, ApiError> {
+    let id2 = id.clone();
+    let updated = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
-        let current = play_sessions::get(&conn, &id)
+        let current = play_sessions::get(&conn, &id2)
             .map_err(|_| INTERNAL_ERROR)?
             .ok_or(NOT_FOUND)?;
         require_reachable_session(&conn, &user, &current)?;
-        let updated = play_sessions::cancel(&conn, &id).map_err(|e| match e {
+        let updated = play_sessions::cancel(&conn, &id2).map_err(|e| match e {
             play_sessions::CancelError::NotFound => NOT_FOUND,
             play_sessions::CancelError::Conflict => CONFLICT,
             play_sessions::CancelError::Db(_) => INTERNAL_ERROR,
         })?;
-        session_response(&conn, updated).map(Json)
+        session_response(&conn, updated)
     })
     .await
-    .map_err(|_| INTERNAL_ERROR)?
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    // No-op if the session was never `in_progress` with a live viewer.
+    streams.publish_session_ended(&id);
+
+    Ok(Json(updated))
+}
+
+/// `GET /play-sessions/{id}/checkin-stream` (13-checkins.md §5) —
+/// either role, own link, only reachable while `status="in_progress"`.
+/// Read-only fan-out: every write still goes through the ordinary
+/// `POST .../checkins` / `PATCH /checkins/{id}` routes, which publish
+/// into this session's channel on success. The stream ends (after
+/// forwarding a final `session_ended` event) once the session leaves
+/// `in_progress` via `end`/`cancel`.
+async fn checkin_stream(
+    State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let id2 = id.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let session = play_sessions::get(&conn, &id2)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_session(&conn, &user, &session)?;
+        if session.status != "in_progress" {
+            return Err(CONFLICT);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let mut rx = streams.subscribe(&id);
+    let stream = async_stream::stream! {
+        loop {
+            match rx.recv().await {
+                Ok(live::StreamEvent::CheckinUpdated(payload)) => {
+                    yield Ok(Event::default().event("checkin_update").data(payload));
+                }
+                Ok(live::StreamEvent::SessionEnded) => {
+                    yield Ok(Event::default().event("session_ended").data(""));
+                    break;
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
 pub fn router() -> Router<db::AppState> {
@@ -764,4 +832,5 @@ pub fn router() -> Router<db::AppState> {
             "/keyholder/play-sessions/{id}/cancel",
             patch(cancel_session),
         )
+        .route("/play-sessions/{id}/checkin-stream", get(checkin_stream))
 }

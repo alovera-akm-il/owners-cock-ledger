@@ -14,14 +14,16 @@ pub type Pool = r2d2::Pool<SqliteConnectionManager>;
 #[derive(Clone)]
 pub struct BlobDir(pub PathBuf);
 
-/// Router state now carries two independent pieces (the DB pool and the
-/// blob directory), extracted separately by handlers via
-/// `State<Pool>`/`State<BlobDir>` — axum's `FromRef` pattern for
+/// Router state now carries three independent pieces (the DB pool, the
+/// blob directory, and the live-SSE fan-out registry), extracted
+/// separately by handlers via `State<Pool>`/`State<BlobDir>`/
+/// `State<PlaySessionStreams>` — axum's `FromRef` pattern for
 /// multi-piece state, rather than every handler needing the whole struct.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Pool,
     pub blob_dir: BlobDir,
+    pub play_session_streams: crate::live::PlaySessionStreams,
 }
 
 impl axum::extract::FromRef<AppState> for Pool {
@@ -33,6 +35,12 @@ impl axum::extract::FromRef<AppState> for Pool {
 impl axum::extract::FromRef<AppState> for BlobDir {
     fn from_ref(state: &AppState) -> Self {
         state.blob_dir.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for crate::live::PlaySessionStreams {
+    fn from_ref(state: &AppState) -> Self {
+        state.play_session_streams.clone()
     }
 }
 
