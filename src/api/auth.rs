@@ -66,6 +66,16 @@ const INVALID_RESET_TOKEN: ApiError = ApiError::new(
     "reset token is invalid, expired, or already used",
 );
 
+/// Session self-management (10-operations.md §1) is inherently about
+/// interactive login sessions — an API token has nothing analogous to
+/// manage, so every endpoint in that group rejects token auth outright
+/// rather than doing something token-shaped-but-wrong with no session id.
+const SESSION_AUTH_REQUIRED: ApiError = ApiError::new(
+    StatusCode::FORBIDDEN,
+    "session_required",
+    "this action requires an interactive login session, not an API token",
+);
+
 #[derive(Deserialize)]
 pub struct LoginRequest {
     email: String,
@@ -250,9 +260,10 @@ async fn logout(
     jar: CookieJar,
     user: CurrentUser,
 ) -> Result<CookieJar, ApiError> {
+    let session_id = user.session_id().ok_or(SESSION_AUTH_REQUIRED)?.to_string();
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         let conn = pool.get()?;
-        session::revoke(&conn, &user.session_id)?;
+        session::revoke(&conn, &session_id)?;
         Ok(())
     })
     .await
@@ -289,6 +300,7 @@ async fn change_password(
     user: CurrentUser,
     Json(req): Json<PasswordChangeRequest>,
 ) -> Result<StatusCode, ApiError> {
+    let session_id = user.session_id().ok_or(SESSION_AUTH_REQUIRED)?.to_string();
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let current_hash: String = conn
@@ -310,8 +322,7 @@ async fn change_password(
             rusqlite::params![new_hash, user.user_id],
         )
         .map_err(|_| INTERNAL_ERROR)?;
-        session::revoke_all_except(&tx, &user.user_id, &user.session_id)
-            .map_err(|_| INTERNAL_ERROR)?;
+        session::revoke_all_except(&tx, &user.user_id, &session_id).map_err(|_| INTERNAL_ERROR)?;
         tx.commit().map_err(|_| INTERNAL_ERROR)?;
         Ok(())
     })
@@ -335,7 +346,7 @@ async fn list_sessions(
     State(pool): State<Pool>,
     user: CurrentUser,
 ) -> Result<Json<Vec<SessionSummaryResponse>>, ApiError> {
-    let current_session_id = user.session_id.clone();
+    let current_session_id = user.session_id().ok_or(SESSION_AUTH_REQUIRED)?.to_string();
     let sessions = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let conn = pool.get()?;
         session::list_for_user(&conn, &user.user_id).map_err(Into::into)
@@ -367,6 +378,7 @@ async fn delete_session(
     user: CurrentUser,
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    user.session_id().ok_or(SESSION_AUTH_REQUIRED)?;
     let revoked = tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
         let conn = pool.get()?;
         session::revoke_own(&conn, &session_id, &user.user_id).map_err(Into::into)
@@ -402,6 +414,7 @@ async fn revoke_sessions(
     user: CurrentUser,
     body: Option<Json<RevokeSessionsRequest>>,
 ) -> Result<StatusCode, ApiError> {
+    let session_id = user.session_id().ok_or(SESSION_AUTH_REQUIRED)?.to_string();
     // `except_current` only ever means "keep the caller's own session" —
     // there's no documented behavior for `false`, so both values take the
     // same action; the field still round-trips through the request shape
@@ -409,7 +422,7 @@ async fn revoke_sessions(
     let _except_current = body.map(|Json(b)| b.except_current).unwrap_or(true);
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
         let conn = pool.get()?;
-        session::revoke_all_except(&conn, &user.user_id, &user.session_id)?;
+        session::revoke_all_except(&conn, &user.user_id, &session_id)?;
         Ok(())
     })
     .await

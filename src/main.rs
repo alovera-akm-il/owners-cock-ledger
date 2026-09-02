@@ -113,7 +113,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::verification::router())
                 .merge(api::proofs::router())
                 .merge(api::templates::router())
-                .merge(api::assignments::router()),
+                .merge(api::assignments::router())
+                .merge(api::api_tokens::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -639,6 +640,57 @@ mod tests {
 
         async fn delete(&mut self, path: &str) -> (StatusCode, serde_json::Value) {
             self.request("DELETE", path, None).await
+        }
+
+        /// Bearer-token-authenticated requests, standing in for an
+        /// external script using a Keyholder-issued API token
+        /// (03-api-design.md §12) rather than a browser session — no
+        /// cookies, no CSRF header, since Bearer requests are exempt.
+        async fn request_bearer(
+            &mut self,
+            method: &str,
+            path: &str,
+            token: &str,
+            body: Option<serde_json::Value>,
+        ) -> (StatusCode, serde_json::Value) {
+            let mut builder = Request::builder()
+                .method(method)
+                .uri(path)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"));
+            let body = match body {
+                Some(v) => {
+                    builder = builder.header(header::CONTENT_TYPE, "application/json");
+                    Body::from(v.to_string())
+                }
+                None => Body::empty(),
+            };
+            let response = self
+                .app
+                .clone()
+                .oneshot(builder.body(body).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let json = if bytes.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
+            };
+            (status, json)
+        }
+
+        async fn get_bearer(&mut self, path: &str, token: &str) -> (StatusCode, serde_json::Value) {
+            self.request_bearer("GET", path, token, None).await
+        }
+
+        async fn post_bearer(
+            &mut self,
+            path: &str,
+            token: &str,
+            body: serde_json::Value,
+        ) -> (StatusCode, serde_json::Value) {
+            self.request_bearer("POST", path, token, Some(body)).await
         }
 
         async fn delete_with_body(
@@ -1832,6 +1884,222 @@ mod tests {
     async fn submissive_id(keyholder: &mut TestClient) -> String {
         let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
         roster[0]["submissive_id"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn api_token_create_list_update_revoke_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "tokens1@example.test",
+            "correct horse battery staple",
+        );
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tokens1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, created) = client
+            .post(
+                "/api/v1/keyholder/api-tokens",
+                serde_json::json!({"label": "notifier bot", "scopes": ["read:submissives"], "expires_in_days": 30}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let token_id = created["id"].as_str().unwrap().to_string();
+        let raw_token = created["token"].as_str().unwrap().to_string();
+        assert!(!created["prefix"].as_str().unwrap().is_empty());
+        assert!(created["expires_at"].is_string());
+
+        let (status, list) = client.get("/api/v1/keyholder/api-tokens").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        assert_eq!(list[0]["label"], "notifier bot");
+        assert!(list[0].get("token").is_none());
+
+        let (status, _) = client
+            .patch(
+                &format!("/api/v1/keyholder/api-tokens/{token_id}"),
+                serde_json::json!({"label": "renamed bot"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = client.get("/api/v1/keyholder/api-tokens").await;
+        assert_eq!(list[0]["label"], "renamed bot");
+
+        // The raw token authenticates via Bearer before revocation.
+        let (status, _) = client.get_bearer("/api/v1/auth/me", &raw_token).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, _) = client
+            .delete(&format!("/api/v1/keyholder/api-tokens/{token_id}"))
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Revocation is immediate.
+        let (status, _) = client.get_bearer("/api/v1/auth/me", &raw_token).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn bearer_token_with_the_right_scope_reaches_a_keyholder_endpoint() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "tokens2-kh@example.test",
+            "tokens2-sub@example.test",
+        )
+        .await;
+
+        let (_, created) = keyholder
+            .post(
+                "/api/v1/keyholder/api-tokens",
+                serde_json::json!({"label": "roster reader", "scopes": ["read:submissives"]}),
+            )
+            .await;
+        let raw_token = created["token"].as_str().unwrap().to_string();
+
+        let (status, roster) = keyholder
+            .get_bearer("/api/v1/keyholder/submissives", &raw_token)
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(roster.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn bearer_token_missing_the_needed_scope_is_forbidden_not_unauthorized() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "tokens3-kh@example.test",
+            "tokens3-sub@example.test",
+        )
+        .await;
+
+        let (_, created) = keyholder
+            .post(
+                "/api/v1/keyholder/api-tokens",
+                serde_json::json!({"label": "roster reader", "scopes": ["read:submissives"]}),
+            )
+            .await;
+        let raw_token = created["token"].as_str().unwrap().to_string();
+
+        // This token has no manage:invites scope.
+        let (status, _) = keyholder
+            .post_bearer(
+                "/api/v1/keyholder/invites",
+                &raw_token,
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn bearer_token_requests_bypass_csrf() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "tokens4-kh@example.test",
+            "tokens4-sub@example.test",
+        )
+        .await;
+
+        let (_, created) = keyholder
+            .post(
+                "/api/v1/keyholder/api-tokens",
+                serde_json::json!({"label": "invite bot", "scopes": ["manage:invites"]}),
+            )
+            .await;
+        let raw_token = created["token"].as_str().unwrap().to_string();
+
+        // No CSRF cookie/header is ever sent on a bearer request.
+        let (status, invite) = keyholder
+            .post_bearer(
+                "/api/v1/keyholder/invites",
+                &raw_token,
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(invite["token"].is_string());
+    }
+
+    #[tokio::test]
+    async fn a_token_with_no_scopes_can_only_introspect_itself() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "tokens5@example.test",
+            "correct horse battery staple",
+        );
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tokens5@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (_, created) = client
+            .post(
+                "/api/v1/keyholder/api-tokens",
+                serde_json::json!({"label": "bare token"}),
+            )
+            .await;
+        let raw_token = created["token"].as_str().unwrap().to_string();
+
+        let (status, me) = client.get_bearer("/api/v1/auth/me", &raw_token).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(me["role"], "keyholder");
+
+        let (status, _) = client
+            .get_bearer("/api/v1/keyholder/submissives", &raw_token)
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn session_management_endpoints_reject_bearer_token_auth() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "tokens6@example.test",
+            "correct horse battery staple",
+        );
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "tokens6@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (_, created) = client
+            .post(
+                "/api/v1/keyholder/api-tokens",
+                serde_json::json!({"label": "bot"}),
+            )
+            .await;
+        let raw_token = created["token"].as_str().unwrap().to_string();
+
+        let (status, _) = client.get_bearer("/api/v1/auth/sessions", &raw_token).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        let (status, _) = client
+            .post_bearer(
+                "/api/v1/auth/password/change",
+                &raw_token,
+                serde_json::json!({"current_password": "correct horse battery staple", "new_password": "whatever new password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

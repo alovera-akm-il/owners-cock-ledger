@@ -142,8 +142,15 @@ async fn create_assignment(
 ) -> Result<Json<AssignmentResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:assignments")
+        .map_err(|_| FORBIDDEN)?;
     let proof_media_types = req.proof_media_types.as_ref().map(|v| v.to_string());
     let deadline_at = req.deadline_at.as_deref().and_then(parse_iso8601);
+    let assigned_via = if user.session_id().is_some() {
+        "session"
+    } else {
+        "api_token"
+    };
 
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -176,7 +183,7 @@ async fn create_assignment(
                 triggered_by_submission_id: req.triggered_by_submission_id.as_deref(),
                 escalated_from_assignment_id: None,
                 assigned_by_user_id: Some(&user.user_id),
-                assigned_via: "session",
+                assigned_via,
             },
         )
         .map_err(map_create_error)?;
@@ -193,6 +200,8 @@ async fn list_for_submissive(
     Path(submissive_id): Path<String>,
 ) -> Result<Json<Vec<AssignmentResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -213,6 +222,8 @@ async fn cross_roster_feed(
     user: CurrentUser,
 ) -> Result<Json<Vec<AssignmentResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -253,6 +264,8 @@ async fn assignment_detail(
     Path(assignment_id): Path<String>,
 ) -> Result<Json<AssignmentDetail>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -321,6 +334,8 @@ async fn resolve_assignment(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:assignments")
+        .map_err(|_| FORBIDDEN)?;
     if !matches!(req.status.as_str(), "completed" | "revoked") {
         return Err(BAD_REQUEST);
     }
@@ -350,6 +365,8 @@ async fn edit_deadline(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:assignments")
+        .map_err(|_| FORBIDDEN)?;
     let Some(deadline_at) = parse_iso8601(&req.deadline_at) else {
         return Err(BAD_REQUEST);
     };
@@ -378,6 +395,8 @@ async fn edit_escalation(
     Json(req): Json<EscalationRequest>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:assignments")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;

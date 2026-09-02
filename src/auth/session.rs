@@ -45,16 +45,28 @@ impl Role {
     }
 }
 
-/// The authenticated caller, resolved from the session cookie
-/// (02-roles-and-permissions.md §1 principle 4: middleware resolves
-/// `(user, role)` on every request; the handler decides which role(s) may
-/// proceed).
+/// How this request authenticated — a session cookie (an actual human, or
+/// something acting with their full authority) or a Keyholder-issued API
+/// token scoped to a subset of actions (03-api-design.md §12). A session
+/// always has full authority; a token only ever gets what its `scopes`
+/// list grants.
+#[derive(Debug, Clone)]
+pub enum AuthSource {
+    Session { session_id: String },
+    ApiToken { scopes: Vec<String> },
+}
+
+/// The authenticated caller, resolved from either the session cookie or
+/// an `Authorization: Bearer` API token (02-roles-and-permissions.md §1
+/// principle 4: middleware resolves `(user, role)` on every request; the
+/// handler decides which role(s) may proceed — and, for a token, which
+/// scope it needs).
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
     pub user_id: String,
     pub role: Role,
     pub display_name: String,
-    pub session_id: String,
+    pub auth: AuthSource,
 }
 
 impl CurrentUser {
@@ -67,6 +79,35 @@ impl CurrentUser {
             Ok(())
         } else {
             Err(StatusCode::FORBIDDEN)
+        }
+    }
+
+    /// Rejects with `403` (not `401` — the caller is authenticated, just
+    /// not permitted to do this one thing) when an API-token-authenticated
+    /// request lacks `scope`. A session-authenticated request always
+    /// passes: a logged-in human has full authority, scopes only ever
+    /// narrow what an unattended token can do (03-api-design.md §12).
+    pub fn require_scope(&self, scope: &str) -> Result<(), StatusCode> {
+        match &self.auth {
+            AuthSource::Session { .. } => Ok(()),
+            AuthSource::ApiToken { scopes } => {
+                if scopes.iter().any(|s| s == scope) {
+                    Ok(())
+                } else {
+                    Err(StatusCode::FORBIDDEN)
+                }
+            }
+        }
+    }
+
+    /// `Some` only for a session-authenticated request — session
+    /// self-management (10-operations.md §1) has nothing analogous for an
+    /// API token, so every caller of this is expected to reject `None`
+    /// rather than treat it as "no session to worry about."
+    pub fn session_id(&self) -> Option<&str> {
+        match &self.auth {
+            AuthSource::Session { session_id } => Some(session_id),
+            AuthSource::ApiToken { .. } => None,
         }
     }
 }
@@ -148,7 +189,9 @@ pub fn resolve(conn: &Connection, session_id: &str) -> rusqlite::Result<Option<C
         user_id,
         role,
         display_name,
-        session_id: session_id.to_string(),
+        auth: AuthSource::Session {
+            session_id: session_id.to_string(),
+        },
     }))
 }
 
@@ -236,14 +279,50 @@ where
 {
     type Rejection = StatusCode;
 
+    /// A `Bearer` `Authorization` header is checked first — the same
+    /// signal `auth::csrf::csrf_protect` uses to exempt token requests
+    /// from CSRF — and resolved against `api_tokens` instead of
+    /// `sessions` when present, entirely independent of any cookie also
+    /// on the request. Falls back to the session cookie otherwise, exactly
+    /// as before token auth existed.
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let pool = Pool::from_ref(state);
+
+        let bearer_token = parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .map(str::to_string);
+
+        if let Some(raw_token) = bearer_token {
+            let resolved = tokio::task::spawn_blocking(move || {
+                let conn = pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                crate::domain::api_tokens::resolve(&conn, &raw_token)
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+            })
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)??
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+
+            // Tokens are Keyholder-only in v1 (03-api-design.md §12) —
+            // there's no submissive-issued token to resolve to.
+            return Ok(CurrentUser {
+                user_id: resolved.keyholder_id,
+                role: Role::Keyholder,
+                display_name: resolved.display_name,
+                auth: AuthSource::ApiToken {
+                    scopes: resolved.scopes,
+                },
+            });
+        }
+
         let jar = CookieJar::from_headers(&parts.headers);
         let session_id = jar
             .get(SESSION_COOKIE_NAME)
             .map(|c| c.value().to_string())
             .ok_or(StatusCode::UNAUTHORIZED)?;
 
-        let pool = Pool::from_ref(state);
         let user = tokio::task::spawn_blocking(move || {
             let conn = pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             resolve(&conn, &session_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -348,9 +427,40 @@ mod tests {
             user_id: "u1".into(),
             role: Role::Submissive,
             display_name: "Test".into(),
-            session_id: "s1".into(),
+            auth: AuthSource::Session {
+                session_id: "s1".into(),
+            },
         };
         assert!(user.require_role(&[Role::Keyholder]).is_err());
         assert!(user.require_role(&[Role::Submissive]).is_ok());
+    }
+
+    #[test]
+    fn require_scope_always_passes_for_a_session() {
+        let user = CurrentUser {
+            user_id: "u1".into(),
+            role: Role::Keyholder,
+            display_name: "Test".into(),
+            auth: AuthSource::Session {
+                session_id: "s1".into(),
+            },
+        };
+        assert!(user.require_scope("manage:invites").is_ok());
+        assert!(user.session_id().is_some());
+    }
+
+    #[test]
+    fn require_scope_checks_the_tokens_scope_list() {
+        let user = CurrentUser {
+            user_id: "u1".into(),
+            role: Role::Keyholder,
+            display_name: "Test".into(),
+            auth: AuthSource::ApiToken {
+                scopes: vec!["read:submissives".into()],
+            },
+        };
+        assert!(user.require_scope("read:submissives").is_ok());
+        assert!(user.require_scope("manage:invites").is_err());
+        assert!(user.session_id().is_none());
     }
 }

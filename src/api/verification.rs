@@ -67,6 +67,8 @@ async fn get_policy_for_keyholder(
 ) -> Result<Json<PolicyResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let link_id = require_owned_link(&conn, &user.user_id, &submissive_id)?;
@@ -94,6 +96,8 @@ async fn put_policy(
     Json(req): Json<SetPolicyRequest>,
 ) -> Result<Json<PolicyResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:verification-policy")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -206,6 +210,8 @@ async fn code_history(
     Path(submissive_id): Path<String>,
 ) -> Result<Json<Vec<CodeHistoryEntry>>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;

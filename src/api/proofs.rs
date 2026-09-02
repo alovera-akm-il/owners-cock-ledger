@@ -242,6 +242,8 @@ async fn submissions_for_keyholder(
 ) -> Result<Json<Vec<SubmissionResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:proof-submissions")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let link_id =
@@ -267,6 +269,8 @@ async fn cross_roster_feed(
     user: CurrentUser,
 ) -> Result<Json<Vec<SubmissionResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:proof-submissions")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -306,6 +310,8 @@ async fn submission_detail_for_keyholder(
 ) -> Result<Json<SubmissionResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:proof-submissions")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let submission = proofs::get(&conn, &submission_id)
@@ -334,6 +340,8 @@ async fn review_submission(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("review:proof-submissions")
+        .map_err(|_| FORBIDDEN)?;
     if !matches!(req.status.as_str(), "verified" | "redo" | "failed") {
         return Err(BAD_REQUEST);
     }
@@ -344,10 +352,14 @@ async fn review_submission(
             .ok_or(NOT_FOUND)?;
         keyholder_owns_submission(&conn, &user.user_id, &submission.link_id)?;
 
-        // Every request is session-authenticated for now — API tokens
-        // (Phase 4) will need this to branch on how CurrentUser was
-        // actually resolved (01-data-model.md §5).
-        let reviewed_via = "session";
+        // A review made by an API-token-driven script is worth being
+        // able to tell apart from one a Keyholder actually looked at
+        // (01-data-model.md §5, 05-security-and-privacy.md §9).
+        let reviewed_via = if user.session_id().is_some() {
+            "session"
+        } else {
+            "api_token"
+        };
 
         // The same endpoint serves both ordinary verification and
         // task-completion proof (04-verification-workflow.md §7) —
@@ -381,6 +393,8 @@ async fn download_attachment_keyholder(
     Path((submission_id, attachment_id)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:proof-attachments")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<Response, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;

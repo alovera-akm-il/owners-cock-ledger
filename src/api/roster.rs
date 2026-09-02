@@ -40,6 +40,8 @@ async fn roster(
 ) -> Result<Json<Vec<RosterEntry>>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
+        .map_err(|_| FORBIDDEN)?;
     let status = query.status.unwrap_or_else(|| "active".to_string());
 
     let rows = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<RosterEntry>> {

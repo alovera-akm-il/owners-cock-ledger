@@ -2,6 +2,7 @@
 //! `domain/` — handlers translate between HTTP and domain calls, they
 //! don't hold business logic themselves.
 
+pub mod api_tokens;
 pub mod assignments;
 pub mod auth;
 pub mod chastity;

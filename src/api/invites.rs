@@ -47,6 +47,8 @@ async fn create_invite(
 ) -> Result<Json<CreateInviteResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:invites")
+        .map_err(|_| FORBIDDEN)?;
 
     let invite = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let conn = pool.get()?;
@@ -76,6 +78,8 @@ async fn list_invites(
 ) -> Result<Json<Vec<InviteSummary>>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:invites")
+        .map_err(|_| FORBIDDEN)?;
 
     let rows = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let conn = pool.get()?;
@@ -103,6 +107,8 @@ async fn revoke_invite(
     Path(invite_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:invites")
         .map_err(|_| FORBIDDEN)?;
 
     let revoked = tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {

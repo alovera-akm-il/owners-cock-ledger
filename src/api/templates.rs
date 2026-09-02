@@ -77,6 +77,7 @@ async fn list_templates(
 ) -> Result<Json<Vec<TemplateResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:catalog").map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let list = templates::list_for_keyholder(&conn, &user.user_id, query.kind.as_deref())
@@ -118,6 +119,8 @@ async fn create_template(
     Json(req): Json<CreateTemplateRequest>,
 ) -> Result<Json<TemplateResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:catalog")
         .map_err(|_| FORBIDDEN)?;
     let proof_media_types = req.proof_media_types.as_ref().map(|v| v.to_string());
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
@@ -164,6 +167,8 @@ async fn patch_template(
     Json(req): Json<PatchTemplateRequest>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:catalog")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;

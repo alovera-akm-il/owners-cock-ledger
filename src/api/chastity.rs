@@ -72,6 +72,8 @@ async fn list_devices_for_keyholder(
 ) -> Result<Json<Vec<DeviceResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -89,6 +91,8 @@ async fn add_device(
     Json(req): Json<CreateDeviceRequest>,
 ) -> Result<Json<DeviceResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -118,6 +122,8 @@ async fn patch_device(
     Json(req): Json<RetireDeviceRequest>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -192,6 +198,8 @@ async fn status_for_keyholder(
 ) -> Result<Json<StatusResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -233,6 +241,8 @@ async fn start_session(
 ) -> Result<Json<StatusResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -272,6 +282,8 @@ async fn end_session(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -304,6 +316,8 @@ async fn pause_session(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -330,6 +344,8 @@ async fn update_pause_message(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
     let message = if req.message.is_empty() {
         None
     } else {
@@ -354,6 +370,8 @@ async fn resume_session(
     Path((submissive_id, _session_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -381,6 +399,8 @@ async fn adjust_timer(
     Json(req): Json<TimerRequest>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -433,6 +453,8 @@ async fn list_timer_adjustments_keyholder(
 ) -> Result<Json<Vec<AdjustmentResponse>>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
+        .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -478,6 +500,8 @@ async fn review_timer_adjustment(
     Path((submissive_id, _session_id, adjustment_id)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
@@ -525,6 +549,8 @@ async fn session_history_for_keyholder(
     Path(submissive_id): Path<String>,
 ) -> Result<Json<Vec<SessionHistoryEntry>>, ApiError> {
     user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("read:submissives")
         .map_err(|_| FORBIDDEN)?;
     tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
