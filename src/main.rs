@@ -420,6 +420,18 @@ mod tests {
             self.request("PATCH", path, Some(body)).await
         }
 
+        async fn delete(&mut self, path: &str) -> (StatusCode, serde_json::Value) {
+            self.request("DELETE", path, None).await
+        }
+
+        async fn delete_with_body(
+            &mut self,
+            path: &str,
+            body: serde_json::Value,
+        ) -> (StatusCode, serde_json::Value) {
+            self.request("DELETE", path, Some(body)).await
+        }
+
         fn capture_cookies(&mut self, response: &axum::http::Response<Body>) {
             for value in response.headers().get_all(header::SET_COOKIE) {
                 let raw = value.to_str().unwrap();
@@ -640,6 +652,257 @@ mod tests {
             .post("/api/v1/keyholder/invites", serde_json::json!({}))
             .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn listing_sessions_shows_both_logins_with_current_flagged() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "sessions1@example.test",
+            "correct horse battery staple",
+        );
+
+        let mut first = TestClient::new(pool.clone());
+        first.get("/health").await;
+        first
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let mut second = TestClient::new(pool.clone());
+        second.get("/health").await;
+        second
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions1@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, body) = first.get("/api/v1/auth/sessions").await;
+        assert_eq!(status, StatusCode::OK);
+        let sessions = body.as_array().unwrap();
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(
+            sessions.iter().filter(|s| s["is_current"] == true).count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_another_session_by_id_revokes_only_that_one() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "sessions2@example.test",
+            "correct horse battery staple",
+        );
+
+        let mut first = TestClient::new(pool.clone());
+        first.get("/health").await;
+        first
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions2@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let mut second = TestClient::new(pool.clone());
+        second.get("/health").await;
+        second
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions2@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (_, body) = first.get("/api/v1/auth/sessions").await;
+        let other_id = body
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["is_current"] == false)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let (status, _) = first
+            .delete(&format!("/api/v1/auth/sessions/{other_id}"))
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // The revoked session (second) can no longer use /auth/me.
+        let (status, _) = second.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        // The caller's own session (first) is untouched.
+        let (status, _) = first.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn cannot_delete_another_users_session_by_guessing_its_id() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "sessions3a@example.test",
+            "correct horse battery staple",
+        );
+        seed_keyholder(
+            &pool,
+            "sessions3b@example.test",
+            "correct horse battery staple",
+        );
+
+        let mut victim = TestClient::new(pool.clone());
+        victim.get("/health").await;
+        victim
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions3a@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let victim_session_id = victim.cookies[auth::session::SESSION_COOKIE_NAME].clone();
+
+        let mut attacker = TestClient::new(pool.clone());
+        attacker.get("/health").await;
+        attacker
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions3b@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, _) = attacker
+            .delete(&format!("/api/v1/auth/sessions/{victim_session_id}"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let (status, _) = victim.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn revoking_all_sessions_except_current_leaves_only_the_caller_logged_in() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "sessions4@example.test",
+            "correct horse battery staple",
+        );
+
+        let mut first = TestClient::new(pool.clone());
+        first.get("/health").await;
+        first
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions4@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let mut second = TestClient::new(pool.clone());
+        second.get("/health").await;
+        second
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sessions4@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, _) = first
+            .delete_with_body(
+                "/api/v1/auth/sessions",
+                serde_json::json!({"except_current": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (status, _) = second.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = first.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn changing_password_revokes_other_sessions_and_updates_login() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "changepw@example.test",
+            "correct horse battery staple",
+        );
+
+        let mut first = TestClient::new(pool.clone());
+        first.get("/health").await;
+        first
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "changepw@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let mut second = TestClient::new(pool.clone());
+        second.get("/health").await;
+        second
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "changepw@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, _) = first
+            .post(
+                "/api/v1/auth/password/change",
+                serde_json::json!({"current_password": "correct horse battery staple", "new_password": "a brand new password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Other session revoked.
+        let (status, _) = second.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        // Caller's own session survives the change.
+        let (status, _) = first.get("/api/v1/auth/me").await;
+        assert_eq!(status, StatusCode::OK);
+
+        // New password actually works on a fresh login.
+        let mut fresh = TestClient::new(pool.clone());
+        fresh.get("/health").await;
+        let (status, _) = fresh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "changepw@example.test", "password": "a brand new password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn changing_password_with_wrong_current_password_is_rejected() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "changepw2@example.test",
+            "correct horse battery staple",
+        );
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "changepw2@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, _) = client
+            .post(
+                "/api/v1/auth/password/change",
+                serde_json::json!({"current_password": "totally wrong", "new_password": "a brand new password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

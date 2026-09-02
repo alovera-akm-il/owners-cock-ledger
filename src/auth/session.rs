@@ -176,6 +176,48 @@ pub fn revoke_all_except(
     )
 }
 
+/// One row of `GET /auth/sessions` (10-operations.md §1) — `is_current`
+/// isn't stored, it's computed by the caller comparing `id` against their
+/// own `CurrentUser.session_id`.
+pub struct SessionSummary {
+    pub id: String,
+    pub created_at: i64,
+    pub last_seen_at: i64,
+    pub user_agent: Option<String>,
+}
+
+/// A user's own active (unrevoked, unexpired) sessions, most recently
+/// active first.
+pub fn list_for_user(conn: &Connection, user_id: &str) -> rusqlite::Result<Vec<SessionSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, created_at, last_seen_at, user_agent FROM sessions
+         WHERE user_id = ?1 AND revoked_at IS NULL AND expires_at > ?2
+         ORDER BY last_seen_at DESC",
+    )?;
+    stmt.query_map(params![user_id, now()], |row| {
+        Ok(SessionSummary {
+            id: row.get(0)?,
+            created_at: row.get(1)?,
+            last_seen_at: row.get(2)?,
+            user_agent: row.get(3)?,
+        })
+    })?
+    .collect()
+}
+
+/// Revokes one session, scoped to `user_id` so a caller can never revoke
+/// someone else's session by guessing an id (`DELETE /auth/sessions/{id}`,
+/// 03-api-design.md §1). Returns `false` if no matching, still-active
+/// session was found.
+pub fn revoke_own(conn: &Connection, session_id: &str, user_id: &str) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sessions SET revoked_at = ?1
+         WHERE id = ?2 AND user_id = ?3 AND revoked_at IS NULL",
+        params![now(), session_id, user_id],
+    )?;
+    Ok(affected > 0)
+}
+
 impl<S> FromRequestParts<S> for CurrentUser
 where
     S: Send + Sync,
