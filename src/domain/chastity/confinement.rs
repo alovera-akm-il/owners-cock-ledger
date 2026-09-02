@@ -269,6 +269,77 @@ pub fn list_adjustments(conn: &Connection, session_id: &str) -> rusqlite::Result
     .collect()
 }
 
+pub enum ApplyEffectOutcome {
+    Applied,
+    /// No open session to extend/reduce — the assignment still gets
+    /// recorded (status `applied`), just with nothing to adjust
+    /// (08-punishments-and-deadlines.md §5 step 1).
+    NoOpenSession,
+}
+
+pub struct ApplyEffect<'a> {
+    pub submissive_id: &'a str,
+    /// Positive extends (a punishment), negative reduces (a reward).
+    pub delta_seconds: i64,
+    pub reason: &'a str,
+    pub caused_by_assignment_id: &'a str,
+    /// `None` for a system-driven escalation (08-punishments-and-deadlines.md
+    /// §6/§6a — nobody clicked anything in the moment); `Some` for a
+    /// Keyholder's own direct assignment.
+    pub adjusted_by_user_id: Option<&'a str>,
+    /// `true` for a direct assignment the Keyholder just confirmed
+    /// themselves (already reviewed, same as a `manual` delta); `false`
+    /// for an escalation, which leaves `keyholder_reviewed_at` NULL
+    /// until the Keyholder acts on it later.
+    pub already_reviewed: bool,
+}
+
+/// Applies a `time_extension`/`time_reduction` effect — the mechanics
+/// behind a punishment/reward assignment (08-punishments-and-deadlines.md
+/// §5) and its mirror-image reward escalation (§6a). Shared by both since
+/// the shape is identical: find the open session, log the delta, apply
+/// it, done.
+pub fn apply_effect(
+    conn: &Connection,
+    effect: ApplyEffect,
+) -> rusqlite::Result<ApplyEffectOutcome> {
+    let session: Option<(String, Option<i64>)> = conn
+        .query_row(
+            "SELECT id, target_release_at FROM confinement_sessions
+             WHERE submissive_id = ?1 AND ended_at IS NULL",
+            params![effect.submissive_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((session_id, target_release_at)) = session else {
+        return Ok(ApplyEffectOutcome::NoOpenSession);
+    };
+
+    let ts = now();
+    let new_target = target_release_at.unwrap_or(ts) + effect.delta_seconds;
+    conn.execute(
+        "UPDATE confinement_sessions SET target_release_at = ?1 WHERE id = ?2",
+        params![new_target, session_id],
+    )?;
+    conn.execute(
+        "INSERT INTO confinement_adjustments
+            (id, session_id, delta_seconds, reason, caused_by_assignment_id,
+             adjusted_by_user_id, adjusted_at, keyholder_reviewed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            uuid::Uuid::new_v4().to_string(),
+            session_id,
+            effect.delta_seconds,
+            effect.reason,
+            effect.caused_by_assignment_id,
+            effect.adjusted_by_user_id,
+            ts,
+            effect.already_reviewed.then_some(ts),
+        ],
+    )?;
+    Ok(ApplyEffectOutcome::Applied)
+}
+
 /// A manual timer delta (03-api-design.md §4's `PATCH .../timer`) — the
 /// only way `target_release_at` ever changes outside a pause/resume or
 /// (from Phase 3 on) an escalation. There's deliberately no "set to an
@@ -666,5 +737,109 @@ mod tests {
 
         let result = review_adjustment(&conn, &adjustment_id);
         assert!(matches!(result, Err(ReviewAdjustmentError::NotReviewable)));
+    }
+
+    #[test]
+    fn apply_effect_extends_target_and_leaves_unreviewed_when_escalated() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (submissive_id, device_id) = seed(&conn);
+        start(
+            &conn,
+            StartSession {
+                submissive_id: &submissive_id,
+                device_id: &device_id,
+                started_reason: "voluntary",
+                target_release_at: Some(1000),
+                notes: None,
+            },
+        )
+        .unwrap();
+
+        let outcome = apply_effect(
+            &conn,
+            ApplyEffect {
+                submissive_id: &submissive_id,
+                delta_seconds: 21_600,
+                reason: "punishment_time_extension",
+                caused_by_assignment_id: "assignment-1",
+                adjusted_by_user_id: None,
+                already_reviewed: false,
+            },
+        )
+        .unwrap();
+        assert!(matches!(outcome, ApplyEffectOutcome::Applied));
+
+        let session = current(&conn, &submissive_id).unwrap().unwrap();
+        assert_eq!(session.target_release_at, Some(21_600 + 1000));
+
+        let adjustments = list_adjustments(&conn, &session.id).unwrap();
+        assert_eq!(adjustments.len(), 1);
+        assert_eq!(adjustments[0].reason, "punishment_time_extension");
+        assert!(adjustments[0].keyholder_reviewed_at.is_none());
+    }
+
+    #[test]
+    fn apply_effect_with_no_open_session_reports_that_and_touches_nothing() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (submissive_id, _device_id) = seed(&conn);
+
+        let outcome = apply_effect(
+            &conn,
+            ApplyEffect {
+                submissive_id: &submissive_id,
+                delta_seconds: -3600,
+                reason: "reward_time_reduction",
+                caused_by_assignment_id: "assignment-2",
+                adjusted_by_user_id: Some(&submissive_id),
+                already_reviewed: true,
+            },
+        )
+        .unwrap();
+        assert!(matches!(outcome, ApplyEffectOutcome::NoOpenSession));
+    }
+
+    #[test]
+    fn apply_effect_direct_assignment_is_already_reviewed() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (submissive_id, device_id) = seed(&conn);
+        let keyholder_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash, role, display_name, created_at)
+             VALUES (?1, ?1 || '@example.test', 'hash', 'keyholder', 'KH', 0)",
+            params![keyholder_id],
+        )
+        .unwrap();
+        start(
+            &conn,
+            StartSession {
+                submissive_id: &submissive_id,
+                device_id: &device_id,
+                started_reason: "voluntary",
+                target_release_at: Some(10_000),
+                notes: None,
+            },
+        )
+        .unwrap();
+
+        apply_effect(
+            &conn,
+            ApplyEffect {
+                submissive_id: &submissive_id,
+                delta_seconds: -1800,
+                reason: "reward_time_reduction",
+                caused_by_assignment_id: "assignment-3",
+                adjusted_by_user_id: Some(&keyholder_id),
+                already_reviewed: true,
+            },
+        )
+        .unwrap();
+
+        let session = current(&conn, &submissive_id).unwrap().unwrap();
+        assert_eq!(session.target_release_at, Some(10_000 - 1800));
+        let adjustments = list_adjustments(&conn, &session.id).unwrap();
+        assert!(adjustments[0].keyholder_reviewed_at.is_some());
     }
 }

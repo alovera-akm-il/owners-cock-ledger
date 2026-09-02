@@ -3,6 +3,7 @@ pub mod chastity;
 pub mod invites;
 pub mod links;
 pub mod proofs;
+pub mod rewards_punishments;
 pub mod safety;
 pub mod users;
 pub mod verification;

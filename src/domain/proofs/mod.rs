@@ -17,6 +17,11 @@ pub struct Submission {
     pub link_id: String,
     pub purpose: String,
     pub verification_code_value: Option<String>,
+    /// Set when `purpose='punishment_completion'` — which task/punishment
+    /// assignment this proves completion of (01-data-model.md §5). Used
+    /// by `rewards_punishments::assignments::review_proof` to find the
+    /// linked assignment; `None` for an ordinary verification submission.
+    pub assignment_id: Option<String>,
     pub kind: String,
     pub metadata: Option<String>,
     pub submitted_at: i64,
@@ -29,8 +34,8 @@ pub struct Submission {
 }
 
 const SUBMISSION_COLUMNS: &str = "id, submissive_id, link_id, purpose, verification_code_value, \
-     kind, metadata, submitted_at, status, reviewed_by_user_id, reviewed_at, review_notes, \
-     reviewed_via, redo_of_submission_id";
+     assignment_id, kind, metadata, submitted_at, status, reviewed_by_user_id, reviewed_at, \
+     review_notes, reviewed_via, redo_of_submission_id";
 
 fn row_to_submission(row: &rusqlite::Row) -> rusqlite::Result<Submission> {
     Ok(Submission {
@@ -39,15 +44,16 @@ fn row_to_submission(row: &rusqlite::Row) -> rusqlite::Result<Submission> {
         link_id: row.get(2)?,
         purpose: row.get(3)?,
         verification_code_value: row.get(4)?,
-        kind: row.get(5)?,
-        metadata: row.get(6)?,
-        submitted_at: row.get(7)?,
-        status: row.get(8)?,
-        reviewed_by_user_id: row.get(9)?,
-        reviewed_at: row.get(10)?,
-        review_notes: row.get(11)?,
-        reviewed_via: row.get(12)?,
-        redo_of_submission_id: row.get(13)?,
+        assignment_id: row.get(5)?,
+        kind: row.get(6)?,
+        metadata: row.get(7)?,
+        submitted_at: row.get(8)?,
+        status: row.get(9)?,
+        reviewed_by_user_id: row.get(10)?,
+        reviewed_at: row.get(11)?,
+        review_notes: row.get(12)?,
+        reviewed_via: row.get(13)?,
+        redo_of_submission_id: row.get(14)?,
     })
 }
 
