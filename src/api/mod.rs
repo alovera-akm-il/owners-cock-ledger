@@ -9,6 +9,7 @@ pub mod chastity;
 pub mod checkins;
 pub mod invites;
 pub mod notifications;
+pub mod play_sessions;
 pub mod points;
 pub mod profiles;
 pub mod proofs;

@@ -51,6 +51,7 @@ pub struct AssignmentResponse {
     on_failure_template_id: Option<String>,
     escalated_from_assignment_id: Option<String>,
     triggered_by_submission_id: Option<String>,
+    triggered_by_play_session_id: Option<String>,
     /// Not `points_balance`-crediting yet — Phase 6 owns the actual
     /// ledger (11-tasks-and-rewards.md §3). Surfaced here only as the
     /// value copied from the template at assignment time.
@@ -85,6 +86,7 @@ impl From<Assignment> for AssignmentResponse {
             on_failure_template_id: a.on_failure_template_id,
             escalated_from_assignment_id: a.escalated_from_assignment_id,
             triggered_by_submission_id: a.triggered_by_submission_id,
+            triggered_by_play_session_id: a.triggered_by_play_session_id,
             points_delta: a.points_delta,
             assigned_at: iso8601(a.assigned_at),
             assigned_by_user_id: a.assigned_by_user_id,
@@ -345,6 +347,7 @@ async fn create_assignment(
                 points_delta: req.points_delta,
                 notes: req.notes.as_deref(),
                 triggered_by_submission_id: req.triggered_by_submission_id.as_deref(),
+                triggered_by_play_session_id: None,
                 escalated_from_assignment_id: None,
                 assigned_by_user_id: Some(&user.user_id),
                 assigned_via,

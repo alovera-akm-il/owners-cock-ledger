@@ -121,7 +121,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::notifications::router())
                 .merge(api::toys::router())
                 .merge(api::points::router())
-                .merge(api::checkins::router()),
+                .merge(api::checkins::router())
+                .merge(api::play_sessions::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -4114,5 +4115,323 @@ mod tests {
         let kh_feed = kh_feed.as_array().unwrap();
         assert!(kh_feed.iter().any(|n| n["type"] == "safety.alert_raised"));
         assert!(!kh_feed.iter().any(|n| n["type"] == "checkin.red_flag"));
+    }
+
+    #[tokio::test]
+    async fn play_session_template_visibility_and_toy_ownership_validation() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-play1@example.test",
+            "sub-play1@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, template) = keyholder
+            .post(
+                "/api/v1/keyholder/play-session-templates",
+                serde_json::json!({
+                    "title": "Standard scene",
+                    "suggested_toy_categories": ["vibrator", "cock cage"],
+                    "planned_duration_seconds": 3600
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        let (status, sub_templates) = submissive
+            .get("/api/v1/submissive/play-session-templates")
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            sub_templates
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == template_id)
+        );
+
+        // A toy that doesn't belong to this submissive is rejected.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({
+                    "template_id": template_id,
+                    "toy_ids": ["not-a-real-toy-id"]
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+        // A toy that does belong to the submissive works fine.
+        let (_, toy) = submissive
+            .post(
+                "/api/v1/submissive/toys",
+                serde_json::json!({"name": "steel cage"}),
+            )
+            .await;
+        let toy_id = toy["id"].as_str().unwrap().to_string();
+
+        let (status, session) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({
+                    "template_id": template_id,
+                    "toy_ids": [toy_id]
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(session["status"], "scheduled");
+        assert_eq!(session["title"], "Standard scene");
+        assert_eq!(session["toy_ids"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn play_session_live_start_end_judge_complete_lifecycle_with_notifications() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-play2@example.test",
+            "sub-play2@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, session) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({"title": "Live scene"}),
+            )
+            .await;
+        let session_id = session["id"].as_str().unwrap().to_string();
+        assert_eq!(session["status"], "scheduled");
+
+        // Submissive starts it — the keyholder gets notified.
+        let (status, started) = submissive
+            .post(
+                &format!("/api/v1/submissive/play-sessions/{session_id}/start"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(started["status"], "in_progress");
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "play_session.started")
+        );
+
+        // Can't start twice.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/start"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // Keyholder ends it — the keyholder's own queue notification fires.
+        let (status, ended) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/end"),
+                serde_json::json!({"safety_check_ok": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ended["status"], "pending_judgement");
+        assert_eq!(ended["safety_check_ok"], true);
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "play_session.pending_judgement")
+        );
+
+        // Judgement creates a reward assignment tied back to this session.
+        let (status, judged) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/judgement"),
+                serde_json::json!({
+                    "judgement_notes": "Went great",
+                    "reward": {
+                        "title": "Extra praise",
+                        "description": "Well done",
+                        "effect_kind": "time_reduction",
+                        "time_reduction_seconds": 3600
+                    }
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(judged["judgement_notes"], "Went great");
+        let reward_assignment_id = judged["reward_assignment_id"].as_str().unwrap().to_string();
+
+        let (_, assignment) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/assignments"
+            ))
+            .await;
+        let assignment = assignment
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == reward_assignment_id)
+            .expect("reward assignment exists");
+        assert_eq!(assignment["triggered_by_play_session_id"], session_id);
+
+        // No judged notification yet — that fires on complete, not judgement.
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            !sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "play_session.judged")
+        );
+
+        let (status, completed) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/complete"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(completed["status"], "completed");
+
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "play_session.judged")
+        );
+
+        // Can't complete twice, and judgement is rejected once completed.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/complete"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/play-sessions/{session_id}/judgement"),
+                serde_json::json!({"judgement_notes": "too late"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn play_session_retrospective_entry_and_cancel_and_checkin_schedule() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-play3@example.test",
+            "sub-play3@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        // Supplying both started_at and ended_at lands directly in
+        // pending_judgement (14-play-sessions.md §3).
+        let (status, retro) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({
+                    "title": "Logged after the fact",
+                    "started_at": "2024-01-01T00:00:00Z",
+                    "ended_at": "2024-01-01T01:00:00Z"
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(retro["status"], "pending_judgement");
+
+        // A scheduled session can be cancelled.
+        let (_, scheduled) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({"title": "To be cancelled"}),
+            )
+            .await;
+        let scheduled_id = scheduled["id"].as_str().unwrap().to_string();
+        let (status, cancelled) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/play-sessions/{scheduled_id}/cancel"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(cancelled["status"], "cancelled");
+        // Cancelling again is rejected.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/play-sessions/{scheduled_id}/cancel"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // A session with a check-in template + interval + duration
+        // generates a schedule, and a matching check-in fulfills the
+        // earliest open slot (14-play-sessions.md §4).
+        let (_, checkin_template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Mid-scene check",
+                    "auto_escalate_on_red": false,
+                    "fields": []
+                }),
+            )
+            .await;
+        let checkin_template_id = checkin_template["id"].as_str().unwrap().to_string();
+
+        let (_, scheduled_session) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/play-sessions"),
+                serde_json::json!({
+                    "title": "With mid-session checks",
+                    "planned_duration_seconds": 2400,
+                    "checkin_template_id": checkin_template_id,
+                    "checkin_interval_seconds": 1200
+                }),
+            )
+            .await;
+        let session_id = scheduled_session["id"].as_str().unwrap().to_string();
+        let schedule = scheduled_session["checkin_schedule"].as_array().unwrap();
+        assert_eq!(schedule.len(), 2);
+        assert!(schedule.iter().all(|s| s["fulfilled_checkin_id"].is_null()));
+
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/checkins",
+                serde_json::json!({
+                    "template_id": checkin_template_id,
+                    "color": "green",
+                    "field_values": {},
+                    "related_play_session_id": session_id
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (_, detail) = keyholder
+            .get(&format!("/api/v1/keyholder/play-sessions/{session_id}"))
+            .await;
+        let schedule = detail["checkin_schedule"].as_array().unwrap();
+        assert!(!schedule[0]["fulfilled_checkin_id"].is_null());
+        assert!(schedule[1]["fulfilled_checkin_id"].is_null());
     }
 }

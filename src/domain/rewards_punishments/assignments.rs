@@ -30,6 +30,7 @@ pub struct Assignment {
     pub on_failure_template_id: Option<String>,
     pub escalated_from_assignment_id: Option<String>,
     pub triggered_by_submission_id: Option<String>,
+    pub triggered_by_play_session_id: Option<String>,
     pub points_delta: Option<i64>,
     pub assigned_at: i64,
     pub assigned_by_user_id: Option<String>,
@@ -42,7 +43,8 @@ const COLUMNS: &str = "id, link_id, template_id, kind, title, description, effec
      completion_type, proof_media_types, deadline_at, time_extension_seconds, \
      time_reduction_seconds, proof_submission_id, on_success_template_id, \
      on_failure_template_id, escalated_from_assignment_id, triggered_by_submission_id, \
-     points_delta, assigned_at, assigned_by_user_id, assigned_via, status, notes";
+     triggered_by_play_session_id, points_delta, assigned_at, assigned_by_user_id, \
+     assigned_via, status, notes";
 
 fn row_to_assignment(row: &rusqlite::Row) -> rusqlite::Result<Assignment> {
     Ok(Assignment {
@@ -63,12 +65,13 @@ fn row_to_assignment(row: &rusqlite::Row) -> rusqlite::Result<Assignment> {
         on_failure_template_id: row.get(14)?,
         escalated_from_assignment_id: row.get(15)?,
         triggered_by_submission_id: row.get(16)?,
-        points_delta: row.get(17)?,
-        assigned_at: row.get(18)?,
-        assigned_by_user_id: row.get(19)?,
-        assigned_via: row.get(20)?,
-        status: row.get(21)?,
-        notes: row.get(22)?,
+        triggered_by_play_session_id: row.get(17)?,
+        points_delta: row.get(18)?,
+        assigned_at: row.get(19)?,
+        assigned_by_user_id: row.get(20)?,
+        assigned_via: row.get(21)?,
+        status: row.get(22)?,
+        notes: row.get(23)?,
     })
 }
 
@@ -183,6 +186,7 @@ pub struct NewAssignment<'a> {
     pub points_delta: Option<i64>,
     pub notes: Option<&'a str>,
     pub triggered_by_submission_id: Option<&'a str>,
+    pub triggered_by_play_session_id: Option<&'a str>,
     pub escalated_from_assignment_id: Option<&'a str>,
     pub assigned_by_user_id: Option<&'a str>,
     pub assigned_via: &'a str,
@@ -307,9 +311,9 @@ pub fn create(
             (id, link_id, template_id, kind, title, description, effect_kind, completion_type,
              proof_media_types, deadline_at, time_extension_seconds, time_reduction_seconds,
              on_success_template_id, on_failure_template_id, escalated_from_assignment_id,
-             triggered_by_submission_id, points_delta, assigned_at, assigned_by_user_id,
-             assigned_via, status, status_updated_at, notes)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
+             triggered_by_submission_id, triggered_by_play_session_id, points_delta, assigned_at,
+             assigned_by_user_id, assigned_via, status, status_updated_at, notes)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)",
         params![
             id,
             link_id,
@@ -327,6 +331,7 @@ pub fn create(
             on_failure_template_id,
             new.escalated_from_assignment_id,
             new.triggered_by_submission_id,
+            new.triggered_by_play_session_id,
             points_delta,
             ts,
             new.assigned_by_user_id,

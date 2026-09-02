@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
-use crate::domain::{checkins, links};
+use crate::domain::{checkins, links, play_sessions};
 use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
@@ -343,6 +343,10 @@ async fn create_for_keyholder(
             let checkin = checkins::get_checkin(&conn, &id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(INTERNAL_ERROR)?;
+            if let Some(play_session_id) = &checkin.related_play_session_id {
+                play_sessions::fulfill_next_schedule_slot(&conn, play_session_id, &checkin.id)
+                    .map_err(|_| INTERNAL_ERROR)?;
+            }
             Ok((checkin, alert_id, user.user_id.clone()))
         })
         .await
@@ -392,6 +396,10 @@ async fn create_own(
             let checkin = checkins::get_checkin(&conn, &id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(INTERNAL_ERROR)?;
+            if let Some(play_session_id) = &checkin.related_play_session_id {
+                play_sessions::fulfill_next_schedule_slot(&conn, play_session_id, &checkin.id)
+                    .map_err(|_| INTERNAL_ERROR)?;
+            }
             let (keyholder_id, _) = links::parties(&conn, &link_id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(INTERNAL_ERROR)?;
