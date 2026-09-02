@@ -446,6 +446,64 @@ pub fn status_for(conn: &Connection, submissive_id: &str) -> rusqlite::Result<St
     })
 }
 
+/// One session whose still-paused reminder
+/// (08-punishments-and-deadlines.md §9) is due this tick.
+pub struct StillPausedReminder {
+    pub session_id: String,
+    pub keyholder_id: String,
+}
+
+const STILL_PAUSED_THRESHOLD_SECS: i64 = 24 * 3600;
+
+/// Runs on the same tick as the deadline sweeper (08-punishments-and-
+/// deadlines.md §9 — "doesn't warrant a third background task"): finds
+/// every session paused 24h+ ago that hasn't had a
+/// `confinement.clock_still_paused` notification in the last 24h, and
+/// reports it for the caller to notify the Keyholder (never the
+/// submissive — they already know their timer is paused).
+pub fn run_still_paused_sweep_tick(
+    conn: &Connection,
+) -> rusqlite::Result<Vec<StillPausedReminder>> {
+    let now_ts = now();
+    let candidates: Vec<(String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, submissive_id FROM confinement_sessions
+             WHERE ended_at IS NULL AND clock_paused_at IS NOT NULL AND clock_paused_at <= ?1",
+        )?;
+        stmt.query_map(params![now_ts - STILL_PAUSED_THRESHOLD_SECS], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?
+    };
+
+    let mut out = Vec::new();
+    for (session_id, submissive_id) in candidates {
+        if crate::domain::notifications::exists_for_related_entity_since(
+            conn,
+            "confinement.clock_still_paused",
+            &session_id,
+            now_ts - STILL_PAUSED_THRESHOLD_SECS,
+        )? {
+            continue;
+        }
+        let keyholder_id: Option<String> = conn
+            .query_row(
+                "SELECT keyholder_id FROM keyholder_submissive_links
+                 WHERE submissive_id = ?1 AND status IN ('active', 'paused')",
+                params![submissive_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(keyholder_id) = keyholder_id {
+            out.push(StillPausedReminder {
+                session_id,
+                keyholder_id,
+            });
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -11,6 +11,7 @@ use crate::auth::session::now;
 use crate::domain::chastity::confinement::{self, ApplyEffect};
 use crate::domain::{audit, proofs};
 
+#[derive(Clone)]
 pub struct Assignment {
     pub id: String,
     pub link_id: String,
@@ -444,13 +445,16 @@ pub enum ResolveError {
 /// `PATCH /keyholder/assignments/{id}` `{status: "completed"|"revoked"}`
 /// — for grants once acknowledged, and `acknowledge_only` tasks.
 /// `proof_required` tasks resolve via proof review instead
-/// (`review_task_proof` below), never through here.
+/// (`review_task_proof` below), never through here. Returns the
+/// escalated assignment, if `completed` triggered `on_success_template_id`
+/// — the caller (API layer) uses this to fire the right notification
+/// (09-notifications.md §3) without this function knowing about push.
 pub fn resolve(
     conn: &mut Connection,
     assignment_id: &str,
     keyholder_id: &str,
     new_status: &str,
-) -> Result<(), ResolveError> {
+) -> Result<Option<Assignment>, ResolveError> {
     let tx = conn.transaction()?;
 
     let row: Option<(String, String, Option<String>)> = tx
@@ -483,15 +487,16 @@ pub fn resolve(
         params![new_status, now(), assignment_id],
     )?;
 
+    let mut escalated = None;
     if new_status == "completed"
         && let Some(template_id) = on_success_template_id
     {
         let from = get(&tx, assignment_id)?.expect("just updated");
-        escalate(&tx, &from, &template_id).map_err(map_create_to_resolve_err)?;
+        escalated = Some(escalate(&tx, &from, &template_id).map_err(map_create_to_resolve_err)?);
     }
 
     tx.commit()?;
-    Ok(())
+    Ok(escalated)
 }
 
 fn map_create_to_resolve_err(e: CreateError) -> ResolveError {
@@ -616,6 +621,19 @@ pub enum ReviewProofError {
     Db(#[from] rusqlite::Error),
 }
 
+/// Outcome of a task-completion proof review, for the caller (API
+/// layer) to decide what notification(s) to fire
+/// (09-notifications.md §3) — this function itself stays
+/// notification-agnostic.
+pub struct ReviewProofOutcome {
+    /// Set when the reviewed submission was `purpose='punishment_completion'`
+    /// — the task/punishment assignment it resolved.
+    pub resolved_assignment: Option<Assignment>,
+    /// Set when that resolution triggered an escalation
+    /// (`on_success_template_id`/`on_failure_template_id`).
+    pub escalated: Option<Assignment>,
+}
+
 /// The single review endpoint both verification and task-completion
 /// proof share (04-verification-workflow.md §§4, 7): does the ordinary
 /// submission review, then — only when `purpose='punishment_completion'`
@@ -628,7 +646,7 @@ pub fn review_proof(
     review_notes: Option<&str>,
     reviewed_by_user_id: &str,
     reviewed_via: &str,
-) -> Result<(), ReviewProofError> {
+) -> Result<ReviewProofOutcome, ReviewProofError> {
     let tx = conn.transaction()?;
 
     proofs::review(
@@ -640,6 +658,11 @@ pub fn review_proof(
         reviewed_by_user_id,
         reviewed_via,
     )?;
+
+    let mut outcome = ReviewProofOutcome {
+        resolved_assignment: None,
+        escalated: None,
+    };
 
     let submission = proofs::get(&tx, submission_id)?;
     if let Some(submission) = submission
@@ -653,13 +676,15 @@ pub fn review_proof(
                     "UPDATE assignments SET status = 'completed', status_updated_at = ?1 WHERE id = ?2",
                     params![now(), assignment_id],
                 )?;
+                let updated = get(&tx, assignment_id)?.expect("just updated");
                 if let Some(template_id) = &assignment.on_success_template_id {
-                    let updated = get(&tx, assignment_id)?.expect("just updated");
-                    escalate(&tx, &updated, template_id).map_err(|e| match e {
-                        CreateError::Db(e) => ReviewProofError::Db(e),
-                        _ => ReviewProofError::Db(rusqlite::Error::InvalidQuery),
-                    })?;
+                    outcome.escalated =
+                        Some(escalate(&tx, &updated, template_id).map_err(|e| match e {
+                            CreateError::Db(e) => ReviewProofError::Db(e),
+                            _ => ReviewProofError::Db(rusqlite::Error::InvalidQuery),
+                        })?);
                 }
+                outcome.resolved_assignment = Some(updated);
             }
             "failed" => {
                 tx.execute(
@@ -677,13 +702,15 @@ pub fn review_proof(
                         detail: None,
                     },
                 )?;
+                let updated = get(&tx, assignment_id)?.expect("just updated");
                 if let Some(template_id) = &assignment.on_failure_template_id {
-                    let updated = get(&tx, assignment_id)?.expect("just updated");
-                    escalate(&tx, &updated, template_id).map_err(|e| match e {
-                        CreateError::Db(e) => ReviewProofError::Db(e),
-                        _ => ReviewProofError::Db(rusqlite::Error::InvalidQuery),
-                    })?;
+                    outcome.escalated =
+                        Some(escalate(&tx, &updated, template_id).map_err(|e| match e {
+                            CreateError::Db(e) => ReviewProofError::Db(e),
+                            _ => ReviewProofError::Db(rusqlite::Error::InvalidQuery),
+                        })?);
                 }
+                outcome.resolved_assignment = Some(updated);
             }
             _ => {} // "redo": assignment stays proof_submitted-awaiting-resubmission logically, but
                     // stays in whatever status it's in — nothing to change here.
@@ -691,7 +718,7 @@ pub fn review_proof(
     }
 
     tx.commit()?;
-    Ok(())
+    Ok(outcome)
 }
 
 #[derive(Debug, Error)]
@@ -764,11 +791,38 @@ pub fn edit_escalation(
     Ok(())
 }
 
-/// The deadline sweeper's auto-fail pass
-/// (08-punishments-and-deadlines.md §3 step 1) — the deadline-approaching
-/// reminder pass isn't built here since it needs the `notifications`
-/// table (Phase 5). Returns how many assignments were auto-failed.
-pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<i64> {
+/// One task auto-failed on its deadline this tick, for the caller (the
+/// sweeper's async wrapper in `main.rs`) to notify both parties.
+pub struct AutoFailedTask {
+    pub assignment_id: String,
+    pub link_id: String,
+    pub keyholder_id: String,
+    pub submissive_id: String,
+    /// Set when `on_failure_template_id` was configured — the new
+    /// assignment the failure escalated into.
+    pub escalated: Option<Assignment>,
+}
+
+/// One task whose deadline-approaching reminder (08-punishments-and-
+/// deadlines.md §3 step 2) is due this tick.
+pub struct DeadlineReminder {
+    pub assignment_id: String,
+    pub submissive_id: String,
+    pub title: String,
+}
+
+pub struct SweepOutcome {
+    pub auto_failed: Vec<AutoFailedTask>,
+    pub reminders: Vec<DeadlineReminder>,
+}
+
+/// The deadline sweeper's full tick (08-punishments-and-deadlines.md
+/// §3): the auto-fail pass (step 1), then the purely-informational
+/// deadline-approaching pass (step 2). Notification-agnostic by
+/// design — returns what happened, the caller (`main.rs`'s async
+/// wrapper, which has a `Pool` and can spawn push sends) decides what
+/// to notify.
+pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<SweepOutcome> {
     let overdue: Vec<String> = {
         let mut stmt = conn.prepare(
             "SELECT id FROM assignments WHERE kind = 'task' AND status = 'assigned' AND deadline_at < ?1",
@@ -777,7 +831,7 @@ pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<i64> {
             .collect::<rusqlite::Result<_>>()?
     };
 
-    let mut failed_count = 0;
+    let mut auto_failed = Vec::new();
     for assignment_id in overdue {
         let tx = conn.transaction()?;
         tx.execute(
@@ -800,18 +854,91 @@ pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<i64> {
                 detail: None,
             },
         )?;
-        if let Some(assignment) = get(&tx, &assignment_id)?
-            && let Some(template_id) = &assignment.on_failure_template_id
-        {
-            escalate(&tx, &assignment, template_id).map_err(|e| match e {
-                CreateError::Db(e) => e,
-                _ => rusqlite::Error::InvalidQuery,
-            })?;
+
+        let Some(assignment) = get(&tx, &assignment_id)? else {
+            tx.commit()?;
+            continue;
+        };
+        let Some((keyholder_id, submissive_id)) =
+            crate::domain::links::parties(&tx, &assignment.link_id)?
+        else {
+            tx.commit()?;
+            continue;
+        };
+        let mut escalated = None;
+        if let Some(template_id) = &assignment.on_failure_template_id {
+            escalated = Some(
+                escalate(&tx, &assignment, template_id).map_err(|e| match e {
+                    CreateError::Db(e) => e,
+                    _ => rusqlite::Error::InvalidQuery,
+                })?,
+            );
         }
         tx.commit()?;
-        failed_count += 1;
+        auto_failed.push(AutoFailedTask {
+            assignment_id,
+            link_id: assignment.link_id,
+            keyholder_id,
+            submissive_id,
+            escalated,
+        });
     }
-    Ok(failed_count)
+
+    // Deadline-approaching pass — see 08-punishments-and-deadlines.md
+    // §3 step 2 for the window-scales-with-length reasoning and the
+    // dedupe-via-`notifications` approach.
+    let now_ts = now();
+    let candidates: Vec<(String, i64, i64, String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT a.id, a.deadline_at, a.assigned_at, a.title, l.submissive_id
+             FROM assignments a JOIN keyholder_submissive_links l ON l.id = a.link_id
+             WHERE a.kind = 'task' AND a.status = 'assigned' AND a.deadline_at IS NOT NULL",
+        )?;
+        stmt.query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?
+    };
+
+    let mut reminders = Vec::new();
+    for (assignment_id, deadline_at, assigned_at, title, submissive_id) in candidates {
+        let total = deadline_at - assigned_at;
+        let window = std::cmp::min(3600, total / 2);
+        let reminder_at = deadline_at - window;
+        // A reminder landing less than 5 minutes after assignment is no
+        // reminder at all for a punishment this short — the assignment
+        // notification itself is the warning (08-punishments-and-
+        // deadlines.md §3 step 2).
+        if reminder_at - assigned_at < 300 {
+            continue;
+        }
+        if now_ts < reminder_at {
+            continue;
+        }
+        if crate::domain::notifications::exists_for_related_entity(
+            conn,
+            "task.deadline_approaching",
+            &assignment_id,
+        )? {
+            continue;
+        }
+        reminders.push(DeadlineReminder {
+            assignment_id,
+            submissive_id,
+            title,
+        });
+    }
+
+    Ok(SweepOutcome {
+        auto_failed,
+        reminders,
+    })
 }
 
 #[cfg(test)]
@@ -970,8 +1097,13 @@ mod tests {
         )
         .unwrap();
 
-        let failed = run_deadline_sweep_tick(&mut conn).unwrap();
-        assert_eq!(failed, 1);
+        let outcome = run_deadline_sweep_tick(&mut conn).unwrap();
+        assert_eq!(outcome.auto_failed.len(), 1);
+        assert_eq!(outcome.auto_failed[0].assignment_id, a.id);
+        assert_eq!(outcome.auto_failed[0].submissive_id, submissive_id);
+        assert_eq!(outcome.auto_failed[0].keyholder_id, keyholder_id);
+        let escalated_outcome = outcome.auto_failed[0].escalated.as_ref().unwrap();
+        assert_eq!(escalated_outcome.kind, "punishment");
 
         let original = get(&conn, &a.id).unwrap().unwrap();
         assert_eq!(original.status, "failed");
@@ -1009,8 +1141,8 @@ mod tests {
         .unwrap();
         acknowledge(&conn, &a.id, &submissive_id).unwrap();
 
-        let failed = run_deadline_sweep_tick(&mut conn).unwrap();
-        assert_eq!(failed, 0);
+        let outcome = run_deadline_sweep_tick(&mut conn).unwrap();
+        assert_eq!(outcome.auto_failed.len(), 0);
         assert_eq!(get(&conn, &a.id).unwrap().unwrap().status, "acknowledged");
     }
 

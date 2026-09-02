@@ -14,6 +14,7 @@ use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
 use crate::domain::{links, safety};
+use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -38,26 +39,49 @@ async fn raise_safety_alert(
 ) -> Result<StatusCode, ApiError> {
     user.require_role(&[Role::Submissive])
         .map_err(|_| FORBIDDEN)?;
-    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
-        let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
-        let link_id = links::active_link_for_submissive(&conn, &user.user_id)
-            .map_err(|_| INTERNAL_ERROR)?
-            .ok_or(NO_ACTIVE_LINK)?;
-        safety::raise(
-            &mut conn,
-            safety::Raise {
-                submissive_id: &user.user_id,
-                link_id: &link_id,
-                raised_via: safety::RaisedVia::Submissive,
-                related_checkin_id: None,
-                message: req.message.as_deref(),
-            },
-        )
-        .map_err(|_| INTERNAL_ERROR)?;
-        Ok(StatusCode::NO_CONTENT)
-    })
-    .await
-    .map_err(|_| INTERNAL_ERROR)?
+    let pool2 = pool.clone();
+    let (alert_id, link_id, keyholder_id) =
+        tokio::task::spawn_blocking(move || -> Result<(String, String, String), ApiError> {
+            let mut conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let link_id = links::active_link_for_submissive(&conn, &user.user_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(NO_ACTIVE_LINK)?;
+            let alert_id = safety::raise(
+                &mut conn,
+                safety::Raise {
+                    submissive_id: &user.user_id,
+                    link_id: &link_id,
+                    raised_via: safety::RaisedVia::Submissive,
+                    related_checkin_id: None,
+                    message: req.message.as_deref(),
+                },
+            )
+            .map_err(|_| INTERNAL_ERROR)?;
+            let (keyholder_id, _) = links::parties(&conn, &link_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(NOT_FOUND)?;
+            Ok((alert_id, link_id, keyholder_id))
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    let _ = notify::notify(
+        &pool,
+        notify::Event {
+            user_id: &keyholder_id,
+            link_id: Some(&link_id),
+            notification_type: "safety.alert_raised",
+            title: "Safety alert raised",
+            body: Some("Check on your submissive now."),
+            link_path: Some("/keyholder/safety-alerts"),
+            related_entity_type: Some("safety_alerts"),
+            related_entity_id: Some(&alert_id),
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Serialize)]
@@ -145,23 +169,50 @@ async fn patch_safety_alert(
         .map_err(|_| FORBIDDEN)?;
     user.require_scope("manage:safety-alerts")
         .map_err(|_| FORBIDDEN)?;
-    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
-        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
-        let alert = safety::get(&conn, &id)
-            .map_err(|_| INTERNAL_ERROR)?
-            .ok_or(NOT_FOUND)?;
-        keyholder_owns_alert(&conn, &user.user_id, &alert.link_id)?;
+    let pool2 = pool.clone();
+    let id2 = id.clone();
+    let newly_acknowledged =
+        tokio::task::spawn_blocking(move || -> Result<Option<String>, ApiError> {
+            let conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let alert = safety::get(&conn, &id2)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(NOT_FOUND)?;
+            keyholder_owns_alert(&conn, &user.user_id, &alert.link_id)?;
 
-        if req.acknowledged {
-            safety::acknowledge(&conn, &id, &user.user_id).map_err(|_| INTERNAL_ERROR)?;
-        }
-        if req.resolved {
-            safety::resolve(&conn, &id).map_err(|_| INTERNAL_ERROR)?;
-        }
-        Ok(StatusCode::NO_CONTENT)
-    })
-    .await
-    .map_err(|_| INTERNAL_ERROR)?
+            let mut newly_acknowledged = None;
+            if req.acknowledged {
+                if alert.acknowledged_at.is_none() {
+                    newly_acknowledged = Some(alert.submissive_id.clone());
+                }
+                safety::acknowledge(&conn, &id2, &user.user_id).map_err(|_| INTERNAL_ERROR)?;
+            }
+            if req.resolved {
+                safety::resolve(&conn, &id2).map_err(|_| INTERNAL_ERROR)?;
+            }
+            Ok(newly_acknowledged)
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    if let Some(submissive_id) = newly_acknowledged {
+        let _ = notify::notify(
+            &pool,
+            notify::Event {
+                user_id: &submissive_id,
+                link_id: None,
+                notification_type: "safety.acknowledged",
+                title: "Your Keyholder saw your safety alert",
+                body: None,
+                link_path: None,
+                related_entity_type: Some("safety_alerts"),
+                related_entity_id: Some(&id),
+                push: true,
+            },
+        )
+        .await;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub fn router() -> Router<db::AppState> {

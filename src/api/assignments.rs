@@ -14,6 +14,7 @@ use crate::domain::links;
 use crate::domain::rewards_punishments::assignments::{
     self, Assignment, CreateError, EditError, ResolveError,
 };
+use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -135,6 +136,165 @@ fn parse_iso8601(s: &str) -> Option<i64> {
         .map(|dt| dt.timestamp())
 }
 
+fn format_duration(seconds: i64) -> String {
+    if seconds % 3600 == 0 {
+        format!("{}h", seconds / 3600)
+    } else if seconds % 60 == 0 {
+        format!("{}m", seconds / 60)
+    } else {
+        format!("{seconds}s")
+    }
+}
+
+/// Fires the submissive-facing "you got something new" notification
+/// for a just-created (or just-escalated) assignment
+/// (09-notifications.md §3), and — only for an escalation whose
+/// effect applied immediately, since nobody clicked "confirm" on it in
+/// the moment — the Keyholder-facing needs-review flag
+/// (08-punishments-and-deadlines.md §6/§6a). Shared by fresh
+/// assignment creation, task resolution/review escalations, and the
+/// deadline sweeper, so the notification logic lives in one place.
+pub(crate) async fn notify_for_assignment(
+    pool: &Pool,
+    keyholder_id: &str,
+    submissive_id: &str,
+    a: &Assignment,
+    is_escalation: bool,
+) {
+    match (a.kind.as_str(), a.effect_kind.as_deref()) {
+        ("task", _) => {
+            let _ = notify::notify(
+                pool,
+                notify::Event {
+                    user_id: submissive_id,
+                    link_id: Some(&a.link_id),
+                    notification_type: "task.assigned",
+                    title: &format!("New task: {}", a.title),
+                    body: a.description.as_deref(),
+                    link_path: Some("/submissive"),
+                    related_entity_type: Some("assignments"),
+                    related_entity_id: Some(&a.id),
+                    push: true,
+                },
+            )
+            .await;
+        }
+        ("reward", Some("grant")) => {
+            let _ = notify::notify(
+                pool,
+                notify::Event {
+                    user_id: submissive_id,
+                    link_id: Some(&a.link_id),
+                    notification_type: "reward.given",
+                    title: &format!("You got a reward: {}", a.title),
+                    body: a.description.as_deref(),
+                    link_path: Some("/submissive"),
+                    related_entity_type: Some("assignments"),
+                    related_entity_id: Some(&a.id),
+                    push: true,
+                },
+            )
+            .await;
+        }
+        // Not in 09-notifications.md's trigger matrix as written (only
+        // task.assigned/reward.given are listed) — extended here for
+        // symmetry, since a submissive being told they're in trouble is
+        // at least as time-sensitive as being told they earned a
+        // reward, and the matrix's own §3 header invites adding a row
+        // per new domain along exactly this pattern.
+        ("punishment", Some("grant")) => {
+            let _ = notify::notify(
+                pool,
+                notify::Event {
+                    user_id: submissive_id,
+                    link_id: Some(&a.link_id),
+                    notification_type: "punishment.given",
+                    title: &format!("You've been given a punishment: {}", a.title),
+                    body: a.description.as_deref(),
+                    link_path: Some("/submissive"),
+                    related_entity_type: Some("assignments"),
+                    related_entity_id: Some(&a.id),
+                    push: true,
+                },
+            )
+            .await;
+        }
+        (_, Some("time_extension")) => {
+            let hours = format_duration(a.time_extension_seconds.unwrap_or(0));
+            let _ = notify::notify(
+                pool,
+                notify::Event {
+                    user_id: submissive_id,
+                    link_id: Some(&a.link_id),
+                    notification_type: "confinement.adjusted",
+                    title: "Your lock timer was extended",
+                    body: Some(&format!("+{hours}: {}", a.title)),
+                    link_path: Some("/submissive"),
+                    related_entity_type: Some("assignments"),
+                    related_entity_id: Some(&a.id),
+                    push: true,
+                },
+            )
+            .await;
+            if is_escalation {
+                let _ = notify::notify(
+                    pool,
+                    notify::Event {
+                        user_id: keyholder_id,
+                        link_id: Some(&a.link_id),
+                        notification_type: "confinement.time_extension_needs_review",
+                        title: "An automatic time extension needs your review",
+                        body: Some(&format!("+{hours} applied via \"{}\"", a.title)),
+                        link_path: Some(&format!("/keyholder/submissives/{submissive_id}")),
+                        related_entity_type: Some("assignments"),
+                        related_entity_id: Some(&a.id),
+                        push: true,
+                    },
+                )
+                .await;
+            }
+        }
+        (_, Some("time_reduction")) => {
+            let hours = format_duration(a.time_reduction_seconds.unwrap_or(0));
+            let _ = notify::notify(
+                pool,
+                notify::Event {
+                    user_id: submissive_id,
+                    link_id: Some(&a.link_id),
+                    notification_type: "confinement.adjusted",
+                    title: "Your lock timer was reduced",
+                    body: Some(&format!("-{hours}: {}", a.title)),
+                    link_path: Some("/submissive"),
+                    related_entity_type: Some("assignments"),
+                    related_entity_id: Some(&a.id),
+                    // A reduction is good news — feed-only, no push
+                    // (09-notifications.md §3).
+                    push: false,
+                },
+            )
+            .await;
+            if is_escalation {
+                let _ = notify::notify(
+                    pool,
+                    notify::Event {
+                        user_id: keyholder_id,
+                        link_id: Some(&a.link_id),
+                        notification_type: "confinement.time_reduction_needs_review",
+                        title: "An automatic time reduction needs your review",
+                        body: Some(&format!("-{hours} applied via \"{}\"", a.title)),
+                        link_path: Some(&format!("/keyholder/submissives/{submissive_id}")),
+                        related_entity_type: Some("assignments"),
+                        related_entity_id: Some(&a.id),
+                        push: true,
+                    },
+                )
+                .await;
+            }
+        }
+        _ => {}
+    }
+}
+
 async fn create_assignment(
     State(pool): State<Pool>,
     user: CurrentUser,
@@ -153,14 +313,17 @@ async fn create_assignment(
         "api_token"
     };
 
-    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+    let pool2 = pool.clone();
+    let keyholder_id = user.user_id.clone();
+    let submissive_id2 = submissive_id.clone();
+    let a = tokio::task::spawn_blocking(move || -> Result<Assignment, ApiError> {
+        let conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
         let link_id =
             links::active_or_paused_link_for_keyholder(&conn, &user.user_id, &submissive_id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(NOT_FOUND)?;
 
-        let a = assignments::create(
+        assignments::create(
             &conn,
             &submissive_id,
             &link_id,
@@ -187,12 +350,14 @@ async fn create_assignment(
                 assigned_via,
             },
         )
-        .map_err(map_create_error)?;
-
-        Ok(Json(a.into()))
+        .map_err(map_create_error)
     })
     .await
-    .map_err(|_| INTERNAL_ERROR)?
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    notify_for_assignment(&pool, &keyholder_id, &submissive_id2, &a, false).await;
+
+    Ok(Json(a.into()))
 }
 
 async fn list_for_submissive(
@@ -341,17 +506,34 @@ async fn resolve_assignment(
     if !matches!(req.status.as_str(), "completed" | "revoked") {
         return Err(BAD_REQUEST);
     }
-    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
-        let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
-        match assignments::resolve(&mut conn, &assignment_id, &user.user_id, &req.status) {
-            Ok(()) => Ok(StatusCode::NO_CONTENT),
-            Err(ResolveError::NotFound) => Err(NOT_FOUND),
-            Err(ResolveError::InvalidTransition) => Err(CONFLICT),
-            Err(ResolveError::Db(_)) => Err(INTERNAL_ERROR),
-        }
-    })
-    .await
-    .map_err(|_| INTERNAL_ERROR)?
+    let pool2 = pool.clone();
+    let keyholder_id = user.user_id.clone();
+    let escalated =
+        tokio::task::spawn_blocking(move || -> Result<Option<(Assignment, String)>, ApiError> {
+            let mut conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let escalated =
+                match assignments::resolve(&mut conn, &assignment_id, &user.user_id, &req.status) {
+                    Ok(escalated) => escalated,
+                    Err(ResolveError::NotFound) => return Err(NOT_FOUND),
+                    Err(ResolveError::InvalidTransition) => return Err(CONFLICT),
+                    Err(ResolveError::Db(_)) => return Err(INTERNAL_ERROR),
+                };
+            let Some(escalated) = escalated else {
+                return Ok(None);
+            };
+            let (_, submissive_id) = links::parties(&conn, &escalated.link_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            Ok(Some((escalated, submissive_id)))
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    if let Some((escalated, submissive_id)) = escalated {
+        notify_for_assignment(&pool, &keyholder_id, &submissive_id, &escalated, true).await;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -461,36 +643,65 @@ async fn submit_task_proof(
     }
     let kind = kind.ok_or(BAD_REQUEST)?;
 
-    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
-        let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
-        let new_files: Vec<crate::domain::proofs::NewFile> = files
-            .iter()
-            .map(|f| crate::domain::proofs::NewFile {
-                content_type: &f.content_type,
-                bytes: &f.bytes,
-                original_filename: f.filename.as_deref(),
-            })
-            .collect();
-        match assignments::submit_proof(
-            &mut conn,
-            &blob_dir,
-            &assignment_id,
-            &user.user_id,
-            &kind,
-            metadata.as_deref(),
-            new_files,
-        ) {
-            Ok(_) => Ok(StatusCode::OK),
-            Err(assignments::SubmitProofError::NotFound) => Err(NOT_FOUND),
-            Err(assignments::SubmitProofError::NotAwaitingProof) => Err(CONFLICT),
-            Err(assignments::SubmitProofError::DeadlinePassed) => Err(CONFLICT),
-            Err(assignments::SubmitProofError::Submit(_))
-            | Err(assignments::SubmitProofError::Store(_))
-            | Err(assignments::SubmitProofError::Db(_)) => Err(INTERNAL_ERROR),
-        }
-    })
-    .await
-    .map_err(|_| INTERNAL_ERROR)?
+    let pool2 = pool.clone();
+    let assignment_id2 = assignment_id.clone();
+    let notify_target =
+        tokio::task::spawn_blocking(move || -> Result<(String, String), ApiError> {
+            let mut conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let new_files: Vec<crate::domain::proofs::NewFile> = files
+                .iter()
+                .map(|f| crate::domain::proofs::NewFile {
+                    content_type: &f.content_type,
+                    bytes: &f.bytes,
+                    original_filename: f.filename.as_deref(),
+                })
+                .collect();
+            match assignments::submit_proof(
+                &mut conn,
+                &blob_dir,
+                &assignment_id2,
+                &user.user_id,
+                &kind,
+                metadata.as_deref(),
+                new_files,
+            ) {
+                Ok(_) => {}
+                Err(assignments::SubmitProofError::NotFound) => return Err(NOT_FOUND),
+                Err(assignments::SubmitProofError::NotAwaitingProof) => return Err(CONFLICT),
+                Err(assignments::SubmitProofError::DeadlinePassed) => return Err(CONFLICT),
+                Err(assignments::SubmitProofError::Submit(_))
+                | Err(assignments::SubmitProofError::Store(_))
+                | Err(assignments::SubmitProofError::Db(_)) => return Err(INTERNAL_ERROR),
+            }
+            let a = assignments::get(&conn, &assignment_id2)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            let (keyholder_id, _) = links::parties(&conn, &a.link_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            Ok((keyholder_id, a.title))
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    let (keyholder_id, title) = notify_target;
+    let _ = notify::notify(
+        &pool,
+        notify::Event {
+            user_id: &keyholder_id,
+            link_id: None,
+            notification_type: "task.proof_submitted",
+            title: "Proof submitted for review",
+            body: Some(&title),
+            link_path: Some("/keyholder/review"),
+            related_entity_type: Some("assignments"),
+            related_entity_id: Some(&assignment_id),
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(StatusCode::OK)
 }
 
 pub fn router() -> Router<db::AppState> {

@@ -2,6 +2,7 @@ mod api;
 mod auth;
 mod db;
 mod domain;
+mod notify;
 mod ops;
 mod storage;
 mod web;
@@ -116,7 +117,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::profiles::router())
                 .merge(api::templates::router())
                 .merge(api::assignments::router())
-                .merge(api::api_tokens::router()),
+                .merge(api::api_tokens::router())
+                .merge(api::notifications::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -173,11 +175,13 @@ fn spawn_verification_issuance_task(pool: db::Pool) {
     });
 }
 
-/// One tick of the task-deadline sweeper's auto-fail pass
-/// (08-punishments-and-deadlines.md §3 step 1) — same heartbeat
-/// discipline as verification issuance. The deadline-approaching
-/// reminder pass (§3 step 2) isn't built here since it needs the
-/// `notifications` table (Phase 5).
+/// One tick of the task-deadline sweeper (08-punishments-and-
+/// deadlines.md §3: auto-fail pass, then the deadline-approaching
+/// reminder pass), plus — on the same tick, per §9's own instruction
+/// not to spin up a third background task — the confinement
+/// still-paused reminder. Same heartbeat discipline as verification
+/// issuance; `rows_processed` counts auto-failed tasks, matching what
+/// it always has.
 fn run_deadline_sweep_tick(pool: &db::Pool) {
     let mut conn = match pool.get() {
         Ok(conn) => conn,
@@ -187,16 +191,96 @@ fn run_deadline_sweep_tick(pool: &db::Pool) {
         }
     };
     match domain::rewards_punishments::assignments::run_deadline_sweep_tick(&mut conn) {
-        Ok(failed) => {
+        Ok(outcome) => {
+            let failed = outcome.auto_failed.len() as i64;
             let _ = ops::record_heartbeat(&conn, "deadline_sweeper", true, None, failed);
             if failed > 0 {
                 tracing::info!(failed, "tasks auto-failed on deadline");
+            }
+
+            for task in outcome.auto_failed {
+                for recipient in [&task.submissive_id, &task.keyholder_id] {
+                    let _ = notify::notify_sync(
+                        pool,
+                        &conn,
+                        notify::Event {
+                            user_id: recipient,
+                            link_id: Some(&task.link_id),
+                            notification_type: "task.failed",
+                            title: "A task deadline passed",
+                            body: None,
+                            link_path: Some("/submissive"),
+                            related_entity_type: Some("assignments"),
+                            related_entity_id: Some(&task.assignment_id),
+                            push: true,
+                        },
+                    );
+                }
+                if let Some(escalated) = &task.escalated {
+                    let pool = pool.clone();
+                    let keyholder_id = task.keyholder_id.clone();
+                    let submissive_id = task.submissive_id.clone();
+                    let escalated = escalated.clone();
+                    tokio::spawn(async move {
+                        api::assignments::notify_for_assignment(
+                            &pool,
+                            &keyholder_id,
+                            &submissive_id,
+                            &escalated,
+                            true,
+                        )
+                        .await;
+                    });
+                }
+            }
+
+            for reminder in outcome.reminders {
+                let _ = notify::notify_sync(
+                    pool,
+                    &conn,
+                    notify::Event {
+                        user_id: &reminder.submissive_id,
+                        link_id: None,
+                        notification_type: "task.deadline_approaching",
+                        title: &format!("Deadline approaching: {}", reminder.title),
+                        body: None,
+                        link_path: Some("/submissive"),
+                        related_entity_type: Some("assignments"),
+                        related_entity_id: Some(&reminder.assignment_id),
+                        push: true,
+                    },
+                );
             }
         }
         Err(e) => {
             let _ =
                 ops::record_heartbeat(&conn, "deadline_sweeper", false, Some(&e.to_string()), 0);
             tracing::error!(error = %e, "deadline sweep tick failed");
+        }
+    }
+
+    match domain::chastity::confinement::run_still_paused_sweep_tick(&conn) {
+        Ok(reminders) => {
+            for reminder in reminders {
+                let _ = notify::notify_sync(
+                    pool,
+                    &conn,
+                    notify::Event {
+                        user_id: &reminder.keyholder_id,
+                        link_id: None,
+                        notification_type: "confinement.clock_still_paused",
+                        title: "A submissive's lock timer is still paused",
+                        body: None,
+                        link_path: None,
+                        related_entity_type: Some("confinement_sessions"),
+                        related_entity_id: Some(&reminder.session_id),
+                        push: true,
+                    },
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "still-paused sweep tick failed");
         }
     }
 }
@@ -2688,6 +2772,13 @@ mod tests {
             .await;
         assert_eq!(status, StatusCode::NO_CONTENT);
 
+        // Raising an alert also lands a push-worthy notification in the
+        // keyholder's feed (09-notifications.md §3).
+        let (_, feed) = keyholder.get("/api/v1/notifications").await;
+        let notifications = feed.as_array().unwrap();
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0]["type"], "safety.alert_raised");
+
         // A submissive can't read the keyholder-side list.
         let (status, _) = submissive.get("/api/v1/keyholder/safety-alerts").await;
         assert_eq!(status, StatusCode::FORBIDDEN);
@@ -2735,6 +2826,12 @@ mod tests {
         assert!(!list[0]["acknowledged_at"].is_null());
         assert!(list[0]["resolved_at"].is_null());
 
+        // Acknowledging notifies the submissive back.
+        let (_, feed) = submissive.get("/api/v1/notifications").await;
+        let notifications = feed.as_array().unwrap();
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0]["type"], "safety.acknowledged");
+
         let (status, _) = keyholder
             .patch(
                 &format!("/api/v1/keyholder/safety-alerts/{alert_id}"),
@@ -2744,6 +2841,189 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, list) = keyholder.get("/api/v1/keyholder/safety-alerts").await;
         assert!(!list[0]["resolved_at"].is_null());
+    }
+
+    #[tokio::test]
+    async fn vapid_public_key_is_stable_across_requests() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "kh-vapid@example.test",
+            "correct horse battery staple",
+        );
+        let mut keyholder = TestClient::new(pool.clone());
+        keyholder.get("/health").await;
+        keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-vapid@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, first) = keyholder
+            .get("/api/v1/notifications/vapid-public-key")
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!first["public_key"].as_str().unwrap().is_empty());
+
+        let (_, second) = keyholder
+            .get("/api/v1/notifications/vapid-public-key")
+            .await;
+        assert_eq!(first["public_key"], second["public_key"]);
+    }
+
+    #[tokio::test]
+    async fn notification_feed_lists_marks_read_and_is_scoped_per_user() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-notif@example.test",
+            "sub-notif@example.test",
+        )
+        .await;
+
+        let kh_id: String = {
+            let conn = pool.get().unwrap();
+            conn.query_row(
+                "SELECT id FROM users WHERE email = 'kh-notif@example.test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        {
+            let conn = pool.get().unwrap();
+            domain::notifications::create(
+                &conn,
+                domain::notifications::NewNotification {
+                    user_id: &kh_id,
+                    link_id: None,
+                    notification_type: "safety.alert_raised",
+                    title: "Safety alert",
+                    body: Some("device feels too tight"),
+                    link_path: Some("/keyholder/safety-alerts"),
+                    related_entity_type: None,
+                    related_entity_id: None,
+                },
+            )
+            .unwrap();
+        }
+
+        // Scoped per-user: the submissive's own feed is empty.
+        let (status, list) = submissive.get("/api/v1/notifications").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list.as_array().unwrap().len(), 0);
+
+        let (status, list) = keyholder.get("/api/v1/notifications").await;
+        assert_eq!(status, StatusCode::OK);
+        let notifications = list.as_array().unwrap();
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0]["type"], "safety.alert_raised");
+        assert!(notifications[0]["read_at"].is_null());
+        let id = notifications[0]["id"].as_str().unwrap().to_string();
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/notifications/{id}/read"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, list) = keyholder.get("/api/v1/notifications?unread=true").await;
+        assert_eq!(list.as_array().unwrap().len(), 0);
+
+        // A second, unrelated keyholder can't mark someone else's read.
+        seed_keyholder(
+            &pool,
+            "kh-notif-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_keyholder = TestClient::new(pool.clone());
+        other_keyholder.get("/health").await;
+        other_keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-notif-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_keyholder
+            .patch(
+                &format!("/api/v1/notifications/{id}/read"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let (status, _) = keyholder
+            .patch("/api/v1/notifications/read-all", serde_json::json!({}))
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn push_subscription_lifecycle_register_list_delete() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "kh-push@example.test",
+            "correct horse battery staple",
+        );
+        let mut keyholder = TestClient::new(pool.clone());
+        keyholder.get("/health").await;
+        keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-push@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, created) = keyholder
+            .post(
+                "/api/v1/notifications/push-subscriptions",
+                serde_json::json!({
+                    "endpoint": "https://push.example/ep-1",
+                    "keys": {"p256dh": "p256dh-val", "auth": "auth-val"},
+                    "user_agent": "TestBrowser"
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let id = created["id"].as_str().unwrap().to_string();
+
+        let (status, list) = keyholder
+            .get("/api/v1/notifications/push-subscriptions")
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let subs = list.as_array().unwrap();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0]["user_agent"], "TestBrowser");
+        assert!(subs[0].get("p256dh").is_none());
+
+        // Re-registering the same endpoint updates rather than duplicating.
+        let (status, _) = keyholder
+            .post(
+                "/api/v1/notifications/push-subscriptions",
+                serde_json::json!({
+                    "endpoint": "https://push.example/ep-1",
+                    "keys": {"p256dh": "p256dh-val2", "auth": "auth-val2"}
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, list) = keyholder
+            .get("/api/v1/notifications/push-subscriptions")
+            .await;
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        let (status, _) = keyholder
+            .delete(&format!("/api/v1/notifications/push-subscriptions/{id}"))
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder
+            .get("/api/v1/notifications/push-subscriptions")
+            .await;
+        assert_eq!(list.as_array().unwrap().len(), 0);
     }
 
     #[tokio::test]

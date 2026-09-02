@@ -188,6 +188,18 @@ pub fn set_settings(
     Ok(affected > 0)
 }
 
+/// `(keyholder_id, submissive_id)` for a link — the lookup every
+/// notification trigger needs to resolve "who's the other party" from
+/// whichever id it already has on hand.
+pub fn parties(conn: &Connection, link_id: &str) -> rusqlite::Result<Option<(String, String)>> {
+    conn.query_row(
+        "SELECT keyholder_id, submissive_id FROM keyholder_submissive_links WHERE id = ?1",
+        params![link_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .optional()
+}
+
 /// Read side of the settings above — gates the submissive self-report
 /// confinement endpoints (03-api-design.md §4) and catalog read access
 /// (03-api-design.md §7).
@@ -335,6 +347,18 @@ mod tests {
 
         let result = set_status(&conn, &link_id, "someone-else", "paused");
         assert!(matches!(result, Err(SetStatusError::NotFound)));
+    }
+
+    #[test]
+    fn parties_resolves_both_ids_and_none_for_an_unknown_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        assert_eq!(parties(&conn, &link_id).unwrap(), Some((kh, sub)));
+        assert_eq!(parties(&conn, "no-such-link").unwrap(), None);
     }
 
     #[test]

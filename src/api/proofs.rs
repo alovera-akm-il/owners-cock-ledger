@@ -14,6 +14,7 @@ use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, BlobDir, Pool};
 use crate::domain::proofs;
 use crate::domain::{links, verification::policy};
+use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -140,6 +141,7 @@ async fn submit_proof(
 
     let kind = kind.ok_or(BAD_REQUEST)?;
 
+    let pool2 = pool.clone();
     let result = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let link_id = links::active_link_for_submissive(&conn, &user.user_id)
@@ -185,10 +187,30 @@ async fn submit_proof(
             .ok_or(INTERNAL_ERROR)?;
         let attachments =
             proofs::list_attachments(&conn, &submission_id).map_err(|_| INTERNAL_ERROR)?;
-        Ok(submission_response(submission, attachments))
+        let (keyholder_id, _) = links::parties(&conn, &link_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)?;
+        Ok((submission_response(submission, attachments), keyholder_id))
     })
     .await
     .map_err(|_| INTERNAL_ERROR)??;
+
+    let (result, keyholder_id) = result;
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &keyholder_id,
+            link_id: None,
+            notification_type: "verification.proof_submitted",
+            title: "New verification proof to review",
+            body: None,
+            link_path: Some("/keyholder/review"),
+            related_entity_type: Some("proof_submissions"),
+            related_entity_id: Some(&result.id),
+            push: true,
+        },
+    )
+    .await;
 
     Ok(Json(result))
 }
@@ -347,12 +369,16 @@ async fn review_submission(
     if !matches!(req.status.as_str(), "verified" | "redo" | "failed") {
         return Err(BAD_REQUEST);
     }
-    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+    let pool2 = pool.clone();
+    let outcome = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         let submission = proofs::get(&conn, &submission_id)
             .map_err(|_| INTERNAL_ERROR)?
             .ok_or(NOT_FOUND)?;
         keyholder_owns_submission(&conn, &user.user_id, &submission.link_id)?;
+        let (keyholder_id, submissive_id) = links::parties(&conn, &submission.link_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)?;
 
         // A review made by an API-token-driven script is worth being
         // able to tell apart from one a Keyholder actually looked at
@@ -377,7 +403,13 @@ async fn review_submission(
             &user.user_id,
             reviewed_via,
         ) {
-            Ok(()) => Ok(StatusCode::NO_CONTENT),
+            Ok(outcome) => Ok((
+                submission.purpose,
+                req.status.clone(),
+                keyholder_id,
+                submissive_id,
+                outcome,
+            )),
             Err(crate::domain::rewards_punishments::assignments::ReviewProofError::Proof(
                 proofs::ReviewError::NotReviewable,
             )) => Err(CONFLICT),
@@ -385,7 +417,104 @@ async fn review_submission(
         }
     })
     .await
-    .map_err(|_| INTERNAL_ERROR)?
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let (purpose, status, keyholder_id, submissive_id, outcome) = outcome;
+
+    if purpose == "verification" {
+        let _ = notify::notify(
+            &pool2,
+            notify::Event {
+                user_id: &submissive_id,
+                link_id: None,
+                notification_type: "verification.reviewed",
+                title: match status.as_str() {
+                    "verified" => "Verification accepted",
+                    "redo" => "Verification needs a redo",
+                    _ => "Verification rejected",
+                },
+                body: None,
+                link_path: Some("/submissive"),
+                related_entity_type: Some("proof_submissions"),
+                related_entity_id: None,
+                push: true,
+            },
+        )
+        .await;
+    } else if let Some(resolved) = &outcome.resolved_assignment {
+        match status.as_str() {
+            "verified" => {
+                let _ = notify::notify(
+                    &pool2,
+                    notify::Event {
+                        user_id: &submissive_id,
+                        link_id: None,
+                        notification_type: "task.resolved",
+                        title: &format!("Task completed: {}", resolved.title),
+                        body: None,
+                        link_path: Some("/submissive"),
+                        related_entity_type: Some("assignments"),
+                        related_entity_id: Some(&resolved.id),
+                        push: false,
+                    },
+                )
+                .await;
+            }
+            "failed" => {
+                for recipient in [&submissive_id, &keyholder_id] {
+                    let _ = notify::notify(
+                        &pool2,
+                        notify::Event {
+                            user_id: recipient,
+                            link_id: None,
+                            notification_type: "task.failed",
+                            title: &format!("Task failed: {}", resolved.title),
+                            body: None,
+                            link_path: Some("/submissive"),
+                            related_entity_type: Some("assignments"),
+                            related_entity_id: Some(&resolved.id),
+                            push: true,
+                        },
+                    )
+                    .await;
+                }
+            }
+            _ => {
+                // "redo": not in 09-notifications.md's matrix as its own
+                // row, but the submissive still needs to know to
+                // resubmit — extended here for the same reason
+                // `punishment.given` was, see `notify_for_assignment`.
+                let _ = notify::notify(
+                    &pool2,
+                    notify::Event {
+                        user_id: &submissive_id,
+                        link_id: None,
+                        notification_type: "task.redo_requested",
+                        title: &format!("Redo requested: {}", resolved.title),
+                        body: None,
+                        link_path: Some("/submissive"),
+                        related_entity_type: Some("assignments"),
+                        related_entity_id: Some(&resolved.id),
+                        push: true,
+                    },
+                )
+                .await;
+            }
+        }
+    }
+
+    if let Some(escalated) = &outcome.escalated {
+        crate::api::assignments::notify_for_assignment(
+            &pool2,
+            &keyholder_id,
+            &submissive_id,
+            escalated,
+            true,
+        )
+        .await;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn download_attachment_keyholder(
