@@ -2619,6 +2619,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn safety_alerts_page_renders_for_keyholder_and_redirects_submissive() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-safetypage@example.test",
+            "sub-safetypage@example.test",
+        )
+        .await;
+
+        let (status, _, body) = keyholder.get_page("/keyholder/safety-alerts").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Safety Alerts"));
+
+        let (status, location, _) = submissive.get_page("/keyholder/safety-alerts").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/submissive"));
+    }
+
+    #[tokio::test]
     async fn account_settings_page_renders_for_both_roles() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(

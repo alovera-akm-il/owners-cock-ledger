@@ -410,6 +410,30 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
     })
 }
 
+#[derive(Template)]
+#[template(path = "safety_alerts.html")]
+struct SafetyAlertsTemplate {
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/safety-alerts` — everything is fetched client-side from
+/// the JSON API this page already talks to; the template only needs
+/// enough to render the nav shell (03-api-design.md §5).
+async fn safety_alerts_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    render(SafetyAlertsTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
 struct Badge {
     text: String,
     class: &'static str,
@@ -697,6 +721,7 @@ pub fn router() -> axum::Router<db::AppState> {
         )
         .route("/keyholder/submissives/{id}", get(submissive_detail_page))
         .route("/keyholder/review", get(review_queue_page))
+        .route("/keyholder/safety-alerts", get(safety_alerts_page))
         .route("/keyholder/catalog", get(catalog_page))
         .route("/account", get(account_settings_page))
 }
