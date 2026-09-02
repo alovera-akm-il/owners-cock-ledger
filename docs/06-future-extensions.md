@@ -634,3 +634,133 @@ feel burdensome) hasn't shown up as a reported pain point yet. Having
 the full design ready here means it can be built directly against
 this spec the moment that trigger does show up, rather than needing
 this reasoning re-derived from scratch.
+
+## 14. Repeating tasks
+
+Today, every `assignments` row (`01-data-model.md` §6) is one
+Keyholder action producing one instance — even when a task is
+inherently recurring in real use ("submit a proof photo every
+morning," "log a check-in every Monday and Thursday"), the Keyholder
+has to notice it's due again and manually re-assign each time. This
+is a distinct gap from the already-deferred play-session recurrence
+(§1's "Recurring/scheduled sessions" — a *scheduling* concern for a
+timed activity) and from the already-shipped `checkin_interval_seconds`
+schedule *inside* one play session (`14-play-sessions.md` §4, which
+only exists for the lifetime of that one session) — this is about a
+standalone task recurring indefinitely, independent of any session.
+
+### Shape: a rule that spawns ordinary assignments, not a new kind of task
+
+The established pattern throughout this schema is reusable-definition
+→ per-use instance (`reward_punishment_templates` → `assignments`,
+`checkin_templates` → `checkins`, `play_session_templates` →
+`play_sessions`). Repeating tasks are the same shape one level up: a
+**rule** that periodically creates an ordinary `assignments` row from
+an existing `kind='task'` template — not a new task state machine, not
+a "recurring" flag on `assignments` itself. Every already-built piece
+(deadlines, proof review, points, notifications, escalation) keeps
+working completely unmodified, because a spawned task *is* a normal
+task in every respect except how it came to exist.
+
+**`recurring_task_rules`** (new table):
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | |
+| link_id | TEXT NOT NULL FK -> keyholder_submissive_links.id | |
+| template_id | TEXT NOT NULL FK -> reward_punishment_templates.id | must be `kind='task'`; enforced at the service layer the same way `assignments::create`'s template lookup already is, not a schema-level CHECK (SQLite can't cross-reference another row's column in a constraint) |
+| recurrence_kind | TEXT CHECK IN ('interval_hours','daily','weekly_days') | deliberately mirrors `verification_policies.frequency_kind`'s naming (`04-verification-workflow.md` §1) rather than inventing parallel vocabulary for the same underlying idea: "on a schedule, some kinds of which need a time-of-day" |
+| recurrence_value | TEXT (JSON) | `{"hours":N}` / `{"time":"09:00"}` / `{"days":["mon","wed","fri"],"time":"09:00"}` — same shape family as `verification_policies.frequency_value`, times interpreted as UTC in this version (same disclosed limitation `codes.rs` already carries for `fixed_times_daily`/`random_within_window`) |
+| allow_overlap | INTEGER NOT NULL DEFAULT 0 | see below |
+| active | INTEGER NOT NULL DEFAULT 1 | |
+| next_due_at | INTEGER NOT NULL | advanced by the sweep after each spawn; lets the sweep query stay a plain index scan (`WHERE active AND next_due_at <= ?`) instead of recomputing every rule's schedule on every tick |
+| created_by_user_id | TEXT NOT NULL FK -> users.id | Keyholder-only, same authorship posture as every other template/rule in this schema |
+| created_at | INTEGER NOT NULL | |
+
+Plus one new nullable column on `assignments`, following the exact
+precedent `triggered_by_play_session_id` set (`01-data-model.md` §6):
+**`spawned_by_recurring_task_rule_id TEXT NULL FK -> recurring_task_rules.id`**
+— a fourth dedicated "why does this assignment exist" column
+alongside `escalated_from_assignment_id`/`triggered_by_submission_id`/
+`triggered_by_play_session_id`, not a generalized polymorphic
+reference, for the same reason already given for the play-session
+column: SQLite can't enforce a polymorphic FK's integrity the way it
+can an ordinary one, and this schema has consistently chosen a
+concrete column over a generic pair everywhere this has come up.
+
+### Why a rule, not a mutable recurring assignment
+
+Editing a rule (say, changing the time or the underlying template)
+must never rewrite an assignment already spawned and possibly already
+completed — the exact "copy at write time" reasoning behind every
+template/instance split in this schema. A rule is metadata that
+produces independent rows; it's never itself the thing with a
+deadline or a proof submission.
+
+### The spawn sweep
+
+Runs on the same tick as the deadline sweeper
+(`08-punishments-and-deadlines.md` §9's now-repeated reasoning for not
+wanting a fifth background task — this would be the third sweep
+riding that one tick, after the deadline sweep itself and the
+still-paused reminder): for every `active` rule with `next_due_at <=
+now`,
+
+1. **Skip-if-open check** (unless `allow_overlap`): if there's already
+   an `assignments` row with this `spawned_by_recurring_task_rule_id`
+   whose `status IN ('assigned','acknowledged','proof_submitted')`,
+   skip spawning this tick and leave `next_due_at` where it is — the
+   next tick will re-check once the open one resolves. This is the
+   sensible default (a submissive three days behind on a daily task
+   shouldn't wake up to three overlapping copies of it); `allow_overlap`
+   exists for the legitimately-independent case ("log water intake
+   three times a day" where each prompt is its own thing regardless of
+   whether an earlier one was missed).
+2. Otherwise, call `assignments::create` exactly the way the ad-hoc
+   and play-session-judgement call sites already do — same function,
+   same validation, `template_id` set from the rule,
+   `spawned_by_recurring_task_rule_id` set, `assigned_via: "system"`
+   (already a valid value for exactly this "the app did this, not a
+   person clicking a button" case, `03-api-design.md` §7).
+3. Fire the existing `task.assigned` notification (`09-notifications.md`
+   §3) — no new notification type needed, a spawned task is assigned
+   exactly the way a manually-assigned one is from the submissive's
+   point of view.
+4. Advance `next_due_at` to the rule's next occurrence from `recurrence_value`
+   (reusing the same day/time parsing `codes.rs` already has for
+   `fixed_times_daily`/`random_within_window`, not new logic).
+
+### API surface
+
+- `POST /keyholder/submissives/{id}/recurring-tasks` —
+  `{template_id, recurrence_kind, recurrence_value, allow_overlap?}`
+- `GET /keyholder/submissives/{id}/recurring-tasks`
+- `PATCH /keyholder/recurring-tasks/{id}` — `{recurrence_kind?,
+  recurrence_value?, allow_overlap?, active?}`; changing the schedule
+  recomputes `next_due_at` from now, doesn't try to preserve a
+  fractional old cycle
+- No delete endpoint — `active:false` is the only retirement path,
+  matching every other template-shaped thing in this schema (a hard
+  delete would orphan `spawned_by_recurring_task_rule_id` on
+  already-spawned assignments, the same reason `limit_items`
+  (`06-future-extensions.md` §9) and `checkin_templates` never get
+  hard-deleted either)
+
+### Considered and rejected: cron-string recurrence
+
+A raw cron expression would cover every case above and more, but it's
+the wrong trade for this app specifically: nothing else in this
+schema exposes cron syntax to a Keyholder (`verification_policies`
+already made the same choice — structured `frequency_kind`/
+`frequency_value` over a raw schedule string), and the actual
+requested cases ("every N hours," "once a day," "specific weekdays")
+are fully covered by the three `recurrence_kind`s above without
+asking a Keyholder to learn cron.
+
+### Why repeating tasks are still deferred
+
+Concretely specified enough to build directly, same bar as §2 above —
+deferred because it's additive on top of the existing task/template
+machinery with no schema conflicts to resolve later, so there's no
+cost to waiting for it to actually be requested rather than guessing
+at the exact recurrence-kind list a real Keyholder would want.

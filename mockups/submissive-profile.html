@@ -255,6 +255,42 @@
     <p class="text-xs text-slate-500 mt-3">Changing your password automatically logs out every session but this one.</p>
   </div>
 
+  <!-- ============ END THE LINK (06-future-extensions.md §2) ============ -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <p class="text-sm font-semibold mb-1">Your link</p>
+    <p class="text-xs text-slate-500 mb-4">Ending the link is Keyholder-gated — a request, not a one-click action, so there's always a human in the loop for something this consequential. They have to respond, or it escalates automatically after 7 days.</p>
+
+    <div id="end-request-idle">
+      <label class="block text-xs font-medium text-slate-400 mb-1.5">Reason (optional) — shown to your Keyholder</label>
+      <textarea id="end-request-reason" rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200 mb-3"></textarea>
+      <button id="send-end-request-btn" class="text-xs font-semibold text-red-400 border border-red-900/50 hover:bg-red-950/30 rounded-lg px-3 py-2">Request to end the link</button>
+    </div>
+
+    <div id="end-request-pending" class="hidden">
+      <div class="rounded-lg border border-amber-700/40 bg-amber-500/5 p-3 mb-3">
+        <p class="text-xs font-semibold text-amber-400">Request pending</p>
+        <p class="text-xs text-slate-400 mt-1">Waiting on your Keyholder to respond. Sent 2 days ago.</p>
+      </div>
+      <button id="withdraw-end-request-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-2">Withdraw request</button>
+    </div>
+
+    <div id="end-request-escalated" class="hidden">
+      <div class="rounded-lg border border-red-800/60 bg-red-950/30 p-3 mb-3">
+        <p class="text-xs font-semibold text-red-400">Still waiting — it's been over a week</p>
+        <p class="text-xs text-slate-400 mt-1">No response yet. If your Keyholder stays unreachable, contact support about the admin override — this isn't meant to leave you stuck indefinitely.</p>
+      </div>
+      <button class="text-xs font-medium text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg px-3 py-2">Withdraw request</button>
+    </div>
+
+    <!-- demo state switcher, not part of the real UI -->
+    <div class="mt-4 pt-3 border-t border-slate-800 flex items-center gap-2">
+      <span class="text-[11px] text-slate-600 mr-1">Demo:</span>
+      <button class="end-request-state-btn text-[11px] font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2 py-1" data-state="idle">No request</button>
+      <button class="end-request-state-btn text-[11px] font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2 py-1" data-state="pending">Pending</button>
+      <button class="end-request-state-btn text-[11px] font-medium border border-slate-700 hover:border-slate-600 rounded-lg px-2 py-1" data-state="escalated">Escalated (7+ days)</button>
+    </div>
+  </div>
+
 </main>
 
 <script>
@@ -279,6 +315,17 @@
     btn.text('Saved ✓');
     setTimeout(() => btn.text(original), 1500);
   });
+
+  function setEndRequestState(state) {
+    $('#end-request-idle, #end-request-pending, #end-request-escalated').addClass('hidden');
+    $('#end-request-' + state).removeClass('hidden');
+    $('.end-request-state-btn').removeClass('bg-slate-800').addClass('text-slate-400');
+    $('.end-request-state-btn[data-state="' + state + '"]').addClass('bg-slate-800').removeClass('text-slate-400');
+  }
+  $('.end-request-state-btn').on('click', function () { setEndRequestState($(this).data('state')); });
+  $('#send-end-request-btn').on('click', function () { setEndRequestState('pending'); });
+  $('#withdraw-end-request-btn').on('click', function () { setEndRequestState('idle'); });
+  setEndRequestState('idle');
 
   function tfaShow(stateId) {
     $('#tfa-state-off, #tfa-state-setup, #tfa-state-recovery, #tfa-state-on').addClass('hidden');
