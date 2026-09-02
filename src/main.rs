@@ -2385,6 +2385,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn catalog_page_renders_description_and_badges_for_real_templates() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-catpage@example.test",
+            "sub-catpage@example.test",
+        )
+        .await;
+
+        let (_, reward) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({
+                    "kind": "reward",
+                    "title": "Movie night",
+                    "effect_kind": "grant"
+                }),
+            )
+            .await;
+        let reward_id = reward["id"].as_str().unwrap();
+
+        keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({
+                    "kind": "task",
+                    "title": "Evening check-in",
+                    "description": "Photo proof every night",
+                    "completion_type": "proof_required",
+                    "proof_media_types": ["photo"],
+                    "default_deadline_seconds": 43200,
+                    "on_success_template_id": reward_id
+                }),
+            )
+            .await;
+
+        keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({
+                    "kind": "punishment",
+                    "title": "Extra day locked",
+                    "effect_kind": "time_extension",
+                    "time_extension_seconds": 86400
+                }),
+            )
+            .await;
+
+        let (status, _, body) = keyholder.get_page("/keyholder/catalog").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Photo proof every night"));
+        assert!(body.contains("Proof required"));
+        assert!(body.contains("succeeds into: Movie night"));
+        assert!(body.contains("extends lock timer by 1d"));
+        assert!(body.contains("data-kind=\"punishment\""));
+        assert!(body.contains("data-kind=\"reward\""));
+    }
+
+    #[tokio::test]
     async fn keyholder_pages_render_submissive_detail_and_review_queue() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(

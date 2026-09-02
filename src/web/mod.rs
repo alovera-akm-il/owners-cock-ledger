@@ -396,25 +396,47 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
     })
 }
 
+struct Badge {
+    text: String,
+    class: &'static str,
+}
+
 struct TemplateRow {
     id: String,
     title: String,
+    description: Option<String>,
     active: bool,
-    summary: String,
+    badges: Vec<Badge>,
 }
 
 struct KindGroup {
+    kind: &'static str,
     label: &'static str,
     items: Vec<TemplateRow>,
 }
 
-fn template_summary(t: &templates::Template) -> String {
+const PILL_SKY: &str = "text-[11px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full";
+const PILL_SLATE: &str = "text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full";
+const PILL_SLATE_LIGHT: &str = "text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full";
+const PILL_EMERALD: &str =
+    "text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full";
+const PILL_RED: &str = "text-[11px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full";
+const PILL_AMBER: &str = "text-[11px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full";
+const TEXT_MUTED: &str = "text-[11px] text-slate-500";
+const TEXT_SUCCESS_CHAIN: &str = "text-[11px] text-emerald-400/90";
+const TEXT_FAILURE_CHAIN: &str = "text-[11px] text-red-400/90";
+
+/// The chip row under each catalog entry (mockups/catalog.html) — kind-
+/// appropriate badges built from whatever fields the template actually
+/// has set, plus the escalation chain (resolved to the linked template's
+/// title via `titles`) for tasks.
+fn template_badges(
+    t: &templates::Template,
+    titles: &std::collections::HashMap<String, String>,
+) -> Vec<Badge> {
+    let mut badges = Vec::new();
     match t.kind.as_str() {
         "task" => {
-            let deadline = t
-                .default_deadline_seconds
-                .map(fmt_duration)
-                .unwrap_or_else(|| "no deadline".to_string());
             match t.completion_type.as_deref() {
                 Some("proof_required") => {
                     let media = t
@@ -423,27 +445,87 @@ fn template_summary(t: &templates::Template) -> String {
                         .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
                         .map(|v| v.join(", "))
                         .unwrap_or_default();
-                    format!("proof required ({media}) · {deadline}")
+                    badges.push(Badge {
+                        text: format!("Proof required · {media}"),
+                        class: PILL_SKY,
+                    });
                 }
-                _ => format!("acknowledge only · {deadline}"),
+                _ => badges.push(Badge {
+                    text: "Acknowledge only".to_string(),
+                    class: PILL_SLATE_LIGHT,
+                }),
+            }
+            if let Some(secs) = t.default_deadline_seconds {
+                badges.push(Badge {
+                    text: format!("{} deadline", fmt_duration(secs)),
+                    class: PILL_SLATE,
+                });
+            }
+            if t.points_delta.is_some_and(|p| p != 0) {
+                badges.push(Badge {
+                    text: format!("+{} pts", t.points_delta.unwrap()),
+                    class: PILL_EMERALD,
+                });
+            }
+            if t.on_success_template_id.is_none() && t.on_failure_template_id.is_none() {
+                badges.push(Badge {
+                    text: "no automatic escalation".to_string(),
+                    class: TEXT_MUTED,
+                });
+            } else {
+                if let Some(id) = &t.on_success_template_id {
+                    let title = titles.get(id).cloned().unwrap_or_else(|| "?".to_string());
+                    badges.push(Badge {
+                        text: format!("✓ succeeds into: {title}"),
+                        class: TEXT_SUCCESS_CHAIN,
+                    });
+                }
+                if let Some(id) = &t.on_failure_template_id {
+                    let title = titles.get(id).cloned().unwrap_or_else(|| "?".to_string());
+                    badges.push(Badge {
+                        text: format!("↳ fails into: {title}"),
+                        class: TEXT_FAILURE_CHAIN,
+                    });
+                }
             }
         }
-        "reward" => match t.effect_kind.as_deref() {
-            Some("time_reduction") => format!(
-                "reduces lock timer by {}",
-                fmt_duration(t.time_reduction_seconds.unwrap_or(0))
-            ),
-            _ => "direct grant".to_string(),
-        },
+        "reward" => {
+            match t.effect_kind.as_deref() {
+                Some("time_reduction") => badges.push(Badge {
+                    text: format!(
+                        "reduces lock timer by {}",
+                        fmt_duration(t.time_reduction_seconds.unwrap_or(0))
+                    ),
+                    class: PILL_EMERALD,
+                }),
+                _ => badges.push(Badge {
+                    text: "direct grant".to_string(),
+                    class: PILL_SLATE,
+                }),
+            }
+            if let Some(cost) = t.points_cost {
+                badges.push(Badge {
+                    text: format!("redeemable for {cost} pts"),
+                    class: PILL_AMBER,
+                });
+            }
+        }
         "punishment" => match t.effect_kind.as_deref() {
-            Some("time_extension") => format!(
-                "extends lock timer by {}",
-                fmt_duration(t.time_extension_seconds.unwrap_or(0))
-            ),
-            _ => "direct grant".to_string(),
+            Some("time_extension") => badges.push(Badge {
+                text: format!(
+                    "extends lock timer by {}",
+                    fmt_duration(t.time_extension_seconds.unwrap_or(0))
+                ),
+                class: PILL_RED,
+            }),
+            _ => badges.push(Badge {
+                text: "direct grant".to_string(),
+                class: PILL_SLATE,
+            }),
         },
-        _ => String::new(),
+        _ => {}
     }
+    badges
 }
 
 #[derive(Template)]
@@ -471,11 +553,16 @@ async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
+    let titles: std::collections::HashMap<String, String> = all
+        .iter()
+        .map(|t| (t.id.clone(), t.title.clone()))
+        .collect();
+
     let mut kinds = Vec::new();
     for (label, kind) in [
         ("Tasks", "task"),
-        ("Rewards", "reward"),
         ("Punishments", "punishment"),
+        ("Rewards", "reward"),
     ] {
         let items = all
             .iter()
@@ -483,11 +570,12 @@ async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
             .map(|t| TemplateRow {
                 id: t.id.clone(),
                 title: t.title.clone(),
+                description: t.description.clone(),
                 active: t.active,
-                summary: template_summary(t),
+                badges: template_badges(t, &titles),
             })
             .collect();
-        kinds.push(KindGroup { label, items });
+        kinds.push(KindGroup { kind, label, items });
     }
 
     render(CatalogTemplate { kinds })

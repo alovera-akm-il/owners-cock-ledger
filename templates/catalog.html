@@ -13,7 +13,7 @@
 <body class="h-full bg-slate-950 text-slate-100">
 
 <nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
-  <div class="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
     <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
       <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
       <span class="hidden sm:inline">Owner's Cock Ledger</span>
@@ -27,116 +27,151 @@
   </div>
 </nav>
 
-<main class="max-w-4xl mx-auto px-6 py-8">
+<main class="max-w-5xl mx-auto px-6 py-8">
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Catalog</h1>
-      <p class="text-sm text-slate-400 mt-1">Rewards, punishments, and tasks you can assign, built once and reused.</p>
+      <h1 class="text-2xl font-semibold tracking-tight">Tasks, Rewards &amp; Punishments</h1>
+      <p class="text-sm text-slate-400 mt-1">Your reusable catalog, built once and assigned as many times as you like.</p>
     </div>
     <button id="new-template-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">
       + New template
     </button>
   </div>
 
-  <div id="new-template-form-wrap" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5 mb-6">
+  <div class="flex gap-2 mb-6 text-sm">
+    {% for kind_label in kinds %}
+    <button class="cat-tab rounded-lg px-4 py-2 font-medium {% if loop.first %}bg-slate-800 text-slate-100{% else %}text-slate-400 hover:text-slate-200{% endif %}" data-kind="{{ kind_label.kind }}">
+      {{ kind_label.label }} <span class="text-slate-500">({{ kind_label.items.len() }})</span>
+    </button>
+    {% endfor %}
+  </div>
+
+  <div id="new-template-form-wrap" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
+    <p class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
     <form id="new-template-form" class="space-y-4">
       <div id="template-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
 
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Kind</label>
-        <select id="tpl-kind" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+      <div class="grid grid-cols-2 gap-3">
+        <input id="tpl-title" type="text" placeholder="Title" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        <select id="tpl-kind" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
           <option value="task">Task</option>
-          <option value="reward">Reward</option>
           <option value="punishment">Punishment</option>
+          <option value="reward">Reward</option>
         </select>
       </div>
-
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Title</label>
-        <input id="tpl-title" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
-      </div>
-
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Description (optional)</label>
-        <textarea id="tpl-description" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
-      </div>
-
-      <!-- reward/punishment fields -->
-      <div id="grant-fields" class="space-y-3">
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Effect</label>
-          <select id="tpl-effect-kind" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-            <option value="grant">Just happens (nothing to track)</option>
-            <option value="time_extension" class="extension-option">Extends the lock timer</option>
-            <option value="time_reduction" class="reduction-option">Reduces the lock timer</option>
-          </select>
-        </div>
-        <div id="tpl-extension-seconds-wrap" class="hidden">
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Extension (hours)</label>
-          <input id="tpl-extension-hours" type="number" min="0" step="0.5" value="6" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
-        </div>
-        <div id="tpl-reduction-seconds-wrap" class="hidden">
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Reduction (hours)</label>
-          <input id="tpl-reduction-hours" type="number" min="0" step="0.5" value="6" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
-        </div>
-      </div>
+      <textarea id="tpl-description" rows="2" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
 
       <!-- task fields -->
-      <div id="task-fields" class="hidden space-y-3">
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Completion</label>
-          <select id="tpl-completion-type" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-            <option value="acknowledge_only">Acknowledge only</option>
-            <option value="proof_required">Proof required</option>
-          </select>
-        </div>
-        <div id="tpl-proof-media-wrap" class="hidden">
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Accepted proof</label>
-          <div class="flex gap-4 text-sm text-slate-300">
-            <label class="flex items-center gap-1.5"><input type="checkbox" class="tpl-media" value="photo"> Photo</label>
-            <label class="flex items-center gap-1.5"><input type="checkbox" class="tpl-media" value="video"> Video</label>
-            <label class="flex items-center gap-1.5"><input type="checkbox" class="tpl-media" value="voice"> Voice</label>
+      <div id="task-fields" class="hidden border-t border-amber-700/30 pt-4 space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Completion</label>
+            <select id="tpl-completion-type" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+              <option value="acknowledge_only">Acknowledge only</option>
+              <option value="proof_required">Proof required</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Deadline (hours from assignment)</label>
+            <input id="tpl-deadline-hours" type="number" min="0.5" step="0.5" value="24" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
           </div>
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Deadline (hours from assignment)</label>
-          <input id="tpl-deadline-hours" type="number" min="0.5" step="0.5" value="24" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+        <div id="tpl-proof-media-wrap" class="hidden">
+          <label class="block text-xs font-medium text-slate-400 mb-2">Accepted proof</label>
+          <div class="flex gap-2 text-sm">
+            <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="checkbox" class="tpl-media" value="photo"> Photo
+            </label>
+            <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="checkbox" class="tpl-media" value="video"> Video
+            </label>
+            <label class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="checkbox" class="tpl-media" value="voice"> Voice
+            </label>
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">On success, assign (optional)</label>
-          <select id="tpl-on-success" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-            <option value="">Nothing automatic</option>
-          </select>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">On success, assign (optional)</label>
+            <select id="tpl-on-success" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+              <option value="">Nothing — I'll decide manually</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">On failure, assign (optional)</label>
+            <select id="tpl-on-failure" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+              <option value="">Nothing — I'll decide manually</option>
+            </select>
+          </div>
         </div>
+      </div>
+
+      <!-- punishment fields -->
+      <div id="punishment-fields" class="hidden border-t border-amber-700/30 pt-4 space-y-4">
         <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">On failure, assign (optional)</label>
-          <select id="tpl-on-failure" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-            <option value="">Nothing automatic</option>
-          </select>
+          <label class="block text-xs font-medium text-slate-400 mb-2">What happens when this is assigned?</label>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="radio" name="punishment-effect" value="grant" checked class="punishment-effect-radio"> Just a record — nothing else automatic
+            </label>
+            <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="radio" name="punishment-effect" value="time_extension" class="punishment-effect-radio"> Time extension — adds to the lock timer
+            </label>
+          </div>
+        </div>
+        <div id="punishment-timeext-fields" class="hidden max-w-xs">
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Time added to the lock timer (hours)</label>
+          <input id="tpl-extension-hours" type="number" min="0" step="0.5" value="6" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <p class="text-[11px] text-slate-500">Need the submissive to actually <em>do</em> something as the consequence? Create a Task instead, and point another task's "if it fails" at this one.</p>
+      </div>
+
+      <!-- reward fields -->
+      <div id="reward-fields" class="hidden border-t border-amber-700/30 pt-4 space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-2">What happens when this is granted?</label>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="radio" name="reward-effect" value="grant" checked class="reward-effect-radio"> Just a record — nothing else automatic
+            </label>
+            <label class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 cursor-pointer has-[:checked]:border-amber-600">
+              <input type="radio" name="reward-effect" value="time_reduction" class="reward-effect-radio"> Time reduction — removes from the lock timer
+            </label>
+          </div>
+        </div>
+        <div id="reward-timered-fields" class="hidden max-w-xs">
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Time removed from the lock timer (hours)</label>
+          <input id="tpl-reduction-hours" type="number" min="0" step="0.5" value="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
         </div>
       </div>
 
       <div class="flex gap-2">
-        <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save</button>
+        <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
         <button type="button" id="cancel-template-btn" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
       </div>
     </form>
   </div>
 
   {% for kind_label in kinds %}
-  <div class="mb-6">
-    <h2 class="text-sm font-semibold text-slate-300 mb-2">{{ kind_label.label }}</h2>
+  <div class="tab-panel {% if !loop.first %}hidden{% endif %}" data-kind="{{ kind_label.kind }}">
     <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
       {% for t in kind_label.items %}
-      <div class="px-5 py-3 flex items-center justify-between text-sm {% if !t.active %}opacity-50{% endif %}">
-        <div>
-          <p class="font-medium">{{ t.title }}</p>
-          <p class="text-xs text-slate-500">{{ t.summary }}</p>
+      <div class="px-5 py-4 flex items-start justify-between gap-3 {% if !t.active %}opacity-50{% endif %}">
+        <div class="min-w-0">
+          <p class="text-sm font-medium">{{ t.title }}</p>
+          {% if let Some(description) = t.description %}
+          <p class="text-xs text-slate-500 mt-0.5 mb-2">{{ description }}</p>
+          {% endif %}
+          <div class="flex flex-wrap items-center gap-1.5 {% if t.description.is_none() %}mt-1.5{% endif %}">
+            {% for b in t.badges %}
+            <span class="{{ b.class }}">{{ b.text }}</span>
+            {% endfor %}
+          </div>
         </div>
         {% if t.active %}
-        <button class="deactivate-btn text-xs font-medium text-slate-400 hover:text-red-400" data-id="{{ t.id }}">Deactivate</button>
+        <button class="deactivate-btn text-xs font-medium text-slate-400 hover:text-red-400 shrink-0" data-id="{{ t.id }}">Deactivate</button>
         {% else %}
-        <span class="text-xs text-slate-600">inactive</span>
+        <span class="text-xs text-slate-600 shrink-0">inactive</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -146,6 +181,8 @@
     </div>
   </div>
   {% endfor %}
+
+  <p class="text-xs text-slate-600 mt-4">Submissives can see titles and descriptions of your active templates (read-only).</p>
 </main>
 
 <script>
@@ -161,8 +198,21 @@
     });
   }
 
+  // ---------- Tabs ----------
+  let activeKind = $('.cat-tab').first().data('kind');
+  $('.cat-tab').on('click', function () {
+    activeKind = $(this).data('kind');
+    $('.cat-tab').attr('class', 'cat-tab rounded-lg px-4 py-2 font-medium text-slate-400 hover:text-slate-200');
+    $(this).attr('class', 'cat-tab rounded-lg px-4 py-2 font-medium bg-slate-800 text-slate-100');
+    $('.tab-panel').addClass('hidden');
+    $('.tab-panel[data-kind="' + activeKind + '"]').removeClass('hidden');
+  });
+
+  // ---------- New template form ----------
   $('#new-template-btn').on('click', function () {
-    $('#new-template-form-wrap').removeClass('hidden').addClass('panel-fade');
+    $('#tpl-kind').val(activeKind);
+    syncKindFields();
+    $('#new-template-form-wrap').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   $('#cancel-template-btn').on('click', function () {
     $('#new-template-form-wrap').addClass('hidden');
@@ -170,24 +220,23 @@
 
   function syncKindFields() {
     const kind = $('#tpl-kind').val();
-    $('#grant-fields').toggle(kind === 'reward' || kind === 'punishment');
     $('#task-fields').toggle(kind === 'task');
-    $('.extension-option').toggle(kind === 'punishment');
-    $('.reduction-option').toggle(kind === 'reward');
-    $('#tpl-effect-kind').val('grant');
-    syncEffectFields();
-  }
-  function syncEffectFields() {
-    const effect = $('#tpl-effect-kind').val();
-    $('#tpl-extension-seconds-wrap').toggle(effect === 'time_extension');
-    $('#tpl-reduction-seconds-wrap').toggle(effect === 'time_reduction');
+    $('#punishment-fields').toggle(kind === 'punishment');
+    $('#reward-fields').toggle(kind === 'reward');
+    $('input[name="punishment-effect"][value="grant"]').prop('checked', true);
+    $('input[name="reward-effect"][value="grant"]').prop('checked', true);
+    $('#punishment-timeext-fields, #reward-timered-fields').addClass('hidden');
   }
   $('#tpl-kind').on('change', syncKindFields);
-  $('#tpl-effect-kind').on('change', syncEffectFields);
   $('#tpl-completion-type').on('change', function () {
     $('#tpl-proof-media-wrap').toggle($(this).val() === 'proof_required');
   });
-  syncKindFields();
+  $('.punishment-effect-radio').on('change', function () {
+    $('#punishment-timeext-fields').toggleClass('hidden', $('input[name="punishment-effect"]:checked').val() !== 'time_extension');
+  });
+  $('.reward-effect-radio').on('change', function () {
+    $('#reward-timered-fields').toggleClass('hidden', $('input[name="reward-effect"]:checked').val() !== 'time_reduction');
+  });
 
   // Populate the on-success/on-failure pickers from the existing catalog.
   apiCall('GET', '/api/v1/keyholder/templates').done(function (list) {
@@ -204,10 +253,13 @@
     const kind = $('#tpl-kind').val();
     const payload = { kind: kind, title: $('#tpl-title').val(), description: $('#tpl-description').val() || null };
 
-    if (kind === 'reward' || kind === 'punishment') {
-      const effect = $('#tpl-effect-kind').val();
+    if (kind === 'punishment') {
+      const effect = $('input[name="punishment-effect"]:checked').val();
       payload.effect_kind = effect;
       if (effect === 'time_extension') payload.time_extension_seconds = Math.round(parseFloat($('#tpl-extension-hours').val()) * 3600);
+    } else if (kind === 'reward') {
+      const effect = $('input[name="reward-effect"]:checked').val();
+      payload.effect_kind = effect;
       if (effect === 'time_reduction') payload.time_reduction_seconds = Math.round(parseFloat($('#tpl-reduction-hours').val()) * 3600);
     } else {
       payload.completion_type = $('#tpl-completion-type').val();
@@ -225,7 +277,7 @@
       .done(function () { window.location.reload(); })
       .fail(function (xhr) {
         const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not save.';
-        $('#template-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(msg);
+        $('#template-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(msg).removeClass('hidden');
       });
   });
 
