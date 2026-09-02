@@ -1147,6 +1147,98 @@ mod tests {
     }
 
     #[test]
+    fn sweep_sends_exactly_one_deadline_approaching_reminder() {
+        let (_dir, pool, keyholder_id, submissive_id, link_id) = temp_pool_with_link();
+        let mut conn = pool.get().unwrap();
+
+        let a = create(
+            &conn,
+            &submissive_id,
+            &link_id,
+            NewAssignment {
+                kind: Some("task"),
+                title: Some("clean the apartment"),
+                completion_type: Some("acknowledge_only"),
+                deadline_at: Some(now() + 100_000), // placeholder, backdated below
+                assigned_by_user_id: Some(&keyholder_id),
+                assigned_via: "session",
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // A 1-hour task whose reminder window (min(1h, total/2) = 30min)
+        // is already due: assigned an hour ago, due in 100s.
+        conn.execute(
+            "UPDATE assignments SET assigned_at = ?1, deadline_at = ?2 WHERE id = ?3",
+            params![now() - 3500, now() + 100, a.id],
+        )
+        .unwrap();
+
+        let outcome = run_deadline_sweep_tick(&mut conn).unwrap();
+        assert_eq!(outcome.reminders.len(), 1);
+        assert_eq!(outcome.reminders[0].assignment_id, a.id);
+        assert_eq!(outcome.reminders[0].submissive_id, submissive_id);
+
+        // The caller (main.rs) would write a `notifications` row here —
+        // simulate that, then confirm the next tick doesn't repeat it.
+        crate::domain::notifications::create(
+            &conn,
+            crate::domain::notifications::NewNotification {
+                user_id: &submissive_id,
+                link_id: None,
+                notification_type: "task.deadline_approaching",
+                title: "reminder",
+                body: None,
+                link_path: None,
+                related_entity_type: Some("assignments"),
+                related_entity_id: Some(&a.id),
+            },
+        )
+        .unwrap();
+
+        let outcome = run_deadline_sweep_tick(&mut conn).unwrap();
+        assert_eq!(outcome.reminders.len(), 0);
+    }
+
+    #[test]
+    fn sweep_skips_a_reminder_for_a_punishment_too_short_to_bother() {
+        let (_dir, pool, keyholder_id, submissive_id, link_id) = temp_pool_with_link();
+        let mut conn = pool.get().unwrap();
+
+        let a = create(
+            &conn,
+            &submissive_id,
+            &link_id,
+            NewAssignment {
+                kind: Some("task"),
+                title: Some("cold shower"),
+                completion_type: Some("acknowledge_only"),
+                deadline_at: Some(now() + 100_000),
+                assigned_by_user_id: Some(&keyholder_id),
+                assigned_via: "session",
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // total = 250s, window = min(1h, 125s) = 125s, reminder_at -
+        // assigned_at = 125s < the 300s floor — no reminder is ever
+        // scheduled for a punishment this short (the assignment
+        // notification itself is the warning). Deadline is still in
+        // the future, so this isn't the auto-fail path masking it.
+        conn.execute(
+            "UPDATE assignments SET assigned_at = ?1, deadline_at = ?2 WHERE id = ?3",
+            params![now() - 50, now() + 200, a.id],
+        )
+        .unwrap();
+
+        let outcome = run_deadline_sweep_tick(&mut conn).unwrap();
+        assert!(outcome.auto_failed.is_empty());
+        assert!(outcome.reminders.is_empty());
+    }
+
+    #[test]
     fn acknowledge_then_resolve_completed_triggers_success_escalation() {
         let (_dir, pool, keyholder_id, submissive_id, link_id) = temp_pool_with_link();
         let mut conn = pool.get().unwrap();

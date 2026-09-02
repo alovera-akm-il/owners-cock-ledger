@@ -14,7 +14,8 @@ use crate::auth::password;
 use crate::auth::session::{self, CurrentUser, Role};
 use crate::db;
 use crate::db::Pool;
-use crate::domain::invites;
+use crate::domain::{invites, links};
+use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "invite not found");
@@ -142,6 +143,7 @@ async fn redeem_invite(
     let password_hash = password::hash_password(&req.password).map_err(|_| INTERNAL_ERROR)?;
     let display_name = req.display_name.clone();
 
+    let pool2 = pool.clone();
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let mut conn = pool.get()?;
         let redeemed = invites::redeem(
@@ -161,7 +163,9 @@ async fn redeem_invite(
                 // property (the same session-creation path a normal
                 // login uses).
                 let session_id = session::create(&conn, &account.user_id, None)?;
-                Ok(Ok((session_id, account.user_id)))
+                let (keyholder_id, _) = links::parties(&conn, &account.link_id)?
+                    .ok_or_else(|| anyhow::anyhow!("link just created but not found"))?;
+                Ok(Ok((session_id, account.user_id, keyholder_id)))
             }
             Err(e) => Ok(Err(e)),
         }
@@ -170,12 +174,28 @@ async fn redeem_invite(
     .map_err(|_| INTERNAL_ERROR)?
     .map_err(|_| INTERNAL_ERROR)?;
 
-    let (session_id, user_id) = match result {
-        Ok(pair) => pair,
+    let (session_id, user_id, keyholder_id) = match result {
+        Ok(triple) => triple,
         Err(invites::RedeemError::InvalidOrExpired) => return Err(INVALID_INVITE),
         Err(invites::RedeemError::EmailInUse) => return Err(EMAIL_IN_USE),
         Err(invites::RedeemError::Db(_)) => return Err(INTERNAL_ERROR),
     };
+
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &keyholder_id,
+            link_id: None,
+            notification_type: "link.established",
+            title: &format!("{display_name} joined via your invite"),
+            body: None,
+            link_path: Some("/dashboard"),
+            related_entity_type: Some("users"),
+            related_entity_id: Some(&user_id),
+            push: false,
+        },
+    )
+    .await;
 
     let cookie = crate::api::auth::session_cookie(session_id);
     Ok((

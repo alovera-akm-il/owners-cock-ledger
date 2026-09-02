@@ -96,10 +96,6 @@ pub enum RedeemError {
 
 pub struct RedeemedAccount {
     pub user_id: String,
-    // Not surfaced in the redeem response yet (03-api-design.md §1 only
-    // documents the account being created) — kept for tests and future
-    // callers that need the new link's id without a follow-up query.
-    #[allow(dead_code)]
     pub link_id: String,
 }
 

@@ -970,6 +970,16 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body.as_array().unwrap().len(), 1);
         assert_eq!(body[0]["display_name"], "New Sub");
+
+        // Redeeming notifies the keyholder, feed-only (09-notifications.md §3).
+        let (_, feed) = keyholder.get("/api/v1/notifications").await;
+        let established = feed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["type"] == "link.established")
+            .expect("link.established notification");
+        assert!(established["title"].as_str().unwrap().contains("New Sub"));
     }
 
     #[tokio::test]
@@ -1316,6 +1326,14 @@ mod tests {
         let recovery_codes = confirm_body["recovery_codes"].as_array().unwrap();
         assert_eq!(recovery_codes.len(), 10);
 
+        let (_, feed) = client.get("/api/v1/notifications").await;
+        assert!(
+            feed.as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "account.2fa_enabled")
+        );
+
         let (status, status_body) = client.get("/api/v1/auth/2fa/status").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(status_body["enabled"], true);
@@ -1502,6 +1520,14 @@ mod tests {
         assert_eq!(
             client.get("/api/v1/auth/2fa/status").await.1["enabled"],
             false
+        );
+
+        let (_, feed) = client.get("/api/v1/notifications").await;
+        assert!(
+            feed.as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "account.2fa_disabled")
         );
     }
 
@@ -2431,7 +2457,7 @@ mod tests {
     #[tokio::test]
     async fn device_and_confinement_lifecycle() {
         let (_dir, pool) = temp_pool();
-        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
             &pool,
             "kh-device@example.test",
             "sub-device@example.test",
@@ -2489,6 +2515,14 @@ mod tests {
         assert_eq!(status_body["clock_paused"], true);
         assert_eq!(status_body["clock_pause_message"], "traveling");
 
+        let (_, feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            feed.as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "confinement.clocks_paused")
+        );
+
         let (status, _) = keyholder
             .post(
                 &format!(
@@ -2502,6 +2536,14 @@ mod tests {
             .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
             .await;
         assert_eq!(status_body["clock_paused"], false);
+
+        let (_, feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            feed.as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "confinement.clocks_resumed")
+        );
 
         let (status, _) = keyholder
             .patch(
@@ -2773,11 +2815,17 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
 
         // Raising an alert also lands a push-worthy notification in the
-        // keyholder's feed (09-notifications.md §3).
+        // keyholder's feed (09-notifications.md §3) — alongside the
+        // `link.established` one from redeeming the invite that set up
+        // this test's roster, so look up by type rather than position
+        // (both can land within the same one-second timestamp).
         let (_, feed) = keyholder.get("/api/v1/notifications").await;
         let notifications = feed.as_array().unwrap();
-        assert_eq!(notifications.len(), 1);
-        assert_eq!(notifications[0]["type"], "safety.alert_raised");
+        assert!(
+            notifications
+                .iter()
+                .any(|n| n["type"] == "safety.alert_raised")
+        );
 
         // A submissive can't read the keyholder-side list.
         let (status, _) = submissive.get("/api/v1/keyholder/safety-alerts").await;
@@ -2914,13 +2962,19 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(list.as_array().unwrap().len(), 0);
 
+        // Alongside the `link.established` notification from redeeming
+        // the invite that set up this test's roster — look up by type
+        // rather than position, since both can land within the same
+        // one-second timestamp.
         let (status, list) = keyholder.get("/api/v1/notifications").await;
         assert_eq!(status, StatusCode::OK);
         let notifications = list.as_array().unwrap();
-        assert_eq!(notifications.len(), 1);
-        assert_eq!(notifications[0]["type"], "safety.alert_raised");
-        assert!(notifications[0]["read_at"].is_null());
-        let id = notifications[0]["id"].as_str().unwrap().to_string();
+        let alert_notification = notifications
+            .iter()
+            .find(|n| n["type"] == "safety.alert_raised")
+            .expect("safety.alert_raised notification");
+        assert!(alert_notification["read_at"].is_null());
+        let id = alert_notification["id"].as_str().unwrap().to_string();
 
         let (status, _) = keyholder
             .patch(
@@ -2930,8 +2984,11 @@ mod tests {
             .await;
         assert_eq!(status, StatusCode::NO_CONTENT);
 
+        // The `link.established` notification from setup is still
+        // unread — only the one just marked read drops out.
         let (_, list) = keyholder.get("/api/v1/notifications?unread=true").await;
-        assert_eq!(list.as_array().unwrap().len(), 0);
+        let unread = list.as_array().unwrap();
+        assert!(unread.iter().all(|n| n["type"] != "safety.alert_raised"));
 
         // A second, unrelated keyholder can't mark someone else's read.
         seed_keyholder(
@@ -3516,7 +3573,7 @@ mod tests {
     #[tokio::test]
     async fn deadline_sweep_auto_fails_an_overdue_acknowledge_only_task() {
         let (_dir, pool) = temp_pool();
-        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
             &pool,
             "kh-sweep@example.test",
             "sub-sweep@example.test",
@@ -3534,17 +3591,33 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        // The real sweeper wrapper (not just the domain tick), so its
+        // notification dispatch (09-notifications.md §3) runs too.
         let pool_for_sweep = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool_for_sweep.get().unwrap();
-            domain::rewards_punishments::assignments::run_deadline_sweep_tick(&mut conn).unwrap()
-        })
-        .await
-        .unwrap();
+        tokio::task::spawn_blocking(move || run_deadline_sweep_tick(&pool_for_sweep))
+            .await
+            .unwrap();
 
         let (_, updated) = keyholder
             .get(&format!("/api/v1/keyholder/assignments/{task_id}"))
             .await;
         assert_eq!(updated["status"], "failed");
+
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "task.failed")
+        );
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "task.failed")
+        );
     }
 }

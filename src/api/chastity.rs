@@ -13,6 +13,7 @@ use crate::db;
 use crate::db::Pool;
 use crate::domain::chastity::{confinement, devices};
 use crate::domain::links;
+use crate::notify;
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
@@ -318,6 +319,9 @@ async fn pause_session(
         .map_err(|_| FORBIDDEN)?;
     user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
+    let pool2 = pool.clone();
+    let submissive_id2 = submissive_id.clone();
+    let message = req.message.clone();
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -328,7 +332,26 @@ async fn pause_session(
         }
     })
     .await
-    .map_err(|_| INTERNAL_ERROR)?
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let body = message.unwrap_or_else(|| "Your lock timer has been paused.".to_string());
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &submissive_id2,
+            link_id: None,
+            notification_type: "confinement.clocks_paused",
+            title: "Your lock timer was paused",
+            body: Some(&body),
+            link_path: Some("/submissive"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -373,6 +396,8 @@ async fn resume_session(
         .map_err(|_| FORBIDDEN)?;
     user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
+    let pool2 = pool.clone();
+    let submissive_id2 = submissive_id.clone();
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -383,7 +408,25 @@ async fn resume_session(
         }
     })
     .await
-    .map_err(|_| INTERNAL_ERROR)?
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &submissive_id2,
+            link_id: None,
+            notification_type: "confinement.clocks_resumed",
+            title: "Your lock timer resumed",
+            body: Some("Your release date just moved forward by the pause length."),
+            link_path: Some("/submissive"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -402,6 +445,9 @@ async fn adjust_timer(
         .map_err(|_| FORBIDDEN)?;
     user.require_scope("manage:chastity")
         .map_err(|_| FORBIDDEN)?;
+    let pool2 = pool.clone();
+    let submissive_id2 = submissive_id.clone();
+    let delta_seconds = req.delta_seconds;
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let mut conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         require_owned_submissive(&conn, &user.user_id, &submissive_id)?;
@@ -418,7 +464,30 @@ async fn adjust_timer(
         }
     })
     .await
-    .map_err(|_| INTERNAL_ERROR)?
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let (title, push) = if delta_seconds >= 0 {
+        ("Your lock timer was extended", true)
+    } else {
+        ("Your lock timer was reduced", false)
+    };
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &submissive_id2,
+            link_id: None,
+            notification_type: "confinement.adjusted",
+            title,
+            body: None,
+            link_path: Some("/submissive"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push,
+        },
+    )
+    .await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Serialize)]

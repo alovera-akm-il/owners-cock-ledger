@@ -17,6 +17,7 @@ use crate::auth::session::{self, CurrentUser, SESSION_COOKIE_NAME};
 use crate::db;
 use crate::db::Pool;
 use crate::domain::{password_reset, two_factor, users};
+use crate::notify;
 
 const INVALID_CREDENTIALS: ApiError = ApiError::new(
     StatusCode::UNAUTHORIZED,
@@ -511,6 +512,8 @@ async fn two_factor_confirm(
     user: CurrentUser,
     Json(req): Json<TwoFactorCodeRequest>,
 ) -> Result<Json<RecoveryCodesResponse>, ApiError> {
+    let pool2 = pool.clone();
+    let user_id = user.user_id.clone();
     let outcome = tokio::task::spawn_blocking(
         move || -> anyhow::Result<Result<Vec<String>, two_factor::ConfirmError>> {
             let mut conn = pool.get()?;
@@ -532,7 +535,24 @@ async fn two_factor_confirm(
     .map_err(|_| INTERNAL_ERROR)?;
 
     match outcome {
-        Ok(recovery_codes) => Ok(Json(RecoveryCodesResponse { recovery_codes })),
+        Ok(recovery_codes) => {
+            let _ = notify::notify(
+                &pool2,
+                notify::Event {
+                    user_id: &user_id,
+                    link_id: None,
+                    notification_type: "account.2fa_enabled",
+                    title: "Two-factor authentication enabled",
+                    body: None,
+                    link_path: Some("/account"),
+                    related_entity_type: None,
+                    related_entity_id: None,
+                    push: true,
+                },
+            )
+            .await;
+            Ok(Json(RecoveryCodesResponse { recovery_codes }))
+        }
         Err(two_factor::ConfirmError::NoPendingSetup) => Err(NO_PENDING_TWO_FACTOR_SETUP),
         Err(_) => Err(INVALID_TWO_FACTOR_CODE),
     }
@@ -552,6 +572,8 @@ async fn two_factor_disable(
     user: CurrentUser,
     Json(req): Json<TwoFactorPasswordAndCodeRequest>,
 ) -> Result<StatusCode, ApiError> {
+    let pool2 = pool.clone();
+    let user_id = user.user_id.clone();
     let outcome: Result<(), ApiError> =
         tokio::task::spawn_blocking(move || -> anyhow::Result<Result<(), ApiError>> {
             let conn = pool.get()?;
@@ -574,6 +596,23 @@ async fn two_factor_disable(
         .map_err(|_| INTERNAL_ERROR)?;
 
     outcome?;
+
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &user_id,
+            link_id: None,
+            notification_type: "account.2fa_disabled",
+            title: "Two-factor authentication disabled",
+            body: None,
+            link_path: Some("/account"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push: true,
+        },
+    )
+    .await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -584,6 +623,8 @@ async fn two_factor_regenerate_recovery_codes(
     user: CurrentUser,
     Json(req): Json<TwoFactorPasswordAndCodeRequest>,
 ) -> Result<Json<RecoveryCodesResponse>, ApiError> {
+    let pool2 = pool.clone();
+    let user_id = user.user_id.clone();
     let outcome: Result<Vec<String>, ApiError> =
         tokio::task::spawn_blocking(move || -> anyhow::Result<Result<Vec<String>, ApiError>> {
             let mut conn = pool.get()?;
@@ -606,9 +647,25 @@ async fn two_factor_regenerate_recovery_codes(
         .map_err(|_| INTERNAL_ERROR)?
         .map_err(|_| INTERNAL_ERROR)?;
 
-    Ok(Json(RecoveryCodesResponse {
-        recovery_codes: outcome?,
-    }))
+    let recovery_codes = outcome?;
+
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &user_id,
+            link_id: None,
+            notification_type: "account.2fa_recovery_codes_regenerated",
+            title: "Recovery codes regenerated",
+            body: None,
+            link_path: Some("/account"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(Json(RecoveryCodesResponse { recovery_codes }))
 }
 
 #[derive(Deserialize)]
