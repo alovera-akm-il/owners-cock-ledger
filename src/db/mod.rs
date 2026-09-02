@@ -79,6 +79,11 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../migrations/0019_confinement_adjustments_reward_reason.sql"
         )),
+        M::up(include_str!(
+            "../../migrations/0020_password_reset_tokens.sql"
+        )),
+        M::up(include_str!("../../migrations/0021_two_factor.sql")),
+        M::up(include_str!("../../migrations/0022_api_tokens.sql")),
     ])
 }
 
