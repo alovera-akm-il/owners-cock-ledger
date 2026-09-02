@@ -92,6 +92,27 @@
     <p id="confinement-message" class="hidden mt-3 text-xs"></p>
   </div>
 
+  <!-- oversight pause -->
+  <div class="rounded-xl border {% if oversight_paused %}border-amber-700/40 bg-amber-500/5{% else %}border-slate-800 bg-slate-900{% endif %} p-5">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-sm font-semibold">Oversight</p>
+      {% if oversight_paused %}<span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">paused</span>{% endif %}
+    </div>
+    <p class="text-xs text-slate-500 mb-3">Freezes task/punishment deadlines and new verification codes for {{ display_name }} all at once — for when you're genuinely unreachable, instead of extending each deadline by hand.</p>
+    {% if oversight_paused %}
+      <p class="text-sm text-slate-300 mb-3">{% if let Some(msg) = oversight_pause_message %}&ldquo;{{ msg }}&rdquo;{% else %}<span class="text-slate-500">No message set.</span>{% endif %}</p>
+    {% endif %}
+    <div id="oversight-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
+    <div class="flex flex-wrap gap-2">
+      {% if oversight_paused %}
+        <button id="oversight-update-message-btn" class="text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2">Update message</button>
+        <button id="oversight-resume-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-2">Resume oversight</button>
+      {% else %}
+        <button id="oversight-pause-btn" class="text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2">Pause oversight</button>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- devices -->
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
     <div class="flex items-center justify-between mb-3">
@@ -409,6 +430,37 @@
     apiCall('PATCH', '/api/v1/keyholder/submissives/' + subId + '/confinement-sessions/{{ session_id.as_deref().unwrap_or_default() }}', { ended_reason: 'keyholder_decision' })
       .done(function () { window.location.reload(); })
       .fail(function (xhr) { showMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not end.', false); });
+  });
+
+  function showOversightMsg(text, ok) {
+    const cls = ok
+      ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300'
+      : 'bg-red-600/10 border border-red-600/30 text-red-300';
+    $('#oversight-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 ' + cls).removeClass('hidden').text(text);
+  }
+
+  $('#oversight-pause-btn').on('click', function () {
+    if (!confirm('Pause oversight for ' + '{{ display_name }}' + '? This freezes every open task/punishment deadline and stops new verification codes from being issued, and also pauses the lock timer if a session is open, until you resume.')) return;
+    const message = prompt('Pause message (optional) — shown to ' + '{{ display_name }}') || '';
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/oversight-pause', { message: message })
+      .done(function () { window.location.reload(); })
+      .fail(function (xhr) { showOversightMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not pause oversight.', false); });
+  });
+
+  $('#oversight-update-message-btn').on('click', function () {
+    const message = prompt('Pause message') || '';
+    apiCall('PATCH', '/api/v1/keyholder/submissives/' + subId + '/oversight-pause-message', { message: message })
+      .done(function () { window.location.reload(); })
+      .fail(function (xhr) { showOversightMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not update the message.', false); });
+  });
+
+  $('#oversight-resume-btn').on('click', function () {
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/oversight-resume')
+      .done(function (res) {
+        alert('Oversight resumed. ' + res.shifted_assignment_count + ' open deadline(s) shifted forward.');
+        window.location.reload();
+      })
+      .fail(function (xhr) { showOversightMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not resume oversight.', false); });
   });
 
   $('#add-device-btn').on('click', function () {

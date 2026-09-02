@@ -880,7 +880,10 @@ pub struct SweepOutcome {
 pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<SweepOutcome> {
     let overdue: Vec<String> = {
         let mut stmt = conn.prepare(
-            "SELECT id FROM assignments WHERE kind = 'task' AND status = 'assigned' AND deadline_at < ?1",
+            "SELECT a.id FROM assignments a
+             JOIN keyholder_submissive_links l ON l.id = a.link_id
+             WHERE a.kind = 'task' AND a.status = 'assigned' AND a.deadline_at < ?1
+               AND l.oversight_paused_at IS NULL",
         )?;
         stmt.query_map(params![now()], |row| row.get(0))?
             .collect::<rusqlite::Result<_>>()?

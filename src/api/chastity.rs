@@ -730,6 +730,153 @@ async fn submissive_end_session(
     .map_err(|_| INTERNAL_ERROR)?
 }
 
+#[derive(Deserialize, Default)]
+struct OversightPauseRequest {
+    message: Option<String>,
+}
+
+/// `POST /keyholder/submissives/{id}/oversight-pause`
+/// (06-future-extensions.md §13) — directly mirrors the confinement
+/// pause endpoint shape, one level up in scope: freezes the deadline
+/// sweeper's auto-fail pass and new verification-code issuance for
+/// this whole link, cascading into the confinement pause too if
+/// there's an open session.
+async fn oversight_pause(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(submissive_id): Path<String>,
+    Json(req): Json<OversightPauseRequest>,
+) -> Result<StatusCode, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
+    let pool2 = pool.clone();
+    let submissive_id2 = submissive_id.clone();
+    let message = req.message.clone();
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        match links::pause_oversight(&conn, &user.user_id, &submissive_id, req.message.as_deref()) {
+            Ok(()) => Ok(StatusCode::NO_CONTENT),
+            Err(links::OversightPauseError::NoLink) => Err(NOT_FOUND),
+            Err(links::OversightPauseError::AlreadyPaused) => Err(CONFLICT),
+            Err(links::OversightPauseError::Db(_)) => Err(INTERNAL_ERROR),
+        }
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let body = message.unwrap_or_else(|| {
+        "Your Keyholder has paused deadlines and verification for a while.".to_string()
+    });
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &submissive_id2,
+            link_id: None,
+            notification_type: "oversight.paused",
+            title: "Oversight has been paused",
+            body: Some(&body),
+            link_path: Some("/submissive"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize)]
+struct OversightResumeResponse {
+    shifted_assignment_count: i64,
+    elapsed_seconds: i64,
+}
+
+async fn oversight_resume(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(submissive_id): Path<String>,
+) -> Result<Json<OversightResumeResponse>, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
+    let pool2 = pool.clone();
+    let submissive_id2 = submissive_id.clone();
+    let outcome = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        match links::resume_oversight(&conn, &user.user_id, &submissive_id, &user.user_id) {
+            Ok(outcome) => Ok(outcome),
+            Err(links::OversightResumeError::NoLink) => Err(NOT_FOUND),
+            Err(links::OversightResumeError::NotPaused) => Err(CONFLICT),
+            Err(links::OversightResumeError::Db(_)) => Err(INTERNAL_ERROR),
+        }
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let _ = notify::notify(
+        &pool2,
+        notify::Event {
+            user_id: &submissive_id2,
+            link_id: None,
+            notification_type: "oversight.resumed",
+            title: "Oversight has resumed",
+            body: Some("Open deadlines were shifted forward by the pause length."),
+            link_path: Some("/submissive"),
+            related_entity_type: None,
+            related_entity_id: None,
+            push: true,
+        },
+    )
+    .await;
+
+    Ok(Json(OversightResumeResponse {
+        shifted_assignment_count: outcome.shifted_assignment_count,
+        elapsed_seconds: outcome.elapsed_seconds,
+    }))
+}
+
+#[derive(Deserialize)]
+struct OversightPauseMessageRequest {
+    message: String,
+}
+
+async fn update_oversight_pause_message(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(submissive_id): Path<String>,
+    Json(req): Json<OversightPauseMessageRequest>,
+) -> Result<StatusCode, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    user.require_scope("manage:chastity")
+        .map_err(|_| FORBIDDEN)?;
+    let message = if req.message.is_empty() {
+        None
+    } else {
+        Some(req.message)
+    };
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        match links::update_oversight_pause_message(
+            &conn,
+            &user.user_id,
+            &submissive_id,
+            message.as_deref(),
+        ) {
+            Ok(()) => Ok(StatusCode::NO_CONTENT),
+            Err(links::OversightResumeError::NoLink) => Err(NOT_FOUND),
+            Err(links::OversightResumeError::NotPaused) => Err(CONFLICT),
+            Err(links::OversightResumeError::Db(_)) => Err(INTERNAL_ERROR),
+        }
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
 pub fn router() -> Router<db::AppState> {
     Router::new()
         .route(
@@ -771,6 +918,18 @@ pub fn router() -> Router<db::AppState> {
         .route(
             "/keyholder/submissives/{id}/confinement-sessions/{sessionId}/timer-adjustments/{adjustmentId}/review",
             patch(review_timer_adjustment),
+        )
+        .route(
+            "/keyholder/submissives/{id}/oversight-pause",
+            post(oversight_pause),
+        )
+        .route(
+            "/keyholder/submissives/{id}/oversight-resume",
+            post(oversight_resume),
+        )
+        .route(
+            "/keyholder/submissives/{id}/oversight-pause-message",
+            patch(update_oversight_pause_message),
         )
         .route(
             "/submissive/confinement-sessions/{sessionId}/timer-adjustments",

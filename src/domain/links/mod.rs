@@ -493,6 +493,199 @@ pub fn settings_for_link(conn: &Connection, link_id: &str) -> rusqlite::Result<L
     )
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum OversightPauseError {
+    #[error("no active or paused link")]
+    NoLink,
+    #[error("oversight is already paused")]
+    AlreadyPaused,
+    #[error(transparent)]
+    Db(#[from] rusqlite::Error),
+}
+
+/// `POST /keyholder/submissives/{id}/oversight-pause`
+/// (06-future-extensions.md §13) — a bulk pause one level up from the
+/// existing per-session confinement pause: freezes the deadline
+/// sweeper's auto-fail pass and new verification-code issuance for
+/// this whole link. Cascades into the confinement pause automatically
+/// when there's an open, not-already-paused session — "I'm
+/// unavailable" is one intent here, not two switches to remember —
+/// carrying the same message through so it reads the same wherever
+/// it surfaces.
+pub fn pause_oversight(
+    conn: &Connection,
+    keyholder_id: &str,
+    submissive_id: &str,
+    message: Option<&str>,
+) -> Result<(), OversightPauseError> {
+    let Some(link_id) = active_or_paused_link_for_keyholder(conn, keyholder_id, submissive_id)?
+    else {
+        return Err(OversightPauseError::NoLink);
+    };
+    let affected = conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET oversight_paused_at = ?1, oversight_pause_message = ?2
+         WHERE id = ?3 AND oversight_paused_at IS NULL",
+        params![crate::auth::session::now(), message, link_id],
+    )?;
+    if affected == 0 {
+        return Err(OversightPauseError::AlreadyPaused);
+    }
+    // Best-effort cascade — "nothing open to pause" and "already
+    // paused" are both fine no-ops here, not failures of the oversight
+    // pause itself.
+    let _ = crate::domain::chastity::confinement::pause(conn, submissive_id, message);
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OversightResumeError {
+    #[error("no active or paused link")]
+    NoLink,
+    #[error("oversight is not currently paused")]
+    NotPaused,
+    #[error(transparent)]
+    Db(#[from] rusqlite::Error),
+}
+
+#[derive(Debug)]
+pub struct OversightResumeOutcome {
+    pub shifted_assignment_count: i64,
+    pub elapsed_seconds: i64,
+}
+
+/// `POST /keyholder/submissives/{id}/oversight-resume` — shifts every
+/// still-open task/punishment deadline (`status IN ('assigned',
+/// 'proof_submitted')`) forward by the elapsed pause duration in one
+/// bulk update, mirroring exactly how resuming the confinement pause
+/// extends `target_release_at`: without the shift every open deadline
+/// would already be in the past the instant the pause lifts, and the
+/// sweeper's very next tick would auto-fail all of them at once.
+/// Logged as one link-level audit entry summarizing the shift rather
+/// than one row per affected assignment.
+pub fn resume_oversight(
+    conn: &Connection,
+    keyholder_id: &str,
+    submissive_id: &str,
+    resumed_by_user_id: &str,
+) -> Result<OversightResumeOutcome, OversightResumeError> {
+    let Some(link_id) = active_or_paused_link_for_keyholder(conn, keyholder_id, submissive_id)?
+    else {
+        return Err(OversightResumeError::NoLink);
+    };
+    let oversight_paused_at: Option<i64> = conn.query_row(
+        "SELECT oversight_paused_at FROM keyholder_submissive_links WHERE id = ?1",
+        params![link_id],
+        |row| row.get(0),
+    )?;
+    let Some(paused_at) = oversight_paused_at else {
+        return Err(OversightResumeError::NotPaused);
+    };
+    let elapsed = crate::auth::session::now() - paused_at;
+
+    let shifted = conn.execute(
+        "UPDATE assignments SET deadline_at = deadline_at + ?1
+         WHERE link_id = ?2 AND status IN ('assigned', 'proof_submitted') AND deadline_at IS NOT NULL",
+        params![elapsed, link_id],
+    )? as i64;
+
+    conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET oversight_paused_at = NULL, oversight_pause_message = NULL
+         WHERE id = ?1",
+        params![link_id],
+    )?;
+
+    audit::record(
+        conn,
+        audit::Entry {
+            actor: audit::Actor::User(resumed_by_user_id),
+            link_id: Some(&link_id),
+            action: "link.oversight_resumed",
+            entity_type: "keyholder_submissive_links",
+            entity_id: &link_id,
+            detail: Some(serde_json::json!({
+                "elapsed_seconds": elapsed,
+                "shifted_assignment_count": shifted,
+            })),
+        },
+    )?;
+
+    Ok(OversightResumeOutcome {
+        shifted_assignment_count: shifted,
+        elapsed_seconds: elapsed,
+    })
+}
+
+/// `PATCH /keyholder/submissives/{id}/oversight-pause-message` — same
+/// shape as `confinement::update_pause_message`, one level up.
+pub fn update_oversight_pause_message(
+    conn: &Connection,
+    keyholder_id: &str,
+    submissive_id: &str,
+    message: Option<&str>,
+) -> Result<(), OversightResumeError> {
+    let Some(link_id) = active_or_paused_link_for_keyholder(conn, keyholder_id, submissive_id)?
+    else {
+        return Err(OversightResumeError::NoLink);
+    };
+    let affected = conn.execute(
+        "UPDATE keyholder_submissive_links SET oversight_pause_message = ?1
+         WHERE id = ?2 AND oversight_paused_at IS NOT NULL",
+        params![message, link_id],
+    )?;
+    if affected == 0 {
+        return Err(OversightResumeError::NotPaused);
+    }
+    Ok(())
+}
+
+const OVERSIGHT_STILL_PAUSED_THRESHOLD_SECS: i64 = 24 * 3600;
+
+pub struct OversightStillPausedReminder {
+    pub link_id: String,
+    pub keyholder_id: String,
+}
+
+/// Mirrors `confinement::run_still_paused_sweep_tick` one level up:
+/// every link whose oversight pause has stood for 24h+ without an
+/// `oversight.still_paused` reminder in the last 24h, aimed at the
+/// Keyholder — the person who paused it is the one most likely to
+/// forget it's still on (06-future-extensions.md §13).
+pub fn run_oversight_still_paused_sweep_tick(
+    conn: &Connection,
+) -> rusqlite::Result<Vec<OversightStillPausedReminder>> {
+    let now_ts = crate::auth::session::now();
+    let candidates: Vec<(String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, keyholder_id FROM keyholder_submissive_links
+             WHERE oversight_paused_at IS NOT NULL AND oversight_paused_at <= ?1",
+        )?;
+        stmt.query_map(
+            params![now_ts - OVERSIGHT_STILL_PAUSED_THRESHOLD_SECS],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?
+        .collect::<rusqlite::Result<_>>()?
+    };
+
+    let mut out = Vec::new();
+    for (link_id, keyholder_id) in candidates {
+        if crate::domain::notifications::exists_for_related_entity_since(
+            conn,
+            "oversight.still_paused",
+            &link_id,
+            now_ts - OVERSIGHT_STILL_PAUSED_THRESHOLD_SECS,
+        )? {
+            continue;
+        }
+        out.push(OversightStillPausedReminder {
+            link_id,
+            keyholder_id,
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -876,6 +1069,153 @@ mod tests {
         .unwrap();
         assert!(
             run_end_request_escalation_sweep_tick(&conn)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    fn insert_open_task(
+        conn: &Connection,
+        link_id: &str,
+        deadline_at: i64,
+        status: &str,
+    ) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO assignments (id, link_id, kind, title, deadline_at, assigned_at, assigned_via, status)
+             VALUES (?1, ?2, 'task', 'Title', ?3, 0, 'session', ?4)",
+            params![id, link_id, deadline_at, status],
+        )
+        .unwrap();
+        id
+    }
+
+    #[test]
+    fn pause_oversight_cascades_into_an_open_confinement_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        create(&conn, &kh, &sub).unwrap();
+        let device_id = crate::domain::chastity::devices::add(&conn, &sub, "Device", None).unwrap();
+        crate::domain::chastity::confinement::start(
+            &conn,
+            crate::domain::chastity::confinement::StartSession {
+                submissive_id: &sub,
+                device_id: &device_id,
+                started_reason: "voluntary",
+                target_release_at: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+
+        pause_oversight(&conn, &kh, &sub, Some("traveling")).unwrap();
+
+        let session = crate::domain::chastity::confinement::current(&conn, &sub)
+            .unwrap()
+            .unwrap();
+        assert!(session.clock_paused_at.is_some());
+
+        // A second pause is rejected — already paused.
+        let err = pause_oversight(&conn, &kh, &sub, None).unwrap_err();
+        assert!(matches!(err, OversightPauseError::AlreadyPaused));
+    }
+
+    #[test]
+    fn resume_oversight_shifts_open_deadlines_and_clears_the_pause() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        let now = crate::auth::session::now();
+        let open_task = insert_open_task(&conn, &link_id, now + 100, "assigned");
+        let already_done = insert_open_task(&conn, &link_id, now + 100, "completed");
+
+        // Back-date the pause so there's a real elapsed duration to shift by.
+        conn.execute(
+            "UPDATE keyholder_submissive_links SET oversight_paused_at = ?1, oversight_pause_message = 'brb' WHERE id = ?2",
+            params![now - 500, link_id],
+        )
+        .unwrap();
+
+        let outcome = resume_oversight(&conn, &kh, &sub, &kh).unwrap();
+        assert_eq!(outcome.elapsed_seconds, 500);
+        assert_eq!(outcome.shifted_assignment_count, 1);
+
+        let shifted_deadline: i64 = conn
+            .query_row(
+                "SELECT deadline_at FROM assignments WHERE id = ?1",
+                params![open_task],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(shifted_deadline, now + 100 + 500);
+
+        let untouched_deadline: i64 = conn
+            .query_row(
+                "SELECT deadline_at FROM assignments WHERE id = ?1",
+                params![already_done],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(untouched_deadline, now + 100);
+
+        let (paused_at, message): (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT oversight_paused_at, oversight_pause_message FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(paused_at.is_none());
+        assert!(message.is_none());
+
+        // Resuming again is rejected — nothing is paused any more.
+        let err = resume_oversight(&conn, &kh, &sub, &kh).unwrap_err();
+        assert!(matches!(err, OversightResumeError::NotPaused));
+    }
+
+    #[test]
+    fn oversight_still_paused_sweep_dedupes_against_an_existing_reminder() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        conn.execute(
+            "UPDATE keyholder_submissive_links SET oversight_paused_at = ?1 WHERE id = ?2",
+            params![
+                crate::auth::session::now() - OVERSIGHT_STILL_PAUSED_THRESHOLD_SECS - 10,
+                link_id
+            ],
+        )
+        .unwrap();
+
+        let reminders = run_oversight_still_paused_sweep_tick(&conn).unwrap();
+        assert_eq!(reminders.len(), 1);
+        assert_eq!(reminders[0].link_id, link_id);
+        assert_eq!(reminders[0].keyholder_id, kh);
+
+        crate::domain::notifications::create(
+            &conn,
+            crate::domain::notifications::NewNotification {
+                user_id: &kh,
+                link_id: Some(&link_id),
+                notification_type: "oversight.still_paused",
+                title: "Still paused",
+                body: None,
+                link_path: None,
+                related_entity_type: Some("keyholder_submissive_links"),
+                related_entity_id: Some(&link_id),
+            },
+        )
+        .unwrap();
+        assert!(
+            run_oversight_still_paused_sweep_tick(&conn)
                 .unwrap()
                 .is_empty()
         );

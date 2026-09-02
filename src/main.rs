@@ -317,6 +317,31 @@ fn run_deadline_sweep_tick(pool: &db::Pool) {
         }
     }
 
+    match domain::links::run_oversight_still_paused_sweep_tick(&conn) {
+        Ok(reminders) => {
+            for reminder in reminders {
+                let _ = notify::notify_sync(
+                    pool,
+                    &conn,
+                    notify::Event {
+                        user_id: &reminder.keyholder_id,
+                        link_id: Some(&reminder.link_id),
+                        notification_type: "oversight.still_paused",
+                        title: "Oversight is still paused for a submissive",
+                        body: None,
+                        link_path: None,
+                        related_entity_type: Some("keyholder_submissive_links"),
+                        related_entity_id: Some(&reminder.link_id),
+                        push: true,
+                    },
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "oversight still-paused sweep tick failed");
+        }
+    }
+
     match domain::recurring_tasks::run_recurring_task_sweep_tick(&mut conn) {
         Ok(spawned) => {
             for task in spawned {
@@ -5276,6 +5301,183 @@ mod tests {
             .await;
         let (status, _) = other_kh
             .get(&format!("/api/v1/keyholder/submissives/{sub_id}/stats"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// Oversight pause (06-future-extensions.md §13): pausing cascades
+    /// into an open confinement session, freezes the deadline
+    /// sweeper's auto-fail pass for open tasks, and resuming shifts
+    /// those deadlines forward by the elapsed pause length rather than
+    /// letting the very next tick auto-fail everything at once.
+    #[tokio::test]
+    async fn oversight_pause_cascades_freezes_deadlines_and_resume_shifts_them() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-oversight@example.test",
+            "sub-oversight@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, device) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "steel"}),
+            )
+            .await;
+        let device_id = device["id"].as_str().unwrap().to_string();
+        keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+
+        let (_, task) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/assignments"),
+                serde_json::json!({
+                    "kind": "task", "title": "Log it", "completion_type": "acknowledge_only",
+                    "default_deadline_seconds": 3600
+                }),
+            )
+            .await;
+        let task_id = task["id"].as_str().unwrap().to_string();
+
+        // Engage the oversight pause.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-pause"),
+                serde_json::json!({"message": "traveling, back in a week"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // A second pause is a conflict — already paused.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-pause"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // It cascaded into the confinement session too.
+        let (_, status_body) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(status_body["clock_paused"], true);
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "oversight.paused")
+        );
+
+        // Back-date the task's deadline into the past and run a real
+        // sweep tick — it must NOT auto-fail while oversight-paused.
+        let original_deadline: i64 = {
+            let conn = pool.get().unwrap();
+            conn.query_row(
+                "SELECT deadline_at FROM assignments WHERE id = ?1",
+                rusqlite::params![task_id],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        {
+            let conn = pool.get().unwrap();
+            conn.execute(
+                "UPDATE assignments SET deadline_at = ?1 WHERE id = ?2",
+                rusqlite::params![crate::auth::session::now() - 10, task_id],
+            )
+            .unwrap();
+        }
+        let pool_for_sweep = pool.clone();
+        tokio::task::spawn_blocking(move || run_deadline_sweep_tick(&pool_for_sweep))
+            .await
+            .unwrap();
+
+        let (_, task_after_sweep) = keyholder
+            .get(&format!("/api/v1/keyholder/assignments/{task_id}"))
+            .await;
+        assert_eq!(task_after_sweep["status"], "assigned");
+
+        // Update the pause message while still paused.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-pause-message"),
+                serde_json::json!({"message": "still traveling"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Resume: the elapsed pause length shifts the still-open deadline forward.
+        let (status, resume_body) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-resume"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(resume_body["shifted_assignment_count"], 1);
+        let elapsed = resume_body["elapsed_seconds"].as_i64().unwrap();
+        assert!(elapsed >= 0);
+
+        let (_, task_after_resume) = keyholder
+            .get(&format!("/api/v1/keyholder/assignments/{task_id}"))
+            .await;
+        let new_deadline = task_after_resume["deadline_at"].as_str().unwrap();
+        assert_eq!(
+            new_deadline,
+            api::iso8601(crate::auth::session::now() - 10 + elapsed)
+        );
+        let _ = original_deadline;
+
+        // Resuming again is a conflict — nothing is paused any more.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-resume"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "oversight.resumed")
+        );
+
+        // Ownership scoping: an unrelated Keyholder can't touch this link.
+        seed_keyholder(
+            &pool,
+            "kh-oversight-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-oversight-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_kh
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-pause"),
+                serde_json::json!({}),
+            )
             .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }

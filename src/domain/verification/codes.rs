@@ -296,7 +296,7 @@ pub fn run_due_issuance_tick(conn: &Connection) -> rusqlite::Result<i64> {
             "SELECT l.id, MAX(vc.issued_at)
              FROM keyholder_submissive_links l
              LEFT JOIN verification_codes vc ON vc.link_id = l.id
-             WHERE l.status = 'active'
+             WHERE l.status = 'active' AND l.oversight_paused_at IS NULL
              GROUP BY l.id",
         )?;
         stmt.query_map([], |row| {
@@ -502,6 +502,37 @@ mod tests {
         let (_dir, pool) = temp_pool();
         let conn = pool.get().unwrap();
         let link_id = seed_link(&conn);
+
+        let issued = run_due_issuance_tick(&conn).unwrap();
+        assert_eq!(issued, 0);
+        assert!(current_unconsumed(&conn, &link_id).unwrap().is_none());
+    }
+
+    /// Oversight pause (06-future-extensions.md §13) skips issuing new
+    /// codes for a paused link, even one otherwise due — an
+    /// unreachable Keyholder shouldn't have new verification windows
+    /// opening up behind their back.
+    #[test]
+    fn run_due_issuance_tick_skips_an_oversight_paused_link() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let link_id = seed_link(&conn);
+        super::super::policy::set_for_link(
+            &conn,
+            &link_id,
+            super::super::policy::SetPolicy {
+                frequency_kind: "interval_hours",
+                frequency_value: r#"{"hours":1}"#,
+                code_ttl_seconds: 900,
+                grace_period_seconds: 600,
+            },
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE keyholder_submissive_links SET oversight_paused_at = ?1 WHERE id = ?2",
+            rusqlite::params![crate::auth::session::now(), link_id],
+        )
+        .unwrap();
 
         let issued = run_due_issuance_tick(&conn).unwrap();
         assert_eq!(issued, 0);

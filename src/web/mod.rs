@@ -291,6 +291,8 @@ struct SubmissiveDetailTemplate {
     catalog_visible_to_submissive: bool,
     points_enabled: bool,
     points_balance: i64,
+    oversight_paused: bool,
+    oversight_pause_message: Option<String>,
 }
 
 async fn submissive_detail_page(
@@ -336,6 +338,13 @@ async fn submissive_detail_page(
         )?;
         let settings = links::settings_for_link(&conn, &link_id)?;
         let points_balance = points::balance(&conn, &link_id)?;
+        let (oversight_paused_at, oversight_pause_message): (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT oversight_paused_at, oversight_pause_message
+                 FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
         Ok(Some((
             display_name,
             device_list,
@@ -344,6 +353,8 @@ async fn submissive_detail_page(
             link_status,
             settings,
             points_balance,
+            oversight_paused_at.is_some(),
+            oversight_pause_message,
         )))
     })
     .await;
@@ -356,6 +367,8 @@ async fn submissive_detail_page(
         link_status,
         settings,
         points_balance,
+        oversight_paused,
+        oversight_pause_message,
     )))) = result
     else {
         return StatusCode::NOT_FOUND.into_response();
@@ -376,6 +389,8 @@ async fn submissive_detail_page(
         catalog_visible_to_submissive: settings.catalog_visible_to_submissive,
         points_enabled: settings.points_enabled,
         points_balance,
+        oversight_paused,
+        oversight_pause_message,
         keyholder_initial: initial_of(&user.display_name),
         keyholder_display_name: user.display_name,
     })
