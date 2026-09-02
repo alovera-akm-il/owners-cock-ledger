@@ -947,6 +947,45 @@ async fn play_session_detail_page(
     })
 }
 
+#[derive(Template)]
+#[template(path = "checkin_live.html")]
+struct CheckinLiveTemplate {
+    session_id: String,
+    checkin_template_id: String,
+    sequence_number: String,
+    is_keyholder: bool,
+    display_name: String,
+    initial: String,
+}
+
+/// `/play-sessions/{id}/checkin-live` (13-checkins.md §5) — the live,
+/// two-editor check-in view for one scheduled slot, identified by
+/// `?template=<checkin_template_id>&slot=<sequence_number>` (both
+/// supplied by the link on the play session detail page).
+async fn checkin_live_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(session_id): Path<String>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    let Some(checkin_template_id) = query.get("template").cloned() else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let sequence_number = query.get("slot").cloned().unwrap_or_default();
+
+    render(CheckinLiveTemplate {
+        session_id,
+        checkin_template_id,
+        sequence_number,
+        is_keyholder: user.role == Role::Keyholder,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
 pub fn router() -> axum::Router<db::AppState> {
     use axum::routing::get;
     axum::Router::new()
@@ -987,5 +1026,6 @@ pub fn router() -> axum::Router<db::AppState> {
             "/submissive/play-sessions/{id}",
             get(play_session_detail_page),
         )
+        .route("/play-sessions/{id}/checkin-live", get(checkin_live_page))
         .route("/account", get(account_settings_page))
 }

@@ -219,12 +219,17 @@
     const done = schedule.filter(s => s.fulfilled_checkin_id).length;
     $('#schedule-progress').text(done + ' of ' + schedule.length + ' done');
     const $list = $('#schedule-list').empty();
+    const liveEligible = session.status === 'in_progress';
     schedule.forEach(function (slot) {
       const label = checkinTemplateTitles[slot.checkin_template_id] || 'Check-in';
-      const $row = $('<div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800">');
+      const liveHref = '/play-sessions/' + session.id + '/checkin-live?template=' + encodeURIComponent(slot.checkin_template_id) + '&slot=' + slot.sequence_number;
+      const $row = $(liveEligible ? '<a class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700">' : '<div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800">');
+      if (liveEligible) $row.attr('href', liveHref);
       $row.append($('<span class="text-sm text-slate-300">').text('Slot ' + slot.sequence_number + ' · +' + Math.round(slot.planned_offset_seconds / 60) + ' min (' + label + ')'));
       if (slot.fulfilled_checkin_id) {
-        $row.append($('<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">').text('done ✓'));
+        $row.append($('<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">').text(liveEligible ? 'done ✓ — reopen live →' : 'done ✓'));
+      } else if (liveEligible) {
+        $row.append($('<span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">').text('open live →'));
       } else {
         $row.append($('<span class="text-[11px] text-slate-500">').text('not filled in yet'));
       }

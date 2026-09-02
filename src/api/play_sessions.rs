@@ -784,7 +784,10 @@ async fn checkin_stream(
                     yield Ok(Event::default().event("checkin_update").data(payload));
                 }
                 Ok(live::StreamEvent::SessionEnded) => {
-                    yield Ok(Event::default().event("session_ended").data(""));
+                    // A truly empty `data` field is silently ignored by
+                    // browsers (axum's own `Event::data` docs), so this
+                    // carries a minimal non-empty payload rather than "".
+                    yield Ok(Event::default().event("session_ended").data("{}"));
                     break;
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Live Check-in</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-2xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="{% if is_keyholder %}/dashboard{% else %}/submissive{% endif %}">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <a href="{% if is_keyholder %}/keyholder{% else %}/submissive{% endif %}/play-sessions/{{ session_id }}" class="text-xs text-slate-400 hover:text-slate-200">&larr; Back to play session</a>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="live-badge" class="hidden inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-600/30 rounded-full px-3 py-1.5">
+        <span class="h-2 w-2 rounded-full bg-emerald-400 pulse-live"></span> Live
+      </span>
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-2xl mx-auto px-6 py-8">
+  <h1 id="page-title" class="text-2xl font-semibold tracking-tight mb-1">Live check-in</h1>
+  <p class="text-sm text-slate-400 mb-6">Live for the duration of this play session — either of you edits, both of you see it land immediately.</p>
+
+  <div id="ended-banner" class="hidden rounded-lg border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300 mb-4">
+    This session has ended — this check-in is no longer live. Editing is disabled.
+  </div>
+  <div id="message" class="hidden rounded-lg px-3 py-2 text-xs mb-4"></div>
+
+  <div id="checkin-panel" class="hidden rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+    <div id="color-banner" class="px-5 py-3 flex items-center justify-between border-b">
+      <span id="color-label" class="text-sm font-semibold"></span>
+      <div class="flex gap-2">
+        <button type="button" class="color-btn h-7 w-7 rounded-full bg-emerald-500" data-color="green" title="Green — SAFE/OK"></button>
+        <button type="button" class="color-btn h-7 w-7 rounded-full bg-amber-500 opacity-50" data-color="yellow" title="Yellow — Near limit"></button>
+        <button type="button" class="color-btn h-7 w-7 rounded-full bg-red-500 opacity-50" data-color="red" title="Red — Immediate stop"></button>
+      </div>
+    </div>
+    <div class="p-5 space-y-5">
+      <div id="custom-fields" class="space-y-5"></div>
+      <button id="create-btn" class="hidden w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+        Start this check-in
+      </button>
+      <p id="last-updated" class="hidden text-[11px] text-slate-500"></p>
+    </div>
+  </div>
+</main>
+
+<script>
+  const SESSION_ID = '{{ session_id }}';
+  const CHECKIN_TEMPLATE_ID = '{{ checkin_template_id }}';
+  const SEQUENCE_NUMBER = '{{ sequence_number }}';
+  const IS_KEYHOLDER = {{ is_keyholder }};
+  const BASE = IS_KEYHOLDER ? '/api/v1/keyholder' : '/api/v1/submissive';
+  const TEMPLATES_PATH = IS_KEYHOLDER ? '/api/v1/keyholder/checkin-templates' : '/api/v1/submissive/checkin-templates';
+
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  function apiCall(method, path, body) {
+    return $.ajax({
+      url: path, method: method, contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+  function errorMessage(xhr, fallback) {
+    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
+  }
+  function showMsg(text, ok) {
+    const cls = ok
+      ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300'
+      : 'bg-red-600/10 border border-red-600/30 text-red-300';
+    $('#message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-4 ' + cls).removeClass('hidden').text(text);
+  }
+
+  let template = null;
+  let checkinId = null;
+  let currentColor = null;
+  let ended = false;
+
+  function fieldInput(f) {
+    const $wrap = $('<div>');
+    $wrap.append($('<label class="block text-xs font-medium text-slate-400 mb-1">').text(f.label));
+    if (f.description) $wrap.append($('<p class="text-[11px] text-slate-500 mb-1.5">').text(f.description));
+
+    let $input;
+    if (f.field_type === 'select') {
+      $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+      if (f.config && f.config.source === 'devices') {
+        const devicesPath = IS_KEYHOLDER
+          ? '/api/v1/keyholder/submissives/' + window.__submissiveId + '/devices'
+          : '/api/v1/submissive/devices';
+        apiCall('GET', devicesPath).done(function (devices) {
+          devices.filter(d => !d.retired_at).forEach(function (d) {
+            $input.append($('<option>').val(d.name).text(d.name));
+          });
+        });
+      } else {
+        (f.config && f.config.options || []).forEach(function (opt) {
+          $input.append($('<option>').val(opt).text(opt));
+        });
+      }
+    } else if (f.field_type === 'scale') {
+      const min = (f.config && f.config.min) ?? 1;
+      const max = (f.config && f.config.max) ?? 5;
+      const mid = Math.round((min + max) / 2);
+      $input = $('<input type="range" class="w-full accent-amber-500">').attr({ 'data-key': f.field_key, min: min, max: max, value: mid });
+      const $out = $('<span class="text-sm font-mono text-amber-400">').text(mid);
+      const $labelRow = $('<div class="flex items-center justify-between mb-1">');
+      $wrap.find('label').detach().appendTo($labelRow);
+      $labelRow.append($out);
+      $wrap.prepend($labelRow);
+      $input.on('input', function () { $out.text($(this).val()); });
+      const $minMax = $('<div class="flex justify-between text-[10px] text-slate-600 mt-0.5">')
+        .append($('<span>').text((f.config && f.config.min_label) || min))
+        .append($('<span>').text((f.config && f.config.max_label) || max));
+      $wrap.append($input, $minMax);
+      return $wrap;
+    } else if (f.field_type === 'number') {
+      $input = $('<input type="number" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+    } else if (f.field_type === 'boolean') {
+      $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+      $input.append($('<option value="false">').text('No'), $('<option value="true">').text('Yes'));
+    } else {
+      $input = $('<textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+    }
+    $wrap.append($input);
+    return $wrap;
+  }
+
+  function renderFields() {
+    const $fields = $('#custom-fields').empty();
+    template.fields.forEach(function (f) { $fields.append(fieldInput(f)); });
+  }
+
+  function fieldValuesFromForm() {
+    const values = {};
+    $('#custom-fields [data-key]').each(function () {
+      const $el = $(this);
+      const key = $el.data('key');
+      let val = $el.val();
+      if ($el.attr('type') === 'range' || $el.attr('type') === 'number') val = val === '' ? null : parseFloat(val);
+      if ($el.is('select') && (val === 'true' || val === 'false')) val = val === 'true';
+      values[key] = val;
+    });
+    return values;
+  }
+
+  const COLOR_MAP = {
+    green: { bg: 'bg-emerald-600/20', border: 'border-emerald-600/40', text: 'text-emerald-400', label: 'GREEN — SAFE / OK' },
+    yellow: { bg: 'bg-amber-600/20', border: 'border-amber-600/40', text: 'text-amber-400', label: 'YELLOW — NEAR LIMIT' },
+    red: { bg: 'bg-red-600/20', border: 'border-red-600/40', text: 'text-red-400', label: 'RED — IMMEDIATE STOP' },
+  };
+
+  function setColor(color, fromRemote) {
+    currentColor = color;
+    const c = COLOR_MAP[color];
+    $('#color-banner').removeClass('bg-emerald-600/20 border-emerald-600/40 bg-amber-600/20 border-amber-600/40 bg-red-600/20 border-red-600/40')
+      .addClass(c.bg + ' ' + c.border);
+    $('#color-label').removeClass('text-emerald-400 text-amber-400 text-red-400').addClass(c.text).text(c.label);
+    $('.color-btn').css('opacity', 0.5);
+    $('.color-btn[data-color="' + color + '"]').css('opacity', 1);
+    if (fromRemote) flashPanel();
+  }
+
+  function flashPanel() {
+    $('#checkin-panel').addClass('flash-updated');
+    setTimeout(() => $('#checkin-panel').removeClass('flash-updated'), 1200);
+  }
+
+  function saveNow() {
+    if (ended || !checkinId) return;
+    apiCall('PATCH', '/api/v1/checkins/' + checkinId, {
+      color: currentColor,
+      field_values: fieldValuesFromForm(),
+    }).fail(function (xhr) {
+      showMsg(errorMessage(xhr, 'Could not save the update.'), false);
+    });
+  }
+
+  $('.color-btn').on('click', function () {
+    if (ended) return;
+    setColor($(this).data('color'), false);
+    if (checkinId) saveNow();
+  });
+  $(document).on('change', '#custom-fields [data-key]', function () {
+    if (checkinId) saveNow();
+  });
+
+  $('#create-btn').on('click', function () {
+    if (!currentColor) { showMsg('Pick a color first.', false); return; }
+    const createPath = IS_KEYHOLDER
+      ? '/api/v1/keyholder/submissives/' + window.__submissiveId + '/checkins'
+      : '/api/v1/submissive/checkins';
+    apiCall('POST', createPath, {
+      template_id: CHECKIN_TEMPLATE_ID,
+      color: currentColor,
+      field_values: fieldValuesFromForm(),
+      related_play_session_id: SESSION_ID,
+    }).done(function (checkin) {
+      checkinId = checkin.id;
+      $('#create-btn').addClass('hidden');
+      $('#last-updated').removeClass('hidden').text('Created — now live for both of you.');
+    }).fail(function (xhr) {
+      showMsg(errorMessage(xhr, 'Could not start this check-in.'), false);
+    });
+  });
+
+  function applyRemoteUpdate(checkin) {
+    if (checkin.id !== checkinId) return;
+    if (checkin.color !== currentColor) setColor(checkin.color, true);
+    Object.entries(checkin.field_values || {}).forEach(function ([key, val]) {
+      const $el = $('#custom-fields [data-key="' + key + '"]');
+      if ($el.length === 0 || $el.is(document.activeElement)) return;
+      if (String($el.val()) !== String(val)) {
+        $el.val(val);
+        if ($el.attr('type') === 'range') $el.trigger('input');
+      }
+    });
+    flashPanel();
+  }
+
+  function connectStream() {
+    const es = new EventSource('/api/v1/play-sessions/' + SESSION_ID + '/checkin-stream');
+    es.addEventListener('checkin_update', function (e) {
+      try { applyRemoteUpdate(JSON.parse(e.data)); } catch (err) { /* ignore malformed frame */ }
+    });
+    es.addEventListener('session_ended', function () {
+      ended = true;
+      es.close();
+      $('#ended-banner').removeClass('hidden');
+      $('#live-badge').addClass('hidden');
+      $('.color-btn, #custom-fields [data-key], #create-btn').prop('disabled', true).addClass('opacity-50 pointer-events-none');
+    });
+    es.onerror = function () {
+      // EventSource retries on its own; nothing to do here beyond not
+      // showing the live badge while disconnected.
+      $('#live-badge').addClass('hidden');
+    };
+    es.onopen = function () {
+      if (!ended) $('#live-badge').removeClass('hidden');
+    };
+  }
+
+  function init() {
+    $.when(
+      apiCall('GET', TEMPLATES_PATH),
+      apiCall('GET', BASE + '/play-sessions/' + SESSION_ID)
+    ).done(function (templatesRes, sessionRes) {
+      const templates = templatesRes[0];
+      const session = sessionRes[0];
+      template = templates.find(t => t.id === CHECKIN_TEMPLATE_ID);
+      if (!template) {
+        showMsg('This check-in template is no longer available.', false);
+        return;
+      }
+      window.__submissiveId = session.submissive_id;
+      $('#page-title').text(template.title);
+
+      if (session.status !== 'in_progress') {
+        $('#ended-banner').removeClass('hidden');
+        ended = true;
+      }
+
+      const slot = (session.checkin_schedule || []).find(s => String(s.sequence_number) === SEQUENCE_NUMBER);
+      renderFields();
+      $('#checkin-panel').removeClass('hidden');
+
+      if (slot && slot.fulfilled_checkin_id) {
+        apiCall('GET', BASE === '/api/v1/keyholder'
+          ? '/api/v1/keyholder/submissives/' + session.submissive_id + '/checkins?related_play_session_id=' + SESSION_ID
+          : '/api/v1/submissive/checkins?related_play_session_id=' + SESSION_ID
+        ).done(function (checkins) {
+          const existing = checkins.find(c => c.id === slot.fulfilled_checkin_id);
+          if (existing) {
+            checkinId = existing.id;
+            setColor(existing.color, false);
+            Object.entries(existing.field_values || {}).forEach(function ([key, val]) {
+              $('#custom-fields [data-key="' + key + '"]').val(val).trigger('input');
+            });
+          }
+          if (!ended) connectStream();
+        });
+      } else {
+        setColor('green', false);
+        if (!ended) $('#create-btn').removeClass('hidden');
+        if (!ended) connectStream();
+      }
+    }).fail(function () {
+      showMsg('Could not load this check-in.', false);
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
