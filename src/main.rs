@@ -2420,6 +2420,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_settings_page_renders_for_both_roles() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-account@example.test",
+            "sub-account@example.test",
+        )
+        .await;
+
+        let (status, _, body) = keyholder.get_page("/account").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Account & security"));
+        assert!(body.contains("API tokens"));
+
+        let (status, _, body) = submissive.get_page("/account").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Account & security"));
+        assert!(!body.contains("API tokens"));
+    }
+
+    #[tokio::test]
+    async fn account_settings_page_redirects_to_login_when_unauthenticated() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool);
+        let (status, location, _) = client.get_page("/account").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/login"));
+    }
+
+    #[tokio::test]
     async fn dashboard_roster_row_links_to_submissive_detail() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, _submissive, _blob_dir) =

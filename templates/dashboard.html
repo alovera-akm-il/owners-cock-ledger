@@ -23,12 +23,13 @@
         <a href="/dashboard" class="text-slate-100 font-medium">Submissives</a>
         <a href="/keyholder/catalog" class="text-slate-400 hover:text-slate-200">Catalog</a>
         <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
+        <a href="/account" class="text-slate-400 hover:text-slate-200">Account & security</a>
       </div>
     </div>
     <div class="flex items-center gap-3">
       <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
-      <span class="hidden sm:inline text-sm text-slate-300">{{ display_name }}</span>
-      <div class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">{{ initial }}</div>
+      <a href="/account" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
       <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
     </div>
   </div>

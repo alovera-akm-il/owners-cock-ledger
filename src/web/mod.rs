@@ -494,6 +494,36 @@ async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
 }
 
 #[derive(Template)]
+#[template(path = "account_settings.html")]
+struct AccountSettingsTemplate {
+    display_name: String,
+    initial: String,
+    is_keyholder: bool,
+    home_url: &'static str,
+}
+
+/// `/account` — session self-management, 2FA, and (Keyholder-only) API
+/// tokens (10-operations.md §§1–2, 03-api-design.md §12). Everything on
+/// the page is fetched client-side from the JSON API it already talks
+/// to; the template only needs enough to render the nav shell.
+async fn account_settings_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    let is_keyholder = user.role == Role::Keyholder;
+    render(AccountSettingsTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+        is_keyholder,
+        home_url: if is_keyholder {
+            "/dashboard"
+        } else {
+            "/submissive"
+        },
+    })
+}
+
+#[derive(Template)]
 #[template(path = "assignment_proof.html")]
 struct AssignmentProofTemplate {
     assignment_id: String,
@@ -556,4 +586,5 @@ pub fn router() -> axum::Router<db::AppState> {
         .route("/keyholder/submissives/{id}", get(submissive_detail_page))
         .route("/keyholder/review", get(review_queue_page))
         .route("/keyholder/catalog", get(catalog_page))
+        .route("/account", get(account_settings_page))
 }
