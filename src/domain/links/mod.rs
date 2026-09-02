@@ -164,10 +164,14 @@ pub fn set_status(
 pub struct LinkSettings {
     pub self_report_allowed: bool,
     pub catalog_visible_to_submissive: bool,
+    /// Points are opt-in per link (01-data-model.md §12,
+    /// 11-tasks-and-rewards.md §3) — folded into this same settings
+    /// endpoint per 03-api-design.md §10c rather than a separate route.
+    pub points_enabled: bool,
 }
 
 /// `PATCH /keyholder/submissives/{id}/link/settings` (03-api-design.md
-/// §2). Returns `false` if no such link belongs to this Keyholder.
+/// §2, §10c). Returns `false` if no such link belongs to this Keyholder.
 pub fn set_settings(
     conn: &Connection,
     link_id: &str,
@@ -176,11 +180,12 @@ pub fn set_settings(
 ) -> rusqlite::Result<bool> {
     let affected = conn.execute(
         "UPDATE keyholder_submissive_links
-         SET self_report_allowed = ?1, catalog_visible_to_submissive = ?2
-         WHERE id = ?3 AND keyholder_id = ?4",
+         SET self_report_allowed = ?1, catalog_visible_to_submissive = ?2, points_enabled = ?3
+         WHERE id = ?4 AND keyholder_id = ?5",
         params![
             settings.self_report_allowed,
             settings.catalog_visible_to_submissive,
+            settings.points_enabled,
             link_id,
             keyholder_id
         ],
@@ -205,13 +210,14 @@ pub fn parties(conn: &Connection, link_id: &str) -> rusqlite::Result<Option<(Str
 /// (03-api-design.md §7).
 pub fn settings_for_link(conn: &Connection, link_id: &str) -> rusqlite::Result<LinkSettings> {
     conn.query_row(
-        "SELECT self_report_allowed, catalog_visible_to_submissive
+        "SELECT self_report_allowed, catalog_visible_to_submissive, points_enabled
          FROM keyholder_submissive_links WHERE id = ?1",
         params![link_id],
         |row| {
             Ok(LinkSettings {
                 self_report_allowed: row.get(0)?,
                 catalog_visible_to_submissive: row.get(1)?,
+                points_enabled: row.get(2)?,
             })
         },
     )
@@ -390,6 +396,7 @@ mod tests {
                 LinkSettings {
                     self_report_allowed: true,
                     catalog_visible_to_submissive: false,
+                    points_enabled: false,
                 },
             )
             .unwrap()
@@ -403,6 +410,7 @@ mod tests {
                 LinkSettings {
                     self_report_allowed: true,
                     catalog_visible_to_submissive: false,
+                    points_enabled: false,
                 },
             )
             .unwrap()

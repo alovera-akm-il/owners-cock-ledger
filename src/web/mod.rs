@@ -14,6 +14,7 @@ use crate::auth::session::{self, CurrentUser, Role, SESSION_COOKIE_NAME};
 use crate::db;
 use crate::db::Pool;
 use crate::domain::chastity::{confinement, devices};
+use crate::domain::points;
 use crate::domain::rewards_punishments::{assignments, templates};
 use crate::domain::verification::{codes, policy};
 use crate::domain::{links, proofs};
@@ -285,9 +286,12 @@ struct SubmissiveDetailTemplate {
     frequency_kind: String,
     keyholder_display_name: String,
     keyholder_initial: String,
+    link_id: String,
     link_status: String,
     self_report_allowed: bool,
     catalog_visible_to_submissive: bool,
+    points_enabled: bool,
+    points_balance: i64,
 }
 
 async fn submissive_detail_page(
@@ -333,18 +337,31 @@ async fn submissive_detail_page(
             |row| row.get(0),
         )?;
         let settings = links::settings_for_link(&conn, &link_id)?;
+        let points_balance = points::balance(&conn, &link_id)?;
         Ok(Some((
             display_name,
             device_list,
             status,
             p,
+            link_id,
             link_status,
             settings,
+            points_balance,
         )))
     })
     .await;
 
-    let Ok(Ok(Some((display_name, device_list, status, p, link_status, settings)))) = result else {
+    let Ok(Ok(Some((
+        display_name,
+        device_list,
+        status,
+        p,
+        link_id,
+        link_status,
+        settings,
+        points_balance,
+    )))) = result
+    else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
@@ -358,9 +375,12 @@ async fn submissive_detail_page(
         overdue: status.overdue,
         clock_paused: status.clock_paused,
         frequency_kind: p.map(|p| p.frequency_kind).unwrap_or_default(),
+        link_id,
         link_status,
         self_report_allowed: settings.self_report_allowed,
         catalog_visible_to_submissive: settings.catalog_visible_to_submissive,
+        points_enabled: settings.points_enabled,
+        points_balance,
         keyholder_initial: initial_of(&user.display_name),
         keyholder_display_name: user.display_name,
     })

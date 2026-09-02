@@ -106,6 +106,19 @@
     </ul>
   </div>
 
+  <div id="points-panel" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold">Points</p>
+      <span id="points-balance" class="text-lg font-semibold text-amber-500">0</span>
+    </div>
+    <div id="redeemable-rewards-list" class="space-y-2 mb-3"></div>
+    <div id="redeem-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
+    <details>
+      <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-300">Transaction history</summary>
+      <ul id="points-ledger" class="mt-2 divide-y divide-slate-800 text-xs"></ul>
+    </details>
+  </div>
+
   <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
     <div class="px-5 py-3 border-b border-slate-800">
       <p class="text-sm font-semibold">Recent submissions</p>
@@ -240,6 +253,60 @@
   }
 
   apiCall('GET', '/api/v1/submissive/assignments').done(renderAssignments);
+
+  // ---------- Points ----------
+  function showRedeemMsg(text, ok) {
+    const cls = ok
+      ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300'
+      : 'bg-red-600/10 border border-red-600/30 text-red-300';
+    $('#redeem-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 ' + cls).removeClass('hidden').text(text);
+  }
+
+  function loadPoints() {
+    apiCall('GET', '/api/v1/submissive/points').done(function (res) {
+      if (!res.enabled) return;
+      $('#points-panel').removeClass('hidden');
+      $('#points-balance').text(res.balance);
+
+      const $ledger = $('#points-ledger').empty();
+      if (res.transactions.length === 0) {
+        $ledger.append($('<li class="py-2 text-slate-500">').text('No transactions yet.'));
+      }
+      res.transactions.forEach(function (t) {
+        const $row = $('<li class="py-2 flex items-center justify-between gap-3">');
+        $row.append($('<span>').text(t.reason.replace(/_/g, ' ')));
+        $row.append($('<span>').addClass(t.delta >= 0 ? 'text-emerald-400' : 'text-red-400').text((t.delta >= 0 ? '+' : '') + t.delta));
+        $ledger.append($row);
+      });
+
+      apiCall('GET', '/api/v1/submissive/templates').done(function (templates) {
+        const $list = $('#redeemable-rewards-list').empty();
+        const redeemable = templates.filter(function (t) { return t.kind === 'reward' && t.points_cost !== null && t.points_cost !== undefined; });
+        if (redeemable.length === 0) return;
+        redeemable.forEach(function (t) {
+          const affordable = res.balance >= t.points_cost;
+          const $row = $('<div class="rounded-lg border border-slate-800 bg-slate-950 p-3 flex items-center justify-between gap-3">');
+          $row.append($('<span class="text-sm">').text(t.title + ' — ' + t.points_cost + ' pts'));
+          const $btn = $('<button class="text-xs font-semibold rounded-lg px-3 py-1.5">')
+            .text(affordable ? 'Redeem' : 'Not enough points')
+            .prop('disabled', !affordable)
+            .addClass(affordable ? 'text-slate-950 bg-amber-600 hover:bg-amber-500' : 'text-slate-500 bg-slate-800 cursor-not-allowed');
+          $btn.on('click', function () {
+            apiCall('POST', '/api/v1/submissive/rewards/' + t.id + '/redeem', {}).done(function () {
+              showRedeemMsg('Requested — waiting on your Keyholder.', true);
+              loadPoints();
+            }).fail(function (xhr) {
+              const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not request redemption.';
+              showRedeemMsg(msg, false);
+            });
+          });
+          $row.append($btn);
+          $list.append($row);
+        });
+      });
+    });
+  }
+  loadPoints();
 </script>
 </body>
 </html>

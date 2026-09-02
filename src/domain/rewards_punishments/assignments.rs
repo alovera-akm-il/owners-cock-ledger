@@ -9,7 +9,7 @@ use thiserror::Error;
 use super::templates;
 use crate::auth::session::now;
 use crate::domain::chastity::confinement::{self, ApplyEffect};
-use crate::domain::{audit, proofs};
+use crate::domain::{audit, points, proofs};
 
 #[derive(Clone)]
 pub struct Assignment {
@@ -457,16 +457,25 @@ pub fn resolve(
 ) -> Result<Option<Assignment>, ResolveError> {
     let tx = conn.transaction()?;
 
-    let row: Option<(String, String, Option<String>)> = tx
+    type ResolveLookupRow = (String, String, String, Option<String>, Option<i64>);
+    let row: Option<ResolveLookupRow> = tx
         .query_row(
-            "SELECT a.link_id, a.status, a.on_success_template_id
+            "SELECT a.link_id, a.status, a.kind, a.on_success_template_id, a.points_delta
              FROM assignments a JOIN keyholder_submissive_links l ON l.id = a.link_id
              WHERE a.id = ?1 AND l.keyholder_id = ?2",
             params![assignment_id, keyholder_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()?;
-    let Some((_link_id, status, on_success_template_id)) = row else {
+    let Some((link_id, status, kind, on_success_template_id, points_delta)) = row else {
         return Err(ResolveError::NotFound);
     };
 
@@ -486,6 +495,22 @@ pub fn resolve(
         "UPDATE assignments SET status = ?1, status_updated_at = ?2 WHERE id = ?3",
         params![new_status, now(), assignment_id],
     )?;
+
+    // Points (11-tasks-and-rewards.md §3) — task-only, and a no-op when
+    // points aren't enabled for this link or the template set none.
+    if new_status == "completed"
+        && kind == "task"
+        && let Some(delta) = points_delta
+    {
+        points::award_if_enabled(
+            &tx,
+            &link_id,
+            delta,
+            "task_completed",
+            Some("assignments"),
+            Some(assignment_id),
+        )?;
+    }
 
     let mut escalated = None;
     if new_status == "completed"
@@ -676,6 +701,16 @@ pub fn review_proof(
                     "UPDATE assignments SET status = 'completed', status_updated_at = ?1 WHERE id = ?2",
                     params![now(), assignment_id],
                 )?;
+                if let Some(delta) = assignment.points_delta {
+                    points::award_if_enabled(
+                        &tx,
+                        link_id,
+                        delta,
+                        "task_completed",
+                        Some("assignments"),
+                        Some(assignment_id),
+                    )?;
+                }
                 let updated = get(&tx, assignment_id)?.expect("just updated");
                 if let Some(template_id) = &assignment.on_success_template_id {
                     outcome.escalated =
@@ -702,6 +737,16 @@ pub fn review_proof(
                         detail: None,
                     },
                 )?;
+                if let Some(delta) = assignment.points_delta {
+                    points::award_if_enabled(
+                        &tx,
+                        link_id,
+                        delta,
+                        "task_failed",
+                        Some("assignments"),
+                        Some(assignment_id),
+                    )?;
+                }
                 let updated = get(&tx, assignment_id)?.expect("just updated");
                 if let Some(template_id) = &assignment.on_failure_template_id {
                     outcome.escalated =
@@ -859,6 +904,16 @@ pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<SweepO
             tx.commit()?;
             continue;
         };
+        if let Some(delta) = assignment.points_delta {
+            points::award_if_enabled(
+                &tx,
+                &assignment.link_id,
+                delta,
+                "task_failed",
+                Some("assignments"),
+                Some(&assignment_id),
+            )?;
+        }
         let Some((keyholder_id, submissive_id)) =
             crate::domain::links::parties(&tx, &assignment.link_id)?
         else {

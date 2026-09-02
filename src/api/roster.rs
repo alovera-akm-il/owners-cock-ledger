@@ -139,6 +139,8 @@ async fn patch_link(
 struct PatchLinkSettingsRequest {
     self_report_allowed: bool,
     catalog_visible_to_submissive: bool,
+    #[serde(default)]
+    points_enabled: bool,
 }
 
 /// `PATCH /keyholder/submissives/{id}/link/settings` (03-api-design.md
@@ -163,6 +165,7 @@ async fn patch_link_settings(
             links::LinkSettings {
                 self_report_allowed: req.self_report_allowed,
                 catalog_visible_to_submissive: req.catalog_visible_to_submissive,
+                points_enabled: req.points_enabled,
             },
         )
         .map_err(|_| INTERNAL_ERROR)?;

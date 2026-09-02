@@ -50,7 +50,7 @@
   </div>
 </nav>
 
-<main class="max-w-4xl mx-auto px-6 py-8 space-y-6" data-submissive-id="{{ submissive_id }}">
+<main class="max-w-4xl mx-auto px-6 py-8 space-y-6" data-submissive-id="{{ submissive_id }}" data-link-id="{{ link_id }}" data-points-enabled="{% if points_enabled %}true{% else %}false{% endif %}">
   <div class="flex items-center justify-between">
     <h1 class="text-2xl font-semibold tracking-tight">{{ display_name }}</h1>
     <a href="/keyholder/submissives/{{ submissive_id }}/toys" class="text-xs text-amber-500 hover:text-amber-400">Toy catalog &rarr;</a>
@@ -153,6 +153,33 @@
     <button id="save-notes-btn" class="mt-2 text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save notes</button>
   </div>
 
+  {% if points_enabled %}
+  <!-- points -->
+  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold">Points</p>
+      <span class="text-lg font-semibold text-amber-500">{{ points_balance }}</span>
+    </div>
+    <div id="redemption-requests-list" class="space-y-2 mb-4"></div>
+    <div id="points-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
+    <div class="flex items-end gap-2 mb-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Adjust by</label>
+        <input id="points-adjust-delta" type="number" step="1" placeholder="e.g. 5 or -5" class="w-32 rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
+      <div class="flex-1">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Note (optional)</label>
+        <input id="points-adjust-notes" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
+      <button id="points-adjust-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Apply</button>
+    </div>
+    <details>
+      <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-300">Transaction history</summary>
+      <ul id="points-ledger" class="mt-2 divide-y divide-slate-800 text-xs"></ul>
+    </details>
+  </div>
+  {% endif %}
+
   <!-- link settings -->
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
     <div class="flex items-center justify-between mb-3">
@@ -167,11 +194,18 @@
         <span class="block text-xs text-slate-500 mt-0.5">{{ display_name }} can log "I put it back on" themselves. Off by default — you stay the sole source of truth for lock/unlock events.</span>
       </span>
     </label>
-    <label class="flex items-start gap-3 mb-4">
+    <label class="flex items-start gap-3 mb-3">
       <input id="catalog-visible-toggle" type="checkbox" {% if catalog_visible_to_submissive %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700">
       <span>
         <span class="block text-sm font-medium">Catalog visible to {{ display_name }}</span>
         <span class="block text-xs text-slate-500 mt-0.5">They can see titles/descriptions of your task, reward &amp; punishment templates (read-only).</span>
+      </span>
+    </label>
+    <label class="flex items-start gap-3 mb-4">
+      <input id="points-enabled-toggle" type="checkbox" {% if points_enabled %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700">
+      <span>
+        <span class="block text-sm font-medium">Points enabled</span>
+        <span class="block text-xs text-slate-500 mt-0.5">A running balance from tasks/manual adjustments, and lets {{ display_name }} request self-redeemable rewards. Off by default.</span>
       </span>
     </label>
     <button id="save-link-settings-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2 mb-5">Save settings</button>
@@ -360,10 +394,16 @@
   }
 
   $('#save-link-settings-btn').on('click', function () {
+    const pointsEnabledChanged = $('#points-enabled-toggle').is(':checked') !== $('main').data('points-enabled');
     apiCall('PATCH', '/api/v1/keyholder/submissives/' + subId + '/link/settings', {
       self_report_allowed: $('#self-report-toggle').is(':checked'),
       catalog_visible_to_submissive: $('#catalog-visible-toggle').is(':checked'),
+      points_enabled: $('#points-enabled-toggle').is(':checked'),
     }).done(function () {
+      if (pointsEnabledChanged) {
+        window.location.reload();
+        return;
+      }
       showLinkSettingsMsg('Settings saved.', true);
     }).fail(function (xhr) {
       const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not save settings.';
@@ -392,6 +432,80 @@
         showLinkSettingsMsg(msg, false);
       });
   });
+
+  // ---------- Points ----------
+  if ($('main').data('points-enabled')) {
+    function showPointsMsg(text, ok) {
+      const cls = ok
+        ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300'
+        : 'bg-red-600/10 border border-red-600/30 text-red-300';
+      $('#points-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 ' + cls).removeClass('hidden').text(text);
+    }
+
+    function loadPoints() {
+      apiCall('GET', '/api/v1/keyholder/submissives/' + subId + '/points').done(function (res) {
+        const $ledger = $('#points-ledger').empty();
+        if (res.transactions.length === 0) {
+          $ledger.append($('<li class="py-2 text-slate-500">').text('No transactions yet.'));
+        }
+        res.transactions.forEach(function (t) {
+          const $row = $('<li class="py-2 flex items-center justify-between gap-3">');
+          $row.append($('<span>').text(t.reason.replace(/_/g, ' ') + (t.notes ? ' — ' + t.notes : '')));
+          $row.append($('<span>').addClass(t.delta >= 0 ? 'text-emerald-400' : 'text-red-400').text((t.delta >= 0 ? '+' : '') + t.delta));
+          $ledger.append($row);
+        });
+      });
+    }
+    loadPoints();
+
+    $('#points-adjust-btn').on('click', function () {
+      const delta = parseInt($('#points-adjust-delta').val(), 10);
+      if (isNaN(delta) || delta === 0) {
+        showPointsMsg('Enter a non-zero amount.', false);
+        return;
+      }
+      apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/points/adjust', {
+        delta: delta,
+        notes: $('#points-adjust-notes').val() || null,
+      }).done(function () {
+        $('#points-adjust-delta, #points-adjust-notes').val('');
+        window.location.reload();
+      }).fail(function (xhr) {
+        const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not adjust points.';
+        showPointsMsg(msg, false);
+      });
+    });
+
+    const linkId = $('main').data('link-id');
+    function loadRedemptionRequests() {
+      apiCall('GET', '/api/v1/keyholder/reward-redemption-requests').done(function (list) {
+        const $wrap = $('#redemption-requests-list').empty();
+        const pending = list.filter(function (r) { return r.status === 'pending' && r.link_id === linkId; });
+        pending.forEach(function (r) {
+          const $row = $('<div class="rounded-lg border border-amber-700/40 bg-amber-500/5 p-3 flex items-center justify-between gap-3">');
+          $row.append($('<span class="text-sm">').text('Wants to redeem a reward for ' + r.points_cost + ' points'));
+          const $actions = $('<span class="flex gap-2">');
+          const $deny = $('<button class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1">').text('Deny');
+          $deny.on('click', function () {
+            apiCall('PATCH', '/api/v1/keyholder/reward-redemption-requests/' + r.id, { decision: 'deny' }).done(function () {
+              loadRedemptionRequests();
+              loadPoints();
+            });
+          });
+          const $approve = $('<button class="text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-2.5 py-1">').text('Approve');
+          $approve.on('click', function () {
+            apiCall('PATCH', '/api/v1/keyholder/reward-redemption-requests/' + r.id, { decision: 'approve' }).done(function () {
+              window.location.reload();
+            });
+          });
+          $actions.append($deny, $approve);
+          $row.append($actions);
+          $wrap.append($row);
+        });
+      });
+    }
+    loadRedemptionRequests();
+  }
 </script>
 </body>
 </html>

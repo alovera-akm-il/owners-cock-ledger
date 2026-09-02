@@ -119,7 +119,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::assignments::router())
                 .merge(api::api_tokens::router())
                 .merge(api::notifications::router())
-                .merge(api::toys::router()),
+                .merge(api::toys::router())
+                .merge(api::points::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -3316,6 +3317,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn submissive_catalog_read_respects_visibility_and_excludes_inactive() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-cat-vis@example.test",
+            "sub-cat-vis@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, active_task) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({"kind": "task", "title": "visible task", "completion_type": "acknowledge_only", "default_deadline_seconds": 3600}),
+            )
+            .await;
+        let active_id = active_task["id"].as_str().unwrap().to_string();
+
+        let (_, inactive_task) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({"kind": "task", "title": "hidden task", "completion_type": "acknowledge_only", "default_deadline_seconds": 3600}),
+            )
+            .await;
+        let inactive_id = inactive_task["id"].as_str().unwrap().to_string();
+        keyholder
+            .patch(
+                &format!("/api/v1/keyholder/templates/{inactive_id}"),
+                serde_json::json!({"active": false}),
+            )
+            .await;
+
+        // Visible by default (catalog_visible_to_submissive defaults on).
+        let (status, list) = submissive.get("/api/v1/submissive/templates").await;
+        assert_eq!(status, StatusCode::OK);
+        let ids: Vec<&str> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["id"].as_str().unwrap())
+            .collect();
+        assert!(ids.contains(&active_id.as_str()));
+        assert!(!ids.contains(&inactive_id.as_str())); // inactive excluded
+
+        // Turn visibility off.
+        keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link/settings"),
+                serde_json::json!({"self_report_allowed": false, "catalog_visible_to_submissive": false, "points_enabled": false}),
+            )
+            .await;
+        let (_, list) = submissive.get("/api/v1/submissive/templates").await;
+        assert_eq!(list.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
     async fn catalog_template_can_be_reactivated_edited_and_have_its_escalation_cleared() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, _submissive, _blob_dir) =
@@ -3755,5 +3812,166 @@ mod tests {
             )
             .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn points_earn_manual_adjust_and_redeem_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-points@example.test",
+            "sub-points@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        // Points are off by default — the catalog earns nothing yet.
+        let (_, points) = submissive.get("/api/v1/submissive/points").await;
+        assert_eq!(points["enabled"], false);
+        assert_eq!(points["balance"], 0);
+
+        // Turn points on (extends the existing link-settings endpoint).
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link/settings"),
+                serde_json::json!({"self_report_allowed": false, "catalog_visible_to_submissive": true, "points_enabled": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // A task worth 5 points, completed, earns them.
+        let (_, task) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/assignments"),
+                serde_json::json!({"kind": "task", "title": "tidy up", "completion_type": "acknowledge_only", "default_deadline_seconds": 3600, "points_delta": 5}),
+            )
+            .await;
+        let task_id = task["id"].as_str().unwrap().to_string();
+        submissive
+            .patch(
+                &format!("/api/v1/submissive/assignments/{task_id}/acknowledge"),
+                serde_json::json!({}),
+            )
+            .await;
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/assignments/{task_id}"),
+                serde_json::json!({"status": "completed"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, points) = submissive.get("/api/v1/submissive/points").await;
+        assert_eq!(points["balance"], 5);
+        assert!(
+            points["transactions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["reason"] == "task_completed" && t["delta"] == 5)
+        );
+
+        // Manual adjustment.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/points/adjust"),
+                serde_json::json!({"delta": 20, "notes": "bonus for good behavior"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, points) = submissive.get("/api/v1/submissive/points").await;
+        assert_eq!(points["balance"], 25);
+
+        // A reward template costing 20 points.
+        let (_, reward) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({"kind": "reward", "title": "movie night", "effect_kind": "grant", "points_cost": 20}),
+            )
+            .await;
+        let reward_id = reward["id"].as_str().unwrap().to_string();
+
+        // The submissive can browse the catalog (a documented but
+        // previously-unbuilt endpoint) to find what's redeemable.
+        let (status, catalog) = submissive.get("/api/v1/submissive/templates").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            catalog
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == reward_id && t["points_cost"] == 20)
+        );
+
+        let (status, request) = submissive
+            .post(
+                &format!("/api/v1/submissive/rewards/{reward_id}/redeem"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(request["status"], "pending");
+        let request_id = request["id"].as_str().unwrap().to_string();
+
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "points.redemption_requested")
+        );
+
+        let (_, pending) = keyholder
+            .get("/api/v1/keyholder/reward-redemption-requests")
+            .await;
+        assert_eq!(pending.as_array().unwrap().len(), 1);
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/reward-redemption-requests/{request_id}"),
+                serde_json::json!({"decision": "approve"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, points) = submissive.get("/api/v1/submissive/points").await;
+        assert_eq!(points["balance"], 5); // 25 - 20
+
+        let (_, assignments) = submissive.get("/api/v1/submissive/assignments").await;
+        assert!(
+            assignments
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a["title"] == "movie night")
+        );
+
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "points.redemption_resolved")
+        );
+
+        // Can't decide the same request twice.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/reward-redemption-requests/{request_id}"),
+                serde_json::json!({"decision": "deny"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        // Redeeming with insufficient balance is rejected.
+        let (status, _) = submissive
+            .post(
+                &format!("/api/v1/submissive/rewards/{reward_id}/redeem"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
     }
 }

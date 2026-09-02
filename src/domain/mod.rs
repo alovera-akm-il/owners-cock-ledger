@@ -5,6 +5,7 @@ pub mod invites;
 pub mod links;
 pub mod notifications;
 pub mod password_reset;
+pub mod points;
 pub mod profiles;
 pub mod proofs;
 pub mod push;

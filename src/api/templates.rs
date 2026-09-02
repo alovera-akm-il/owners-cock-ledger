@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ApiError, INTERNAL_ERROR};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
+use crate::domain::links;
 use crate::domain::rewards_punishments::templates::{self, CreateError, EditError, Template};
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
@@ -83,6 +84,40 @@ async fn list_templates(
         let list = templates::list_for_keyholder(&conn, &user.user_id, query.kind.as_deref())
             .map_err(|_| INTERNAL_ERROR)?;
         Ok(Json(list.into_iter().map(Into::into).collect()))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+/// `GET /submissive/templates` (03-api-design.md §7) — read-only,
+/// active templates only, gated by `catalog_visible_to_submissive`.
+/// Documented since the endpoint was first specced but never actually
+/// wired up until now.
+async fn list_templates_for_submissive(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+) -> Result<Json<Vec<TemplateResponse>>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let link_id = links::active_link_for_submissive(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        let settings = links::settings_for_link(&conn, &link_id).map_err(|_| INTERNAL_ERROR)?;
+        if !settings.catalog_visible_to_submissive {
+            return Ok(Json(Vec::new()));
+        }
+        let (keyholder_id, _) = links::parties(&conn, &link_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)?;
+        let list = templates::list_for_keyholder(&conn, &keyholder_id, None)
+            .map_err(|_| INTERNAL_ERROR)?
+            .into_iter()
+            .filter(|t| t.active)
+            .map(Into::into)
+            .collect();
+        Ok(Json(list))
     })
     .await
     .map_err(|_| INTERNAL_ERROR)?
@@ -236,4 +271,5 @@ pub fn router() -> Router<db::AppState> {
             get(list_templates).post(create_template),
         )
         .route("/keyholder/templates/{id}", patch(patch_template))
+        .route("/submissive/templates", get(list_templates_for_submissive))
 }

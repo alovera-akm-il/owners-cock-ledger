@@ -114,6 +114,11 @@
             </label>
           </div>
         </div>
+        <div class="max-w-xs">
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Points on completion (optional)</label>
+          <input id="tpl-points-delta" type="number" step="1" placeholder="e.g. 5" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+          <p class="text-[11px] text-slate-500 mt-1">Only matters if points are turned on for a submissive. Negative deducts on failure too.</p>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1.5">On success, assign (optional)</label>
@@ -166,6 +171,11 @@
         <div id="reward-timered-fields" class="hidden max-w-xs">
           <label class="block text-xs font-medium text-slate-400 mb-1.5">Time removed from the lock timer (hours)</label>
           <input id="tpl-reduction-hours" type="number" min="0" step="0.5" value="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+        </div>
+        <div class="max-w-xs">
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Points cost to self-redeem (optional)</label>
+          <input id="tpl-points-cost" type="number" min="0" step="1" placeholder="e.g. 20" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+          <p class="text-[11px] text-slate-500 mt-1">If set, a submissive with enough points (and points turned on) can request this reward themselves.</p>
         </div>
       </div>
 
@@ -244,7 +254,7 @@
   let allTemplates = [];
 
   function resetTemplateForm() {
-    $('#tpl-title, #tpl-description').val('');
+    $('#tpl-title, #tpl-description, #tpl-points-delta, #tpl-points-cost').val('');
     $('.tpl-media').prop('checked', false);
     $('#tpl-on-success, #tpl-on-failure').val('');
     $('#tpl-deadline-hours').val(24);
@@ -291,6 +301,7 @@
       $('input[name="reward-effect"][value="' + effect + '"]').prop('checked', true);
       $('#reward-timered-fields').toggleClass('hidden', effect !== 'time_reduction');
       if (t.time_reduction_seconds) $('#tpl-reduction-hours').val(t.time_reduction_seconds / 3600);
+      if (t.points_cost !== null && t.points_cost !== undefined) $('#tpl-points-cost').val(t.points_cost);
     } else {
       $('#tpl-completion-type').val(t.completion_type || 'acknowledge_only');
       const proofRequired = t.completion_type === 'proof_required';
@@ -301,6 +312,7 @@
       if (t.default_deadline_seconds) $('#tpl-deadline-hours').val(t.default_deadline_seconds / 3600);
       $('#tpl-on-success').val(t.on_success_template_id || '');
       $('#tpl-on-failure').val(t.on_failure_template_id || '');
+      if (t.points_delta !== null && t.points_delta !== undefined) $('#tpl-points-delta').val(t.points_delta);
     }
 
     $('#new-template-form-wrap').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -362,6 +374,8 @@
       const effect = $('input[name="reward-effect"]:checked').val();
       payload.effect_kind = effect;
       if (effect === 'time_reduction') payload.time_reduction_seconds = Math.round(parseFloat($('#tpl-reduction-hours').val()) * 3600);
+      const pointsCost = $('#tpl-points-cost').val();
+      payload.points_cost = pointsCost === '' ? null : parseInt(pointsCost, 10);
     } else {
       payload.completion_type = $('#tpl-completion-type').val();
       if (payload.completion_type === 'proof_required') {
@@ -370,6 +384,8 @@
       payload.default_deadline_seconds = Math.round(parseFloat($('#tpl-deadline-hours').val()) * 3600);
       payload.on_success_template_id = $('#tpl-on-success').val() || null;
       payload.on_failure_template_id = $('#tpl-on-failure').val() || null;
+      const pointsDelta = $('#tpl-points-delta').val();
+      payload.points_delta = pointsDelta === '' ? null : parseInt(pointsDelta, 10);
     }
 
     const request = editingId
