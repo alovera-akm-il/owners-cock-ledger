@@ -7,6 +7,7 @@ pub mod assignments;
 pub mod auth;
 pub mod chastity;
 pub mod invites;
+pub mod profiles;
 pub mod proofs;
 pub mod roster;
 pub mod safety;

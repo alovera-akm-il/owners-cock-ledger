@@ -45,8 +45,50 @@
   <div>
     <a href="{{ home_url }}" class="text-xs text-slate-500 hover:text-slate-300">&larr; Back</a>
     <h1 class="text-2xl font-semibold tracking-tight mt-1">Account & security</h1>
-    <p class="text-sm text-slate-400 mt-1">Password, login sessions, and two-factor authentication.</p>
+    <p class="text-sm text-slate-400 mt-1">Profile, password, login sessions, and two-factor authentication.</p>
   </div>
+
+  <!-- ============ PROFILE ============ -->
+  <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <h2 class="text-sm font-semibold mb-3">Personal profile</h2>
+    <form id="profile-form" class="space-y-3">
+      <div id="profile-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Bio</label>
+        <textarea id="profile-bio" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
+      </div>
+      {% if is_keyholder %}
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Contact info</label>
+        <input id="profile-contact-info" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
+      {% else %}
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Safeword</label>
+        <input id="profile-safeword" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Emergency contact</label>
+        <input id="profile-emergency-contact" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
+      {% endif %}
+      <div class="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Hard limits</label>
+          <textarea id="profile-hard-limits" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">Soft limits</label>
+          <textarea id="profile-soft-limits" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
+        </div>
+      </div>
+      <div class="max-w-xs">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Timezone</label>
+        <input id="profile-timezone" type="text" placeholder="e.g. America/New_York" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
+      <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save profile</button>
+    </form>
+  </section>
 
   <!-- ============ PASSWORD ============ -->
   <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -206,6 +248,45 @@
 
   $('#logout-btn').on('click', function () {
     apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
+  });
+
+  // ---------- Profile ----------
+  function loadProfile() {
+    apiCall('GET', '/api/v1/profile').done(function (p) {
+      $('#profile-bio').val(p.bio || '');
+      $('#profile-hard-limits').val(p.hard_limits || '');
+      $('#profile-soft-limits').val(p.soft_limits || '');
+      $('#profile-timezone').val(p.timezone || '');
+      {% if is_keyholder %}
+      $('#profile-contact-info').val(p.contact_info || '');
+      {% else %}
+      $('#profile-safeword').val(p.safeword || '');
+      $('#profile-emergency-contact').val(p.emergency_contact || '');
+      {% endif %}
+    });
+  }
+  loadProfile();
+
+  $('#profile-form').on('submit', function (e) {
+    e.preventDefault();
+    $('#profile-message').addClass('hidden');
+    const payload = {
+      bio: $('#profile-bio').val() || null,
+      hard_limits: $('#profile-hard-limits').val() || null,
+      soft_limits: $('#profile-soft-limits').val() || null,
+      timezone: $('#profile-timezone').val() || null,
+    };
+    {% if is_keyholder %}
+    payload.contact_info = $('#profile-contact-info').val() || null;
+    {% else %}
+    payload.safeword = $('#profile-safeword').val() || null;
+    payload.emergency_contact = $('#profile-emergency-contact').val() || null;
+    {% endif %}
+    apiCall('PATCH', '/api/v1/profile', payload).done(function () {
+      $('#profile-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-emerald-600/10 border border-emerald-600/30 text-emerald-300').text('Profile saved.').removeClass('hidden');
+    }).fail(function (xhr) {
+      $('#profile-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(errorMessage(xhr, 'Could not save profile.')).removeClass('hidden');
+    });
   });
 
   // ---------- Password ----------

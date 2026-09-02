@@ -113,6 +113,7 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::chastity::router())
                 .merge(api::verification::router())
                 .merge(api::proofs::router())
+                .merge(api::profiles::router())
                 .merge(api::templates::router())
                 .merge(api::assignments::router())
                 .merge(api::api_tokens::router()),
@@ -2153,6 +2154,126 @@ mod tests {
         // The ended link no longer shows up in the active roster.
         let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
         assert_eq!(roster.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn own_profile_round_trips_role_appropriate_fields() {
+        let (_dir, pool) = temp_pool();
+        seed_keyholder(
+            &pool,
+            "kh-profile@example.test",
+            "correct horse battery staple",
+        );
+        let mut client = TestClient::new(pool.clone());
+        client.get("/health").await;
+        client
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-profile@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, profile) = client.get("/api/v1/profile").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(profile["bio"].is_null());
+        assert!(profile.get("safeword").is_none());
+
+        let (status, _) = client
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"bio": "A strict but fair keyholder.", "contact_info": "signal: kh123"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, profile) = client.get("/api/v1/profile").await;
+        assert_eq!(profile["bio"], "A strict but fair keyholder.");
+        assert_eq!(profile["contact_info"], "signal: kh123");
+
+        // Clearing a field explicitly.
+        client
+            .patch("/api/v1/profile", serde_json::json!({"bio": null}))
+            .await;
+        let (_, profile) = client.get("/api/v1/profile").await;
+        assert!(profile["bio"].is_null());
+        assert_eq!(profile["contact_info"], "signal: kh123");
+    }
+
+    #[tokio::test]
+    async fn keyholder_notes_are_keyholder_only_and_hidden_from_the_submissives_own_profile() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-notes@example.test",
+            "sub-notes@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        submissive
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"bio": "here to behave", "safeword": "banana"}),
+            )
+            .await;
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/profile/notes"),
+                serde_json::json!({"keyholder_notes": "keeps missing verification windows"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // The keyholder sees everything, including their own notes.
+        let (status, profile) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/profile"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(profile["bio"], "here to behave");
+        assert_eq!(profile["safeword"], "banana");
+        assert_eq!(
+            profile["keyholder_notes"],
+            "keeps missing verification windows"
+        );
+
+        // The submissive's own profile fetch never includes the notes
+        // field at all, and can't write it either.
+        let (_, own_profile) = submissive.get("/api/v1/profile").await;
+        assert!(own_profile.get("keyholder_notes").is_none());
+
+        submissive
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"keyholder_notes": "sneaky"}),
+            )
+            .await;
+        let (_, profile) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/profile"))
+            .await;
+        assert_eq!(
+            profile["keyholder_notes"],
+            "keeps missing verification windows"
+        );
+
+        // A different keyholder can't read or write this submissive's profile at all.
+        seed_keyholder(
+            &pool,
+            "kh-notes-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other = TestClient::new(pool.clone());
+        other.get("/health").await;
+        other
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-notes-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/profile"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
