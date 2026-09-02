@@ -1,0 +1,651 @@
+//! Check-in templates and instances (03-api-design.md §10b).
+
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::routing::{get, patch};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+
+use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
+use crate::auth::session::{CurrentUser, Role};
+use crate::db::{self, Pool};
+use crate::domain::{checkins, links};
+use crate::notify;
+
+const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
+const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
+const BAD_REQUEST: ApiError =
+    ApiError::new(StatusCode::BAD_REQUEST, "bad_request", "malformed request");
+
+#[derive(Serialize)]
+struct FieldResponse {
+    field_key: String,
+    label: String,
+    description: Option<String>,
+    field_type: String,
+    config: serde_json::Value,
+    required: bool,
+}
+
+impl From<checkins::TemplateField> for FieldResponse {
+    fn from(f: checkins::TemplateField) -> Self {
+        Self {
+            field_key: f.field_key,
+            label: f.label,
+            description: f.description,
+            field_type: f.field_type,
+            config: serde_json::from_str(&f.config).unwrap_or(serde_json::Value::Null),
+            required: f.required,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct TemplateResponse {
+    id: String,
+    title: String,
+    description: Option<String>,
+    active: bool,
+    auto_escalate_on_red: bool,
+    created_at: String,
+    fields: Vec<FieldResponse>,
+}
+
+fn template_response(
+    t: checkins::Template,
+    fields: Vec<checkins::TemplateField>,
+) -> TemplateResponse {
+    TemplateResponse {
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        active: t.active,
+        auto_escalate_on_red: t.auto_escalate_on_red,
+        created_at: iso8601(t.created_at),
+        fields: fields.into_iter().map(Into::into).collect(),
+    }
+}
+
+#[derive(Deserialize)]
+struct FieldRequest {
+    field_key: String,
+    label: String,
+    description: Option<String>,
+    field_type: String,
+    config: serde_json::Value,
+    #[serde(default)]
+    required: bool,
+}
+
+async fn list_templates(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+) -> Result<Json<Vec<TemplateResponse>>, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let list = checkins::list_templates_for_keyholder(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?;
+        let mut out = Vec::with_capacity(list.len());
+        for t in list {
+            let fields = checkins::list_fields(&conn, &t.id).map_err(|_| INTERNAL_ERROR)?;
+            out.push(template_response(t, fields));
+        }
+        Ok(Json(out))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+async fn list_templates_for_submissive(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+) -> Result<Json<Vec<TemplateResponse>>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let link_id = links::active_link_for_submissive(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        let settings = links::settings_for_link(&conn, &link_id).map_err(|_| INTERNAL_ERROR)?;
+        if !settings.catalog_visible_to_submissive {
+            return Ok(Json(Vec::new()));
+        }
+        let (keyholder_id, _) = links::parties(&conn, &link_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)?;
+        let list = checkins::list_templates_for_keyholder(&conn, &keyholder_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .into_iter()
+            .filter(|t| t.active);
+        let mut out = Vec::new();
+        for t in list {
+            let fields = checkins::list_fields(&conn, &t.id).map_err(|_| INTERNAL_ERROR)?;
+            out.push(template_response(t, fields));
+        }
+        Ok(Json(out))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+#[derive(Deserialize)]
+struct CreateTemplateRequest {
+    title: String,
+    description: Option<String>,
+    #[serde(default)]
+    auto_escalate_on_red: bool,
+    fields: Vec<FieldRequest>,
+}
+
+fn valid_field_type(t: &str) -> bool {
+    matches!(t, "scale" | "select" | "number" | "text" | "boolean")
+}
+
+async fn create_template(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Json(req): Json<CreateTemplateRequest>,
+) -> Result<Json<TemplateResponse>, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    if req.fields.iter().any(|f| !valid_field_type(&f.field_type)) {
+        return Err(BAD_REQUEST);
+    }
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let configs: Vec<String> = req.fields.iter().map(|f| f.config.to_string()).collect();
+        let new_fields: Vec<checkins::NewField> = req
+            .fields
+            .iter()
+            .zip(configs.iter())
+            .map(|(f, config)| checkins::NewField {
+                field_key: &f.field_key,
+                label: &f.label,
+                description: f.description.as_deref(),
+                field_type: &f.field_type,
+                config,
+                required: f.required,
+            })
+            .collect();
+        let id = checkins::create_template(
+            &conn,
+            &user.user_id,
+            &req.title,
+            req.description.as_deref(),
+            req.auto_escalate_on_red,
+            &new_fields,
+        )
+        .map_err(|_| INTERNAL_ERROR)?;
+        let t = checkins::get_template(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)?;
+        let fields = checkins::list_fields(&conn, &id).map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(template_response(t, fields)))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+#[derive(Deserialize)]
+struct PatchTemplateRequest {
+    title: Option<String>,
+    description: Option<Option<String>>,
+    auto_escalate_on_red: Option<bool>,
+    active: Option<bool>,
+    fields: Option<Vec<FieldRequest>>,
+}
+
+async fn patch_template(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+    Json(req): Json<PatchTemplateRequest>,
+) -> Result<StatusCode, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    if let Some(fields) = &req.fields
+        && fields.iter().any(|f| !valid_field_type(&f.field_type))
+    {
+        return Err(BAD_REQUEST);
+    }
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let configs: Option<Vec<String>> = req
+            .fields
+            .as_ref()
+            .map(|fs| fs.iter().map(|f| f.config.to_string()).collect());
+        let new_fields: Option<Vec<checkins::NewField>> = match (&req.fields, &configs) {
+            (Some(fields), Some(configs)) => Some(
+                fields
+                    .iter()
+                    .zip(configs.iter())
+                    .map(|(f, config)| checkins::NewField {
+                        field_key: &f.field_key,
+                        label: &f.label,
+                        description: f.description.as_deref(),
+                        field_type: &f.field_type,
+                        config,
+                        required: f.required,
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
+        let updated = checkins::update_template(
+            &conn,
+            &id,
+            &user.user_id,
+            checkins::TemplateEdit {
+                title: req.title.as_deref(),
+                description: req.description.as_ref().map(|d| d.as_deref()),
+                auto_escalate_on_red: req.auto_escalate_on_red,
+                active: req.active,
+                fields: new_fields,
+            },
+        )
+        .map_err(|_| INTERNAL_ERROR)?;
+        if !updated {
+            return Err(NOT_FOUND);
+        }
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+#[derive(Serialize)]
+struct CheckinResponse {
+    id: String,
+    link_id: String,
+    template_id: String,
+    color: String,
+    field_values: serde_json::Value,
+    related_confinement_session_id: Option<String>,
+    related_assignment_id: Option<String>,
+    related_play_session_id: Option<String>,
+    created_by_user_id: String,
+    created_at: String,
+}
+
+impl From<checkins::Checkin> for CheckinResponse {
+    fn from(c: checkins::Checkin) -> Self {
+        Self {
+            id: c.id,
+            link_id: c.link_id,
+            template_id: c.template_id,
+            color: c.color,
+            field_values: serde_json::from_str(&c.field_values).unwrap_or(serde_json::Value::Null),
+            related_confinement_session_id: c.related_confinement_session_id,
+            related_assignment_id: c.related_assignment_id,
+            related_play_session_id: c.related_play_session_id,
+            created_by_user_id: c.created_by_user_id,
+            created_at: iso8601(c.created_at),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateCheckinRequest {
+    template_id: String,
+    color: String,
+    field_values: serde_json::Value,
+    related_confinement_session_id: Option<String>,
+    related_assignment_id: Option<String>,
+    related_play_session_id: Option<String>,
+}
+
+fn valid_color(c: &str) -> bool {
+    matches!(c, "green" | "yellow" | "red")
+}
+
+async fn create_for_keyholder(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(submissive_id): Path<String>,
+    Json(req): Json<CreateCheckinRequest>,
+) -> Result<Json<CheckinResponse>, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    if !valid_color(&req.color) {
+        return Err(BAD_REQUEST);
+    }
+    let pool2 = pool.clone();
+    let (checkin, alert_id, keyholder_id) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let mut conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let link_id =
+                links::active_or_paused_link_for_keyholder(&conn, &user.user_id, &submissive_id)
+                    .map_err(|_| INTERNAL_ERROR)?
+                    .ok_or(NOT_FOUND)?;
+            let field_values = req.field_values.to_string();
+            let (id, alert_id) = checkins::create_checkin(
+                &mut conn,
+                checkins::NewCheckin {
+                    link_id: &link_id,
+                    template_id: &req.template_id,
+                    color: &req.color,
+                    field_values: &field_values,
+                    related_confinement_session_id: req.related_confinement_session_id.as_deref(),
+                    related_assignment_id: req.related_assignment_id.as_deref(),
+                    related_play_session_id: req.related_play_session_id.as_deref(),
+                    created_by_user_id: &user.user_id,
+                },
+                &submissive_id,
+            )
+            .map_err(|e| match e {
+                checkins::CreateCheckinError::TemplateNotFound => NOT_FOUND,
+                checkins::CreateCheckinError::MissingRequiredField => BAD_REQUEST,
+                checkins::CreateCheckinError::Db(_) => INTERNAL_ERROR,
+            })?;
+            let checkin = checkins::get_checkin(&conn, &id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            Ok((checkin, alert_id, user.user_id.clone()))
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    notify_checkin_submitted(&pool, &checkin, &keyholder_id, alert_id.as_deref()).await;
+    Ok(Json(checkin.into()))
+}
+
+async fn create_own(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Json(req): Json<CreateCheckinRequest>,
+) -> Result<Json<CheckinResponse>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    if !valid_color(&req.color) {
+        return Err(BAD_REQUEST);
+    }
+    let pool2 = pool.clone();
+    let (checkin, alert_id, keyholder_id) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let mut conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let link_id = links::active_link_for_submissive(&conn, &user.user_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(NOT_FOUND)?;
+            let field_values = req.field_values.to_string();
+            let (id, alert_id) = checkins::create_checkin(
+                &mut conn,
+                checkins::NewCheckin {
+                    link_id: &link_id,
+                    template_id: &req.template_id,
+                    color: &req.color,
+                    field_values: &field_values,
+                    related_confinement_session_id: req.related_confinement_session_id.as_deref(),
+                    related_assignment_id: req.related_assignment_id.as_deref(),
+                    related_play_session_id: req.related_play_session_id.as_deref(),
+                    created_by_user_id: &user.user_id,
+                },
+                &user.user_id,
+            )
+            .map_err(|e| match e {
+                checkins::CreateCheckinError::TemplateNotFound => NOT_FOUND,
+                checkins::CreateCheckinError::MissingRequiredField => BAD_REQUEST,
+                checkins::CreateCheckinError::Db(_) => INTERNAL_ERROR,
+            })?;
+            let checkin = checkins::get_checkin(&conn, &id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            let (keyholder_id, _) = links::parties(&conn, &link_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            Ok((checkin, alert_id, keyholder_id))
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    notify_checkin_submitted(&pool, &checkin, &keyholder_id, alert_id.as_deref()).await;
+    Ok(Json(checkin.into()))
+}
+
+/// 09-notifications.md §3: `checkin.submitted` (push only if red),
+/// unless the template auto-escalated — in which case the alert's own
+/// `safety.alert_raised` notification covers it and this doesn't also
+/// send `checkin.red_flag` for the same event.
+async fn notify_checkin_submitted(
+    pool: &Pool,
+    checkin: &checkins::Checkin,
+    keyholder_id: &str,
+    alert_id: Option<&str>,
+) {
+    if let Some(alert_id) = alert_id {
+        let _ = notify::notify(
+            pool,
+            notify::Event {
+                user_id: keyholder_id,
+                link_id: Some(&checkin.link_id),
+                notification_type: "safety.alert_raised",
+                title: "Safety alert raised",
+                body: Some("Auto-raised from a RED check-in."),
+                link_path: Some("/keyholder/safety-alerts"),
+                related_entity_type: Some("safety_alerts"),
+                related_entity_id: Some(alert_id),
+                push: true,
+            },
+        )
+        .await;
+        return;
+    }
+    let notification_type = if checkin.color == "red" {
+        "checkin.red_flag"
+    } else {
+        "checkin.submitted"
+    };
+    let _ = notify::notify(
+        pool,
+        notify::Event {
+            user_id: keyholder_id,
+            link_id: Some(&checkin.link_id),
+            notification_type,
+            title: "Check-in submitted",
+            body: None,
+            link_path: None,
+            related_entity_type: Some("checkins"),
+            related_entity_id: Some(&checkin.id),
+            push: checkin.color == "red",
+        },
+    )
+    .await;
+}
+
+#[derive(Deserialize)]
+struct ListCheckinsQuery {
+    color: Option<String>,
+    related_assignment_id: Option<String>,
+    related_confinement_session_id: Option<String>,
+    related_play_session_id: Option<String>,
+}
+
+async fn list_for_keyholder(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(submissive_id): Path<String>,
+    Query(q): Query<ListCheckinsQuery>,
+) -> Result<Json<Vec<CheckinResponse>>, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let link_id =
+            links::active_or_paused_link_for_keyholder(&conn, &user.user_id, &submissive_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(NOT_FOUND)?;
+        let list = checkins::list_for_link(
+            &conn,
+            &link_id,
+            checkins::CheckinFilter {
+                color: q.color.as_deref(),
+                related_assignment_id: q.related_assignment_id.as_deref(),
+                related_confinement_session_id: q.related_confinement_session_id.as_deref(),
+                related_play_session_id: q.related_play_session_id.as_deref(),
+            },
+        )
+        .map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(list.into_iter().map(Into::into).collect()))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+async fn list_own(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Query(q): Query<ListCheckinsQuery>,
+) -> Result<Json<Vec<CheckinResponse>>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let link_id = links::active_link_for_submissive(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        let list = checkins::list_for_link(
+            &conn,
+            &link_id,
+            checkins::CheckinFilter {
+                color: q.color.as_deref(),
+                related_assignment_id: q.related_assignment_id.as_deref(),
+                related_confinement_session_id: q.related_confinement_session_id.as_deref(),
+                related_play_session_id: q.related_play_session_id.as_deref(),
+            },
+        )
+        .map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(list.into_iter().map(Into::into).collect()))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+#[derive(Deserialize)]
+struct PatchCheckinRequest {
+    color: Option<String>,
+    field_values: Option<serde_json::Value>,
+}
+
+fn require_reachable_checkin(
+    conn: &rusqlite::Connection,
+    user: &CurrentUser,
+    checkin: &checkins::Checkin,
+) -> Result<String, ApiError> {
+    let (keyholder_id, submissive_id) = links::parties(conn, &checkin.link_id)
+        .map_err(|_| INTERNAL_ERROR)?
+        .ok_or(INTERNAL_ERROR)?;
+    match user.role {
+        Role::Keyholder if user.user_id == keyholder_id => Ok(submissive_id),
+        Role::Submissive if user.user_id == submissive_id => Ok(submissive_id),
+        _ => Err(NOT_FOUND),
+    }
+}
+
+async fn patch_checkin(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+    Json(req): Json<PatchCheckinRequest>,
+) -> Result<StatusCode, ApiError> {
+    if let Some(color) = &req.color
+        && !valid_color(color)
+    {
+        return Err(BAD_REQUEST);
+    }
+    let pool2 = pool.clone();
+    let id2 = id.clone();
+    let (alert_id, was_red, updated, keyholder_id) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let mut conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
+            let before = checkins::get_checkin(&conn, &id2)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(NOT_FOUND)?;
+            let submissive_id = require_reachable_checkin(&conn, &user, &before)?;
+            let was_red = before.color == "red";
+            let field_values = req.field_values.as_ref().map(|v| v.to_string());
+            let alert_id = checkins::update_checkin(
+                &mut conn,
+                &id2,
+                checkins::CheckinEdit {
+                    color: req.color.as_deref(),
+                    field_values: field_values.as_deref(),
+                },
+                &submissive_id,
+                &user.user_id,
+            )
+            .map_err(|e| match e {
+                checkins::UpdateCheckinError::NotFound => NOT_FOUND,
+                checkins::UpdateCheckinError::Db(_) => INTERNAL_ERROR,
+            })?;
+            let updated = checkins::get_checkin(&conn, &id2)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            let (keyholder_id, _) = links::parties(&conn, &updated.link_id)
+                .map_err(|_| INTERNAL_ERROR)?
+                .ok_or(INTERNAL_ERROR)?;
+            Ok((alert_id, was_red, updated, keyholder_id))
+        })
+        .await
+        .map_err(|_| INTERNAL_ERROR)??;
+
+    if let Some(alert_id) = alert_id {
+        let _ = notify::notify(
+            &pool,
+            notify::Event {
+                user_id: &keyholder_id,
+                link_id: Some(&updated.link_id),
+                notification_type: "safety.alert_raised",
+                title: "Safety alert raised",
+                body: Some("Auto-raised from a RED check-in."),
+                link_path: Some("/keyholder/safety-alerts"),
+                related_entity_type: Some("safety_alerts"),
+                related_entity_id: Some(&alert_id),
+                push: true,
+            },
+        )
+        .await;
+    } else if updated.color == "red" && !was_red {
+        // Transitioned into red without auto-escalation configured —
+        // the strong `checkin.red_flag` push (09-notifications.md §3),
+        // same dedupe posture as the alert path: a follow-up edit that
+        // stays red doesn't re-fire this.
+        let _ = notify::notify(
+            &pool,
+            notify::Event {
+                user_id: &keyholder_id,
+                link_id: Some(&updated.link_id),
+                notification_type: "checkin.red_flag",
+                title: "Check-in flagged RED",
+                body: None,
+                link_path: None,
+                related_entity_type: Some("checkins"),
+                related_entity_id: Some(&updated.id),
+                push: true,
+            },
+        )
+        .await;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub fn router() -> Router<db::AppState> {
+    Router::new()
+        .route(
+            "/keyholder/checkin-templates",
+            get(list_templates).post(create_template),
+        )
+        .route("/keyholder/checkin-templates/{id}", patch(patch_template))
+        .route(
+            "/submissive/checkin-templates",
+            get(list_templates_for_submissive),
+        )
+        .route(
+            "/keyholder/submissives/{id}/checkins",
+            get(list_for_keyholder).post(create_for_keyholder),
+        )
+        .route("/submissive/checkins", get(list_own).post(create_own))
+        .route("/checkins/{id}", patch(patch_checkin))
+}

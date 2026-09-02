@@ -1,6 +1,7 @@
 pub mod api_tokens;
 pub mod audit;
 pub mod chastity;
+pub mod checkins;
 pub mod invites;
 pub mod links;
 pub mod notifications;

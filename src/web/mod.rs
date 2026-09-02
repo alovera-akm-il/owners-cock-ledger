@@ -4,7 +4,7 @@
 //! handlers read data to render, they don't duplicate business logic.
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
@@ -545,6 +545,62 @@ async fn submissive_toys_page(State(pool): State<Pool>, jar: CookieJar) -> Respo
     })
 }
 
+#[derive(Template)]
+#[template(path = "checkin_templates.html")]
+struct CheckinTemplatesTemplate {
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/checkin-templates` — client-fetched, same shell pattern
+/// as `safety_alerts_page` (03-api-design.md §10b).
+async fn checkin_templates_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    render(CheckinTemplatesTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
+#[template(path = "submit_checkin.html")]
+struct SubmitCheckinTemplate {
+    display_name: String,
+    initial: String,
+    is_keyholder: bool,
+    submissive_id: Option<String>,
+}
+
+/// `/checkins/new` — either role. A Keyholder logging one for a
+/// specific submissive passes `?submissive_id=`; a submissive always
+/// logs against their own (sole) active link.
+async fn submit_checkin_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    let is_keyholder = user.role == Role::Keyholder;
+    render(SubmitCheckinTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+        is_keyholder,
+        submissive_id: if is_keyholder {
+            query.get("submissive_id").cloned()
+        } else {
+            None
+        },
+    })
+}
+
 struct Badge {
     text: String,
     class: &'static str,
@@ -839,5 +895,7 @@ pub fn router() -> axum::Router<db::AppState> {
         .route("/keyholder/review", get(review_queue_page))
         .route("/keyholder/safety-alerts", get(safety_alerts_page))
         .route("/keyholder/catalog", get(catalog_page))
+        .route("/keyholder/checkin-templates", get(checkin_templates_page))
+        .route("/checkins/new", get(submit_checkin_page))
         .route("/account", get(account_settings_page))
 }

@@ -120,7 +120,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::api_tokens::router())
                 .merge(api::notifications::router())
                 .merge(api::toys::router())
-                .merge(api::points::router()),
+                .merge(api::points::router())
+                .merge(api::checkins::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -3973,5 +3974,145 @@ mod tests {
             )
             .await;
         assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn checkin_template_create_and_fill_in_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-checkin@example.test",
+            "sub-checkin@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Morning cage check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": [
+                        {"field_key": "skin_status", "label": "Skin status", "field_type": "select", "config": {"options": ["normal", "chafing"]}, "required": true},
+                        {"field_key": "notes", "label": "Notes", "field_type": "text", "config": {}, "required": false}
+                    ]
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let template_id = template["id"].as_str().unwrap().to_string();
+        assert_eq!(template["fields"].as_array().unwrap().len(), 2);
+
+        // Submissive can see it (catalog visible by default).
+        let (status, sub_templates) = submissive.get("/api/v1/submissive/checkin-templates").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            sub_templates
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == template_id)
+        );
+
+        // Missing the required field is rejected.
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/checkins",
+                serde_json::json!({"template_id": template_id, "color": "green", "field_values": {}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // A normal green check-in submits fine and notifies the keyholder, feed-only.
+        let (status, checkin) = submissive
+            .post(
+                "/api/v1/submissive/checkins",
+                serde_json::json!({"template_id": template_id, "color": "green", "field_values": {"skin_status": "normal"}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let checkin_id = checkin["id"].as_str().unwrap().to_string();
+
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "checkin.submitted")
+        );
+
+        // Keyholder can list it, filtered by color.
+        let (status, list) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/checkins?color=green"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        // Editing it to red WITHOUT auto-escalation sends a strong
+        // checkin.red_flag, not a safety alert.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/checkins/{checkin_id}"),
+                serde_json::json!({"color": "red"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "checkin.red_flag")
+        );
+        let (_, alerts) = keyholder.get("/api/v1/keyholder/safety-alerts").await;
+        assert_eq!(alerts.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn checkin_red_with_auto_escalate_raises_a_safety_alert_not_just_a_notification() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-checkin2@example.test",
+            "sub-checkin2@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Estim mid-session check-in",
+                    "auto_escalate_on_red": true,
+                    "fields": [{"field_key": "arousal", "label": "Arousal", "field_type": "scale", "config": {"min": 0, "max": 10}, "required": false}]
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/checkins",
+                serde_json::json!({"template_id": template_id, "color": "red", "field_values": {"arousal": 8}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (_, alerts) = keyholder.get("/api/v1/keyholder/safety-alerts").await;
+        let alerts = alerts.as_array().unwrap();
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0]["raised_via"], "system");
+
+        // The keyholder gets a safety.alert_raised notification, not a
+        // separate checkin.red_flag for the same event.
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        let kh_feed = kh_feed.as_array().unwrap();
+        assert!(kh_feed.iter().any(|n| n["type"] == "safety.alert_raised"));
+        assert!(!kh_feed.iter().any(|n| n["type"] == "checkin.red_flag"));
     }
 }

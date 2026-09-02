@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Check-in Templates</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <div class="hidden lg:flex items-center gap-6 text-sm">
+        <a href="/dashboard" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="/keyholder/catalog" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
+        <a href="/keyholder/checkin-templates" class="text-slate-100 font-medium">Check-ins</a>
+        <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
+          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+            <span class="text-xs font-semibold">Notifications</span>
+            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <div id="notif-panel-list"></div>
+        </div>
+      </div>
+      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Check-in Templates</h1>
+      <p class="text-sm text-slate-400 mt-1">You author these; either of you can fill one in once it exists.</p>
+    </div>
+    <button id="new-btn" class="rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors px-4 py-2 text-sm font-semibold text-slate-950">+ New template</button>
+  </div>
+
+  <div id="new-form" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5 mb-6 space-y-4">
+    <p id="form-heading" class="text-xs font-semibold uppercase tracking-wide text-amber-500">New template</p>
+    <input type="hidden" id="edit-template-id" value="" />
+    <div id="form-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+    <input id="form-title" type="text" placeholder="Title (e.g. Morning chastity cage check-in)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+    <textarea id="form-description" rows="2" placeholder="Description (optional)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
+
+    <div class="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5">
+      <p class="text-xs font-medium text-slate-300 mb-1">Color <span class="text-slate-500 font-normal">— always included, every check-in has this</span></p>
+      <div class="flex gap-2 text-[11px]">
+        <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Green — SAFE/OK</span>
+        <span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Yellow — Near limit</span>
+        <span class="px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">Red — immediate stop</span>
+      </div>
+    </div>
+
+    <label class="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 cursor-pointer has-[:checked]:border-red-700/60 has-[:checked]:bg-red-500/5">
+      <input id="form-auto-escalate" type="checkbox" class="mt-0.5">
+      <span>
+        <span class="text-sm font-medium text-slate-200">Auto-raise a safety alert on RED</span>
+        <span class="block text-xs text-slate-500 mt-0.5">Off by default. Turn this on only for a template where RED genuinely means "stop right now."</span>
+      </span>
+    </label>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-xs font-medium text-slate-400">Custom fields</p>
+        <button id="add-field-btn" type="button" class="text-xs font-medium text-amber-500 hover:text-amber-400">+ Add field</button>
+      </div>
+      <div id="fields-list" class="space-y-3"></div>
+    </div>
+
+    <div class="flex justify-end gap-2">
+      <button id="cancel-new" type="button" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
+      <button id="save-template-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2">Save template</button>
+    </div>
+  </div>
+
+  <div id="template-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <div class="px-5 py-6 text-center text-sm text-slate-500">Loading…</div>
+  </div>
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  function apiCall(method, path, body) {
+    return $.ajax({
+      url: path, method: method, contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+  function errorMessage(xhr, fallback) {
+    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
+  }
+
+  $('#logout-btn').on('click', function () {
+    apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
+  });
+
+  const FIELD_TYPES = ['scale', 'select', 'number', 'text', 'boolean'];
+
+  function fieldRow(data) {
+    data = data || {};
+    const row = $(`
+      <div class="field-row rounded-lg border border-slate-800 bg-slate-950 p-3 space-y-2">
+        <div class="grid grid-cols-3 gap-2">
+          <input class="field-key bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" placeholder="Key (e.g. skin_status)" />
+          <input class="field-label bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" placeholder="Label (e.g. Skin status)" />
+          <select class="field-type bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+            ${FIELD_TYPES.map(t => `<option value="${t}">${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+        <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="checkbox" class="field-required"> Required</label>
+        <input class="field-description bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-300 w-full" placeholder="Description shown under the label when filling this in (optional)" />
+        <div class="field-config"></div>
+        <button type="button" class="remove-field-btn text-[11px] text-slate-500 hover:text-red-400">Remove field</button>
+      </div>
+    `);
+    row.find('.field-key').val(data.field_key || '');
+    row.find('.field-label').val(data.label || '');
+    row.find('.field-description').val(data.description || '');
+    row.find('.field-type').val(data.field_type || 'text');
+    row.find('.field-required').prop('checked', !!data.required);
+    row.find('.remove-field-btn').on('click', () => row.remove());
+    row.find('.field-type').on('change', function () { renderConfig(row, $(this).val()); });
+    renderConfig(row, data.field_type || 'text', data.config || {});
+    return row;
+  }
+
+  function renderConfig(row, type, config) {
+    config = config || {};
+    let html = '';
+    if (type === 'scale') {
+      html = `<div class="grid grid-cols-4 gap-2">
+        <input type="number" placeholder="Min" value="${config.min ?? 1}" class="cfg-min bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <input type="number" placeholder="Max" value="${config.max ?? 5}" class="cfg-max bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <input type="text" placeholder="Label at min" value="${config.min_label ?? ''}" class="cfg-min-label bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+        <input type="text" placeholder="Label at max" value="${config.max_label ?? ''}" class="cfg-max-label bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />
+      </div>`;
+    } else if (type === 'select') {
+      const isDevices = config.source === 'devices';
+      const groupName = 'select-src-' + Math.random();
+      html = `<div class="space-y-1.5">
+        <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="radio" name="${groupName}" class="select-source" value="static" ${isDevices ? '' : 'checked'}> Fixed list of options</label>
+        <input type="text" class="cfg-options w-full bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" placeholder="Options, comma separated" value="${(config.options || []).join(', ')}" />
+        <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="radio" name="${groupName}" class="select-source" value="devices" ${isDevices ? 'checked' : ''}> Pull from the submissive's chastity devices automatically</label>
+      </div>`;
+    } else if (type === 'number') {
+      html = `<input type="text" placeholder="Unit (e.g. hours)" value="${config.unit || ''}" class="cfg-unit w-40 bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />`;
+    } else if (type === 'boolean') {
+      html = `<p class="text-[11px] text-slate-500">Shown as a yes/no toggle.</p>`;
+    } else {
+      html = `<p class="text-[11px] text-slate-500">Free text entry.</p>`;
+    }
+    row.find('.field-config').html(html);
+  }
+
+  function fieldConfigFromRow(row) {
+    const type = row.find('.field-type').val();
+    if (type === 'scale') {
+      return {
+        min: parseFloat(row.find('.cfg-min').val()) || 0,
+        max: parseFloat(row.find('.cfg-max').val()) || 5,
+        min_label: row.find('.cfg-min-label').val() || undefined,
+        max_label: row.find('.cfg-max-label').val() || undefined,
+      };
+    }
+    if (type === 'select') {
+      const source = row.find('.select-source:checked').val();
+      if (source === 'devices') return { source: 'devices' };
+      const options = row.find('.cfg-options').val().split(',').map(s => s.trim()).filter(Boolean);
+      return { options: options };
+    }
+    if (type === 'number') {
+      return { unit: row.find('.cfg-unit').val() || undefined };
+    }
+    return {};
+  }
+
+  function resetFields(preset) {
+    $('#fields-list').empty();
+    (preset || []).forEach(f => $('#fields-list').append(fieldRow(f)));
+  }
+
+  $('#add-field-btn').on('click', () => $('#fields-list').append(fieldRow().addClass('slide-in')));
+
+  $('#new-btn').on('click', function () {
+    $('#edit-template-id').val('');
+    $('#form-heading').text('New template');
+    $('#form-message').addClass('hidden');
+    $('#form-title, #form-description').val('');
+    $('#form-auto-escalate').prop('checked', false);
+    resetFields();
+    $('#new-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  function openEditForm(t) {
+    $('#edit-template-id').val(t.id);
+    $('#form-heading').text('Editing template');
+    $('#form-message').addClass('hidden');
+    $('#form-title').val(t.title);
+    $('#form-description').val(t.description || '');
+    $('#form-auto-escalate').prop('checked', t.auto_escalate_on_red);
+    resetFields(t.fields);
+    $('#new-form').removeClass('hidden').addClass('panel-fade')[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  $('#cancel-new').on('click', () => $('#new-form').addClass('hidden'));
+
+  $('#save-template-btn').on('click', function () {
+    $('#form-message').addClass('hidden');
+    const title = $('#form-title').val();
+    if (!title) {
+      $('#form-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text('Title is required.').removeClass('hidden');
+      return;
+    }
+    const fields = $('.field-row').map(function () {
+      const $row = $(this);
+      return {
+        field_key: $row.find('.field-key').val(),
+        label: $row.find('.field-label').val(),
+        description: $row.find('.field-description').val() || null,
+        field_type: $row.find('.field-type').val(),
+        required: $row.find('.field-required').is(':checked'),
+        config: fieldConfigFromRow($row),
+      };
+    }).get();
+    if (fields.some(f => !f.field_key || !f.label)) {
+      $('#form-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text('Every field needs a key and a label.').removeClass('hidden');
+      return;
+    }
+    const payload = {
+      title: title,
+      description: $('#form-description').val() || null,
+      auto_escalate_on_red: $('#form-auto-escalate').is(':checked'),
+      fields: fields,
+    };
+    const editingId = $('#edit-template-id').val();
+    const request = editingId
+      ? apiCall('PATCH', '/api/v1/keyholder/checkin-templates/' + editingId, payload)
+      : apiCall('POST', '/api/v1/keyholder/checkin-templates', payload);
+    request.done(function () {
+      $('#new-form').addClass('hidden');
+      loadTemplates();
+    }).fail(function (xhr) {
+      $('#form-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(errorMessage(xhr, 'Could not save template.')).removeClass('hidden');
+    });
+  });
+
+  function templateRow(t) {
+    const $row = $('<div class="px-5 py-4">');
+    const $head = $('<div class="flex items-start justify-between mb-2">');
+    const $title = $('<div>');
+    $title.append($('<p class="text-sm font-medium">').text(t.title));
+    if (t.description) $title.append($('<p class="text-xs text-slate-500 mt-0.5">').text(t.description));
+    $head.append($title);
+    $row.append($head);
+
+    const $tags = $('<div class="flex flex-wrap gap-1.5">');
+    t.fields.forEach(function (f) {
+      $tags.append($('<span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">').text(f.label + ' (' + f.field_type + ')'));
+    });
+    $row.append($tags);
+
+    const $footer = $('<div class="flex items-center justify-between mt-3">');
+    $footer.append(
+      t.auto_escalate_on_red
+        ? $('<span class="text-[11px] font-medium text-red-400">').text('Auto-escalation on RED: on')
+        : $('<span class="text-[11px] text-slate-500">').text('Auto-escalation on RED: off')
+    );
+    const $actions = $('<span class="flex items-center gap-2">');
+    if (!t.active) $actions.append($('<span class="text-[11px] text-slate-500">').text('inactive'));
+    const $edit = $('<button class="text-xs font-medium text-slate-300 border border-slate-700 hover:border-slate-600 hover:bg-slate-800 rounded-lg px-2.5 py-1">').text('Edit');
+    $edit.on('click', function () { openEditForm(t); });
+    $actions.append($edit);
+    if (t.active) {
+      const $deactivate = $('<button class="text-xs font-medium text-slate-400 hover:text-red-400">').text('Deactivate');
+      $deactivate.on('click', function () {
+        apiCall('PATCH', '/api/v1/keyholder/checkin-templates/' + t.id, { active: false }).done(loadTemplates);
+      });
+      $actions.append($deactivate);
+    } else {
+      const $reactivate = $('<button class="text-xs font-semibold text-amber-500 border border-amber-700/50 hover:bg-amber-500/10 rounded-lg px-2.5 py-1">').text('Reactivate');
+      $reactivate.on('click', function () {
+        apiCall('PATCH', '/api/v1/keyholder/checkin-templates/' + t.id, { active: true }).done(loadTemplates);
+      });
+      $actions.append($reactivate);
+    }
+    $footer.append($actions);
+    $row.append($footer);
+    return $row;
+  }
+
+  function loadTemplates() {
+    apiCall('GET', '/api/v1/keyholder/checkin-templates').done(function (list) {
+      const $list = $('#template-list').empty();
+      if (list.length === 0) {
+        $list.append($('<div class="px-5 py-6 text-center text-sm text-slate-500">').text('No check-in templates yet.'));
+        return;
+      }
+      list.forEach(function (t) { $list.append(templateRow(t)); });
+    });
+  }
+  loadTemplates();
+</script>
+</body>
+</html>

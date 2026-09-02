@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Fill In Check-in</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-2xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="{% if is_keyholder %}/dashboard{% else %}/submissive{% endif %}">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <a href="{% if is_keyholder %}/dashboard{% else %}/submissive{% endif %}" class="text-xs text-slate-400 hover:text-slate-200">&larr; Back</a>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
+          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+            <span class="text-xs font-semibold">Notifications</span>
+            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <div id="notif-panel-list"></div>
+        </div>
+      </div>
+      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
+      {% if is_keyholder %}
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      {% else %}
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
+      {% endif %}
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-2xl mx-auto px-6 py-8" data-is-keyholder="{% if is_keyholder %}true{% else %}false{% endif %}" data-submissive-id="{{ submissive_id.as_deref().unwrap_or_default() }}">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">Fill in a check-in</h1>
+  <p class="text-sm text-slate-400 mb-6">Not live — no one else is watching this happen in real time, so just fill it in and submit whenever.</p>
+
+  <div class="mb-4">
+    <label class="block text-xs font-medium text-slate-400 mb-1.5">Template</label>
+    <select id="template-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+      <option value="">Choose a check-in template…</option>
+    </select>
+  </div>
+
+  <div id="checkin-message" class="hidden rounded-lg px-3 py-2 text-xs mb-4"></div>
+
+  <div id="checkin-form" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-5">
+    <div>
+      <label class="block text-xs font-medium text-slate-400 mb-2">Color <span class="text-slate-600 font-normal">— always required</span></label>
+      <div class="flex gap-2">
+        <button type="button" class="color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2 hover:border-emerald-600/50" data-color="green">Green — SAFE/OK</button>
+        <button type="button" class="color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2 hover:border-amber-600/50" data-color="yellow">Yellow — Near limit</button>
+        <button type="button" class="color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2 hover:border-red-600/50" data-color="red">Red — Immediate stop</button>
+      </div>
+    </div>
+
+    <div id="custom-fields" class="space-y-5"></div>
+
+    <button id="submit-checkin-btn" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+      Submit check-in
+    </button>
+  </div>
+</main>
+
+<script>
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  function apiCall(method, path, body) {
+    return $.ajax({
+      url: path, method: method, contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+  function errorMessage(xhr, fallback) {
+    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
+  }
+
+  $('#logout-btn').on('click', function () {
+    apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
+  });
+
+  const isKeyholder = $('main').data('is-keyholder');
+  const subId = $('main').data('submissive-id');
+  const templatesPath = isKeyholder ? '/api/v1/keyholder/checkin-templates' : '/api/v1/submissive/checkin-templates';
+  const devicesPath = isKeyholder ? '/api/v1/keyholder/submissives/' + subId + '/devices' : '/api/v1/submissive/devices';
+  const createPath = isKeyholder ? '/api/v1/keyholder/submissives/' + subId + '/checkins' : '/api/v1/submissive/checkins';
+
+  let templates = [];
+  let selectedColor = null;
+
+  function fieldInput(f) {
+    const $wrap = $('<div>');
+    $wrap.append($('<label class="block text-xs font-medium text-slate-400 mb-1">').text(f.label));
+    if (f.description) $wrap.append($('<p class="text-[11px] text-slate-500 mb-1.5">').text(f.description));
+
+    let $input;
+    if (f.field_type === 'select') {
+      $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+      if (f.config && f.config.source === 'devices') {
+        apiCall('GET', devicesPath).done(function (devices) {
+          devices.filter(d => !d.retired_at).forEach(function (d) {
+            $input.append($('<option>').val(d.name).text(d.name));
+          });
+        });
+      } else {
+        (f.config && f.config.options || []).forEach(function (opt) {
+          $input.append($('<option>').val(opt).text(opt));
+        });
+      }
+    } else if (f.field_type === 'scale') {
+      const min = (f.config && f.config.min) ?? 1;
+      const max = (f.config && f.config.max) ?? 5;
+      const mid = Math.round((min + max) / 2);
+      $input = $('<input type="range" class="w-full accent-amber-500">').attr({ 'data-key': f.field_key, min: min, max: max, value: mid });
+      const $out = $('<span class="text-sm font-mono text-amber-400">').text(mid);
+      const $labelRow = $('<div class="flex items-center justify-between mb-1">');
+      $wrap.find('label').detach().appendTo($labelRow);
+      $labelRow.append($out);
+      $wrap.prepend($labelRow);
+      $input.on('input', function () { $out.text($(this).val()); });
+      const $minMax = $('<div class="flex justify-between text-[10px] text-slate-600 mt-0.5">')
+        .append($('<span>').text((f.config && f.config.min_label) || min))
+        .append($('<span>').text((f.config && f.config.max_label) || max));
+      $wrap.append($input, $minMax);
+      return $wrap;
+    } else if (f.field_type === 'number') {
+      $input = $('<input type="number" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+      if (f.config && f.config.unit) $wrap.find('label').append($('<span class="text-slate-600 font-normal">').text(' (' + f.config.unit + ')'));
+    } else if (f.field_type === 'boolean') {
+      $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+      $input.append($('<option value="false">').text('No'), $('<option value="true">').text('Yes'));
+    } else {
+      $input = $('<textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+    }
+    $wrap.append($input);
+    return $wrap;
+  }
+
+  function renderTemplateFields(template) {
+    const $fields = $('#custom-fields').empty();
+    template.fields.forEach(function (f) {
+      $fields.append(fieldInput(f));
+    });
+  }
+
+  $('#template-select').on('change', function () {
+    const id = $(this).val();
+    if (!id) { $('#checkin-form').addClass('hidden'); return; }
+    const template = templates.find(t => t.id === id);
+    selectedColor = null;
+    $('.color-btn').attr('class', 'color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2 hover:border-emerald-600/50');
+    renderTemplateFields(template);
+    $('#checkin-form').removeClass('hidden');
+  });
+
+  $('.color-btn').on('click', function () {
+    const color = $(this).data('color');
+    selectedColor = color;
+    const map = {
+      green: 'border-emerald-500 bg-emerald-500/10 text-emerald-400',
+      yellow: 'border-amber-500 bg-amber-500/10 text-amber-400',
+      red: 'border-red-500 bg-red-500/10 text-red-400',
+    };
+    $('.color-btn').attr('class', 'color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2');
+    $(this).attr('class', 'color-btn flex-1 rounded-lg border-2 text-sm font-semibold py-2 ' + map[color]);
+  });
+
+  function showMsg(text, ok) {
+    const cls = ok
+      ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300'
+      : 'bg-red-600/10 border border-red-600/30 text-red-300';
+    $('#checkin-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-4 ' + cls).removeClass('hidden').text(text);
+  }
+
+  $('#submit-checkin-btn').on('click', function () {
+    if (!selectedColor) {
+      showMsg('Pick a color first.', false);
+      return;
+    }
+    const templateId = $('#template-select').val();
+    const fieldValues = {};
+    $('#custom-fields [data-key]').each(function () {
+      const $el = $(this);
+      const key = $el.data('key');
+      let val = $el.val();
+      if ($el.attr('type') === 'range' || $el.attr('type') === 'number') val = val === '' ? null : parseFloat(val);
+      if ($el.is('select') && (val === 'true' || val === 'false')) val = val === 'true';
+      fieldValues[key] = val;
+    });
+    apiCall('POST', createPath, {
+      template_id: templateId,
+      color: selectedColor,
+      field_values: fieldValues,
+    }).done(function () {
+      $('#submit-checkin-btn').prop('disabled', true).text('Submitted ✓');
+      showMsg('Submitted.', true);
+    }).fail(function (xhr) {
+      showMsg(errorMessage(xhr, 'Could not submit check-in.'), false);
+    });
+  });
+
+  apiCall('GET', templatesPath).done(function (list) {
+    templates = list.filter(t => t.active);
+    const $select = $('#template-select');
+    templates.forEach(function (t) {
+      $select.append($('<option>').val(t.id).text(t.title));
+    });
+  });
+</script>
+</body>
+</html>

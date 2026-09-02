@@ -6,6 +6,7 @@ pub mod api_tokens;
 pub mod assignments;
 pub mod auth;
 pub mod chastity;
+pub mod checkins;
 pub mod invites;
 pub mod notifications;
 pub mod points;
