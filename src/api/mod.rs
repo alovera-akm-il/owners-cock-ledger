@@ -14,6 +14,7 @@ pub mod play_sessions;
 pub mod points;
 pub mod profiles;
 pub mod proofs;
+pub mod recurring_tasks;
 pub mod roster;
 pub mod safety;
 pub mod templates;

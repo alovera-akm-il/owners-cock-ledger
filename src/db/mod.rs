@@ -100,6 +100,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0028_play_sessions.sql")),
         M::up(include_str!("../../migrations/0029_limits.sql")),
         M::up(include_str!("../../migrations/0030_link_end_requests.sql")),
+        M::up(include_str!("../../migrations/0031_recurring_tasks.sql")),
     ])
 }
 

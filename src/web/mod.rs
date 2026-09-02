@@ -520,6 +520,57 @@ async fn keyholder_toy_catalog_page(
 }
 
 #[derive(Template)]
+#[template(path = "recurring_tasks.html")]
+struct RecurringTasksTemplate {
+    submissive_id: String,
+    submissive_display_name: String,
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/submissives/{id}/recurring-tasks` — client-side fetched,
+/// same shell pattern as `keyholder_toy_catalog_page`.
+async fn keyholder_recurring_tasks_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(submissive_id): Path<String>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    let keyholder_id = user.user_id.clone();
+    let target_id = submissive_id.clone();
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
+        let conn = pool.get()?;
+        if links::active_or_paused_link_for_keyholder(&conn, &keyholder_id, &target_id)?.is_none() {
+            return Ok(None);
+        }
+        let display_name: String = conn.query_row(
+            "SELECT display_name FROM users WHERE id = ?1",
+            params![target_id],
+            |row| row.get(0),
+        )?;
+        Ok(Some(display_name))
+    })
+    .await;
+
+    let Ok(Ok(Some(submissive_display_name))) = result else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    render(RecurringTasksTemplate {
+        submissive_id,
+        submissive_display_name,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
 #[template(path = "submissive_toys.html")]
 struct SubmissiveToysTemplate {
     display_name: String,
@@ -1043,6 +1094,10 @@ pub fn router() -> axum::Router<db::AppState> {
         .route(
             "/keyholder/submissives/{id}/toys",
             get(keyholder_toy_catalog_page),
+        )
+        .route(
+            "/keyholder/submissives/{id}/recurring-tasks",
+            get(keyholder_recurring_tasks_page),
         )
         .route("/keyholder/review", get(review_queue_page))
         .route("/keyholder/safety-alerts", get(safety_alerts_page))

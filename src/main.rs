@@ -124,7 +124,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::points::router())
                 .merge(api::checkins::router())
                 .merge(api::play_sessions::router())
-                .merge(api::limits::router()),
+                .merge(api::limits::router())
+                .merge(api::recurring_tasks::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -312,6 +313,30 @@ fn run_deadline_sweep_tick(pool: &db::Pool) {
         }
         Err(e) => {
             tracing::error!(error = %e, "end-request escalation sweep tick failed");
+        }
+    }
+
+    match domain::recurring_tasks::run_recurring_task_sweep_tick(&mut conn) {
+        Ok(spawned) => {
+            for task in spawned {
+                let pool = pool.clone();
+                let keyholder_id = task.keyholder_id.clone();
+                let submissive_id = task.submissive_id.clone();
+                let assignment = task.assignment.clone();
+                tokio::spawn(async move {
+                    api::assignments::notify_for_assignment(
+                        &pool,
+                        &keyholder_id,
+                        &submissive_id,
+                        &assignment,
+                        false,
+                    )
+                    .await;
+                });
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "recurring task sweep tick failed");
         }
     }
 }
@@ -4956,5 +4981,203 @@ mod tests {
             .find(|i| i["id"] == "seed-impact-paddle")
             .unwrap();
         assert!(paddle["rating"].is_null());
+    }
+
+    /// 06-future-extensions.md §14: repeating tasks. Covers rule
+    /// creation validation (must be a task template, must belong to
+    /// this Keyholder), listing, editing, and — via the real sweeper
+    /// wrapper so notification dispatch runs too — an actual spawn
+    /// that produces an ordinary task assignment and a task.assigned
+    /// notification indistinguishable from a manual one.
+    #[tokio::test]
+    async fn recurring_task_rule_lifecycle_and_sweep_spawns_an_ordinary_task() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-recur@example.test",
+            "sub-recur@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, reward_template) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({"kind": "reward", "title": "Nice job", "effect_kind": "grant"}),
+            )
+            .await;
+        let reward_template_id = reward_template["id"].as_str().unwrap().to_string();
+
+        // A reward template is rejected — a rule only ever spawns tasks.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/recurring-tasks"),
+                serde_json::json!({
+                    "template_id": reward_template_id,
+                    "recurrence_kind": "interval_hours",
+                    "recurrence_value": {"hours": 6}
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+        let (_, task_template) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({
+                    "kind": "task", "title": "Morning cage photo",
+                    "completion_type": "acknowledge_only", "default_deadline_seconds": 3600
+                }),
+            )
+            .await;
+        let task_template_id = task_template["id"].as_str().unwrap().to_string();
+
+        // Malformed recurrence is rejected up front.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/recurring-tasks"),
+                serde_json::json!({
+                    "template_id": task_template_id,
+                    "recurrence_kind": "bogus_kind",
+                    "recurrence_value": {}
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        let (status, rule) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/recurring-tasks"),
+                serde_json::json!({
+                    "template_id": task_template_id,
+                    "recurrence_kind": "interval_hours",
+                    "recurrence_value": {"hours": 6}
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(rule["active"], true);
+        assert_eq!(rule["allow_overlap"], false);
+        let rule_id = rule["id"].as_str().unwrap().to_string();
+
+        let (status, list) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/recurring-tasks"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list.as_array().unwrap().len(), 1);
+
+        // Deactivating is the only retirement path — no delete endpoint.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/recurring-tasks/{rule_id}"),
+                serde_json::json!({"active": false}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/recurring-tasks"
+            ))
+            .await;
+        assert_eq!(list[0]["active"], false);
+
+        // Reactivate and back-date next_due_at directly so the sweep
+        // picks it up immediately, then run the real sweeper wrapper
+        // (not just the domain tick) so its notification dispatch runs.
+        keyholder
+            .patch(
+                &format!("/api/v1/keyholder/recurring-tasks/{rule_id}"),
+                serde_json::json!({"active": true}),
+            )
+            .await;
+        {
+            let conn = pool.get().unwrap();
+            conn.execute(
+                "UPDATE recurring_task_rules SET next_due_at = ?1 WHERE id = ?2",
+                rusqlite::params![crate::auth::session::now() - 10, rule_id],
+            )
+            .unwrap();
+        }
+
+        let pool_for_sweep = pool.clone();
+        tokio::task::spawn_blocking(move || run_deadline_sweep_tick(&pool_for_sweep))
+            .await
+            .unwrap();
+
+        let (_, assignments) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/assignments"
+            ))
+            .await;
+        let spawned = assignments
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["title"] == "Morning cage photo")
+            .expect("the sweep spawned the task");
+        assert_eq!(spawned["assigned_via"], "system");
+        assert_eq!(
+            spawned["spawned_by_recurring_task_rule_id"],
+            rule_id.as_str()
+        );
+
+        // The sweep fires the notification via a detached `tokio::spawn`
+        // (it's a sync function running inside `spawn_blocking`, with no
+        // async context to `.await` it from directly) — give it a moment
+        // to actually run before checking the feed.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        assert!(
+            sub_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "task.assigned"
+                    && n["title"] == "New task: Morning cage photo")
+        );
+
+        // A second sweep right away spawns nothing further (skip-if-open).
+        let pool_for_sweep = pool.clone();
+        tokio::task::spawn_blocking(move || run_deadline_sweep_tick(&pool_for_sweep))
+            .await
+            .unwrap();
+        let (_, assignments_again) = keyholder
+            .get(&format!(
+                "/api/v1/keyholder/submissives/{sub_id}/assignments"
+            ))
+            .await;
+        assert_eq!(
+            assignments_again
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|a| a["title"] == "Morning cage photo")
+                .count(),
+            1
+        );
+
+        // Ownership scoping: an unrelated Keyholder can't patch this rule.
+        seed_keyholder(
+            &pool,
+            "kh-recur-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-recur-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_kh
+            .patch(
+                &format!("/api/v1/keyholder/recurring-tasks/{rule_id}"),
+                serde_json::json!({"active": false}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

@@ -12,6 +12,7 @@ pub mod points;
 pub mod profiles;
 pub mod proofs;
 pub mod push;
+pub mod recurring_tasks;
 pub mod rewards_punishments;
 pub mod safety;
 pub mod toys;
