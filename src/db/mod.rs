@@ -69,6 +69,16 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0013_verification_codes.sql")),
         M::up(include_str!("../../migrations/0014_proof_submissions.sql")),
         M::up(include_str!("../../migrations/0015_proof_attachments.sql")),
+        M::up(include_str!(
+            "../../migrations/0016_reward_punishment_templates.sql"
+        )),
+        M::up(include_str!("../../migrations/0017_assignments.sql")),
+        M::up(include_str!(
+            "../../migrations/0018_proof_submissions_voice_and_assignment_fk.sql"
+        )),
+        M::up(include_str!(
+            "../../migrations/0019_confinement_adjustments_reward_reason.sql"
+        )),
     ])
 }
 

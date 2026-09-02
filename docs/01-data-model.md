@@ -370,7 +370,7 @@ automatically (see `01-data-model.md` §6).
 | id | TEXT PK | |
 | session_id | TEXT FK -> confinement_sessions.id | |
 | delta_seconds | INTEGER | signed: positive extends, negative reduces |
-| reason | TEXT CHECK IN ('manual','punishment_time_extension','clock_pause') | |
+| reason | TEXT CHECK IN ('manual','punishment_time_extension','reward_time_reduction','clock_pause') | `reward_time_reduction` mirrors `punishment_time_extension` for an escalated `time_reduction` reward (`08-punishments-and-deadlines.md` §6a) — same "applied automatically, flagged for Keyholder review" treatment, just the positive-consequence direction |
 | caused_by_assignment_id | TEXT NULL FK -> assignments.id | set when `reason='punishment_time_extension'` — which punishment did this |
 | adjusted_by_user_id | TEXT NULL FK -> users.id | the Keyholder, for `manual`; NULL for an automatic punishment-driven adjustment (the "actor" there is the system applying a Keyholder-configured consequence, not a Keyholder click in the moment — see `01-data-model.md` §6) |
 | adjusted_at | INTEGER | |
