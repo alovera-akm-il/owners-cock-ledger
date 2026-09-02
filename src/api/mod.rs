@@ -9,6 +9,7 @@ pub mod chastity;
 pub mod invites;
 pub mod proofs;
 pub mod roster;
+pub mod safety;
 pub mod templates;
 pub mod verification;
 

@@ -109,6 +109,7 @@ fn build_router(state: db::AppState) -> Router {
             api::auth::router()
                 .merge(api::invites::router())
                 .merge(api::roster::router())
+                .merge(api::safety::router())
                 .merge(api::chastity::router())
                 .merge(api::verification::router())
                 .merge(api::proofs::router())
@@ -2194,6 +2195,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unrelated_keyholder_gets_404_not_500_touching_someone_elses_proof_or_assignment() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-ownercheck@example.test",
+            "sub-ownercheck@example.test",
+        )
+        .await;
+
+        submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+        let (_, submissions) = keyholder.get("/api/v1/keyholder/proof-submissions").await;
+        let submission_id = submissions[0]["id"].as_str().unwrap().to_string();
+
+        let (_, assignment) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({"kind": "reward", "title": "movie night", "effect_kind": "grant"}),
+            )
+            .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+        let (_, assignment) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/assignments"),
+                serde_json::json!({"kind": "reward", "template_id": assignment["id"]}),
+            )
+            .await;
+        let assignment_id = assignment["id"].as_str().unwrap().to_string();
+
+        seed_keyholder(
+            &pool,
+            "kh-ownercheck-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other = TestClient::new(pool.clone());
+        other.get("/health").await;
+        other
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-ownercheck-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+
+        let (status, _) = other
+            .get(&format!(
+                "/api/v1/keyholder/proof-submissions/{submission_id}"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let (status, _) = other
+            .get(&format!("/api/v1/keyholder/assignments/{assignment_id}"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn verification_and_proof_review_flow() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
@@ -2363,6 +2426,83 @@ mod tests {
             .get_page(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
             .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn safety_alert_lifecycle_raise_list_acknowledge_resolve() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-safety@example.test",
+            "sub-safety@example.test",
+        )
+        .await;
+
+        // Reachable by the submissive with just a message, no other setup.
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/safety-alert",
+                serde_json::json!({"message": "device feels too tight"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // A submissive can't read the keyholder-side list.
+        let (status, _) = submissive.get("/api/v1/keyholder/safety-alerts").await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        let (status, list) = keyholder.get("/api/v1/keyholder/safety-alerts").await;
+        assert_eq!(status, StatusCode::OK);
+        let alerts = list.as_array().unwrap();
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0]["message"], "device feels too tight");
+        assert_eq!(alerts[0]["raised_via"], "submissive");
+        assert!(alerts[0]["acknowledged_at"].is_null());
+        let alert_id = alerts[0]["id"].as_str().unwrap().to_string();
+
+        // A second, unrelated keyholder can't act on it.
+        seed_keyholder(
+            &pool,
+            "kh-safety-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_keyholder = TestClient::new(pool.clone());
+        other_keyholder.get("/health").await;
+        other_keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-safety-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_keyholder
+            .patch(
+                &format!("/api/v1/keyholder/safety-alerts/{alert_id}"),
+                serde_json::json!({"acknowledged": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/safety-alerts/{alert_id}"),
+                serde_json::json!({"acknowledged": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, list) = keyholder.get("/api/v1/keyholder/safety-alerts").await;
+        assert!(!list[0]["acknowledged_at"].is_null());
+        assert!(list[0]["resolved_at"].is_null());
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/safety-alerts/{alert_id}"),
+                serde_json::json!({"resolved": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder.get("/api/v1/keyholder/safety-alerts").await;
+        assert!(!list[0]["resolved_at"].is_null());
     }
 
     #[tokio::test]

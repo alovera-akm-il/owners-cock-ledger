@@ -1,12 +1,9 @@
 //! Safety alerts (01-data-model.md §7) — a deliberately simple,
 //! always-available escape hatch, independent of the normal review flow.
-//! Wired in now as cross-cutting infrastructure (like `audit`): the safety
-//! alert path itself is the one write a submissive can always make, and
-//! later domains (check-ins, `13-checkins.md` §6) raise these
-//! automatically rather than each reinventing the notion. No HTTP route
-//! calls into this yet — that lands with the domain that exposes it
-//! (`04-verification-workflow.md` §5).
-#![allow(dead_code)]
+//! Cross-cutting infrastructure (like `audit`): the safety alert path
+//! itself is the one write a submissive can always make, and later
+//! domains (check-ins, `13-checkins.md` §6) raise these automatically
+//! rather than each reinventing the notion.
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -15,6 +12,10 @@ use crate::domain::audit;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RaisedVia {
     Submissive,
+    // No caller yet: automatic escalation from a RED check-in
+    // (13-checkins.md §6) is Phase 6 — the schema and this variant exist
+    // now so that domain doesn't have to touch this module when it lands.
+    #[allow(dead_code)]
     System,
 }
 
@@ -96,44 +97,73 @@ pub fn acknowledge(
     Ok(())
 }
 
-pub struct AlertSummary {
+pub struct Alert {
     pub id: String,
+    pub submissive_id: String,
+    pub link_id: String,
+    pub raised_at: i64,
     pub raised_via: String,
+    pub message: Option<String>,
     pub acknowledged_at: Option<i64>,
+    pub acknowledged_by_user_id: Option<String>,
     pub resolved_at: Option<i64>,
 }
 
-pub fn unresolved_for_link(
-    conn: &Connection,
-    link_id: &str,
-) -> rusqlite::Result<Vec<AlertSummary>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, raised_via, acknowledged_at, resolved_at
-         FROM safety_alerts
-         WHERE link_id = ?1 AND resolved_at IS NULL
-         ORDER BY raised_at DESC",
-    )?;
-    let rows = stmt
-        .query_map(params![link_id], |row| {
-            Ok(AlertSummary {
-                id: row.get(0)?,
-                raised_via: row.get(1)?,
-                acknowledged_at: row.get(2)?,
-                resolved_at: row.get(3)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
+const ALERT_COLUMNS: &str = "id, submissive_id, link_id, raised_at, raised_via, message, \
+     acknowledged_at, acknowledged_by_user_id, resolved_at";
+
+fn row_to_alert(row: &rusqlite::Row) -> rusqlite::Result<Alert> {
+    Ok(Alert {
+        id: row.get(0)?,
+        submissive_id: row.get(1)?,
+        link_id: row.get(2)?,
+        raised_at: row.get(3)?,
+        raised_via: row.get(4)?,
+        message: row.get(5)?,
+        acknowledged_at: row.get(6)?,
+        acknowledged_by_user_id: row.get(7)?,
+        resolved_at: row.get(8)?,
+    })
 }
 
-fn exists(conn: &Connection, alert_id: &str) -> rusqlite::Result<bool> {
+pub fn get(conn: &Connection, id: &str) -> rusqlite::Result<Option<Alert>> {
     conn.query_row(
-        "SELECT 1 FROM safety_alerts WHERE id = ?1",
-        params![alert_id],
-        |_| Ok(()),
+        &format!("SELECT {ALERT_COLUMNS} FROM safety_alerts WHERE id = ?1"),
+        params![id],
+        row_to_alert,
     )
     .optional()
-    .map(|r| r.is_some())
+}
+
+/// Every alert across a Keyholder's own links (`GET
+/// /keyholder/safety-alerts`, 03-api-design.md §5) — unresolved ones
+/// first, newest first within each group, so the always-available escape
+/// hatch is never buried under routine history.
+pub fn list_for_links(conn: &Connection, link_ids: &[String]) -> rusqlite::Result<Vec<Alert>> {
+    if link_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = link_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT {ALERT_COLUMNS} FROM safety_alerts
+         WHERE link_id IN ({placeholders})
+         ORDER BY (resolved_at IS NOT NULL) ASC, raised_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    stmt.query_map(rusqlite::params_from_iter(link_ids), row_to_alert)?
+        .collect()
+}
+
+/// Marks an alert resolved — the situation is settled, not just seen.
+/// Idempotent: resolving an already-resolved alert is a no-op rather
+/// than an error, so a keyholder double-clicking doesn't need special
+/// handling.
+pub fn resolve(conn: &Connection, alert_id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE safety_alerts SET resolved_at = ?1 WHERE id = ?2 AND resolved_at IS NULL",
+        params![crate::auth::session::now(), alert_id],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -184,7 +214,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(exists(&conn, &alert_id).unwrap());
+        assert!(get(&conn, &alert_id).unwrap().is_some());
 
         let audit_count: i64 = conn
             .query_row(
@@ -226,23 +256,12 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_for_link_excludes_resolved_alerts() {
+    fn list_for_links_sorts_unresolved_before_resolved() {
         let dir = tempfile::tempdir().unwrap();
         let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
         let mut conn = pool.get().unwrap();
         let (_kh, sub, link) = seed_link(&conn);
 
-        let open = raise(
-            &mut conn,
-            Raise {
-                submissive_id: &sub,
-                link_id: &link,
-                raised_via: RaisedVia::Submissive,
-                related_checkin_id: None,
-                message: None,
-            },
-        )
-        .unwrap();
         let resolved = raise(
             &mut conn,
             Raise {
@@ -254,15 +273,83 @@ mod tests {
             },
         )
         .unwrap();
-        conn.execute(
-            "UPDATE safety_alerts SET resolved_at = 1 WHERE id = ?1",
-            params![resolved],
+        let open = raise(
+            &mut conn,
+            Raise {
+                submissive_id: &sub,
+                link_id: &link,
+                raised_via: RaisedVia::Submissive,
+                related_checkin_id: None,
+                message: None,
+            },
+        )
+        .unwrap();
+        resolve(&conn, &resolved).unwrap();
+
+        let all = list_for_links(&conn, std::slice::from_ref(&link)).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].id, open);
+        assert_eq!(all[1].id, resolved);
+    }
+
+    #[test]
+    fn list_for_links_is_scoped_to_the_given_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let mut conn = pool.get().unwrap();
+        let (_kh, sub, link) = seed_link(&conn);
+        let (_kh2, sub2, other_link) = seed_link(&conn);
+
+        raise(
+            &mut conn,
+            Raise {
+                submissive_id: &sub,
+                link_id: &link,
+                raised_via: RaisedVia::Submissive,
+                related_checkin_id: None,
+                message: None,
+            },
+        )
+        .unwrap();
+        raise(
+            &mut conn,
+            Raise {
+                submissive_id: &sub2,
+                link_id: &other_link,
+                raised_via: RaisedVia::Submissive,
+                related_checkin_id: None,
+                message: None,
+            },
         )
         .unwrap();
 
-        let unresolved = unresolved_for_link(&conn, &link).unwrap();
-        assert_eq!(unresolved.len(), 1);
-        assert_eq!(unresolved[0].id, open);
+        assert_eq!(list_for_links(&conn, &[link]).unwrap().len(), 1);
+        assert_eq!(list_for_links(&conn, &[]).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn resolve_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let mut conn = pool.get().unwrap();
+        let (_kh, sub, link) = seed_link(&conn);
+        let alert_id = raise(
+            &mut conn,
+            Raise {
+                submissive_id: &sub,
+                link_id: &link,
+                raised_via: RaisedVia::Submissive,
+                related_checkin_id: None,
+                message: None,
+            },
+        )
+        .unwrap();
+
+        resolve(&conn, &alert_id).unwrap();
+        let first = get(&conn, &alert_id).unwrap().unwrap().resolved_at;
+        resolve(&conn, &alert_id).unwrap();
+        let second = get(&conn, &alert_id).unwrap().unwrap().resolved_at;
+        assert_eq!(first, second);
     }
 
     #[test]

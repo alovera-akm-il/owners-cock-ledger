@@ -4,6 +4,7 @@ use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
@@ -247,6 +248,7 @@ fn keyholder_owns_assignment(
             rusqlite::params![link_id, keyholder_id],
             |row| row.get(0),
         )
+        .optional()
         .map_err(|_| INTERNAL_ERROR)?;
     owns.map(|_| ()).ok_or(NOT_FOUND)
 }
