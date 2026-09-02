@@ -13,6 +13,7 @@ pub mod proofs;
 pub mod roster;
 pub mod safety;
 pub mod templates;
+pub mod toys;
 pub mod verification;
 
 use axum::Json;

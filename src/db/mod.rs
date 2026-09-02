@@ -86,6 +86,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/0022_api_tokens.sql")),
         M::up(include_str!("../../migrations/0023_link_settings.sql")),
         M::up(include_str!("../../migrations/0024_notifications.sql")),
+        M::up(include_str!("../../migrations/0025_toys.sql")),
     ])
 }
 

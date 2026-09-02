@@ -118,7 +118,8 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::templates::router())
                 .merge(api::assignments::router())
                 .merge(api::api_tokens::router())
-                .merge(api::notifications::router()),
+                .merge(api::notifications::router())
+                .merge(api::toys::router()),
         )
         .merge(web::router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
@@ -3619,5 +3620,140 @@ mod tests {
                 .iter()
                 .any(|n| n["type"] == "task.failed")
         );
+    }
+
+    #[tokio::test]
+    async fn toy_catalog_add_edit_request_removal_retire_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-toys@example.test", "sub-toys@example.test")
+                .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        // Keyholder adds one.
+        let (status, kh_toy) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/toys"),
+                serde_json::json!({"name": "steel cage", "category": "chastity", "material": "steel"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let kh_toy_id = kh_toy["id"].as_str().unwrap().to_string();
+
+        // Submissive adds their own.
+        let (status, sub_toy) = submissive
+            .post(
+                "/api/v1/submissive/toys",
+                serde_json::json!({"name": "bullet vibe", "tags": ["quiet", "travel-friendly"]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let sub_toy_id = sub_toy["id"].as_str().unwrap().to_string();
+
+        // Both roles see the same two-item catalog.
+        let (_, list) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/toys"))
+            .await;
+        assert_eq!(list.as_array().unwrap().len(), 2);
+        let (_, list) = submissive.get("/api/v1/submissive/toys").await;
+        assert_eq!(list.as_array().unwrap().len(), 2);
+
+        // Submissive can edit a toy the Keyholder added (12-toy-catalog.md §4).
+        let (status, _) = submissive
+            .patch(
+                &format!("/api/v1/toys/{kh_toy_id}"),
+                serde_json::json!({"storage_location": "bedside drawer"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Submissive can't retire outright, only request.
+        let (status, _) = submissive
+            .post(
+                &format!("/api/v1/submissive/toys/{sub_toy_id}/request-removal"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        // Double-request is a conflict.
+        let (status, _) = submissive
+            .post(
+                &format!("/api/v1/submissive/toys/{sub_toy_id}/request-removal"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
+        assert!(
+            kh_feed
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["type"] == "toy.retirement_requested")
+        );
+
+        // Keyholder declines it — toy stays active, submissive notified.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/toys/{sub_toy_id}/decline-removal"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = submissive.get("/api/v1/submissive/toys").await;
+        assert!(
+            list.as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == sub_toy_id && t["retirement_requested_at"].is_null())
+        );
+
+        // Keyholder retires the other one directly.
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/toys/{kh_toy_id}/retire"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, list) = submissive.get("/api/v1/submissive/toys").await;
+        assert_eq!(list.as_array().unwrap().len(), 1);
+        let (_, list) = submissive
+            .get("/api/v1/submissive/toys?include_retired=true")
+            .await;
+        assert_eq!(list.as_array().unwrap().len(), 2);
+
+        let (_, sub_feed) = submissive.get("/api/v1/notifications").await;
+        let resolved_count = sub_feed
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|n| n["type"] == "toy.retirement_resolved")
+            .count();
+        assert_eq!(resolved_count, 2); // decline + retire
+
+        // A second, unrelated keyholder can't reach either toy.
+        seed_keyholder(
+            &pool,
+            "kh-toys-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_keyholder = TestClient::new(pool.clone());
+        other_keyholder.get("/health").await;
+        other_keyholder
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-toys-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_keyholder
+            .post(
+                &format!("/api/v1/keyholder/toys/{sub_toy_id}/retire"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

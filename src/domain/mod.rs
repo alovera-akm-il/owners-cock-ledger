@@ -10,6 +10,7 @@ pub mod proofs;
 pub mod push;
 pub mod rewards_punishments;
 pub mod safety;
+pub mod toys;
 pub mod two_factor;
 pub mod users;
 pub mod verification;
