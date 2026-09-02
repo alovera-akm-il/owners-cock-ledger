@@ -2104,6 +2104,126 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn link_status_only_allows_forward_transitions() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-linkstatus@example.test",
+            "sub-linkstatus@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link"),
+                serde_json::json!({"status": "paused"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Can't go back to active — not even a recognized target value.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link"),
+                serde_json::json!({"status": "active"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link"),
+                serde_json::json!({"status": "ended"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        // Once ended, the link is no longer active/paused, so it's no
+        // longer resolvable as "yours to act on" at all (same as every
+        // other write-scoped endpoint) — 404, not 409.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link"),
+                serde_json::json!({"status": "paused"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // The ended link no longer shows up in the active roster.
+        let (_, roster) = keyholder.get("/api/v1/keyholder/submissives").await;
+        assert_eq!(roster.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn link_settings_gate_submissive_self_report() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-selfreport@example.test",
+            "sub-selfreport@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+        let (_, device) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "steel #1"}),
+            )
+            .await;
+        let device_id = device["id"].as_str().unwrap().to_string();
+
+        // Off by default.
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/confinement-sessions",
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // A submissive can't grant themselves the setting.
+        let (status, _) = submissive
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link/settings"),
+                serde_json::json!({"self_report_allowed": true, "catalog_visible_to_submissive": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/link/settings"),
+                serde_json::json!({"self_report_allowed": true, "catalog_visible_to_submissive": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (status, _) = submissive
+            .post(
+                "/api/v1/submissive/confinement-sessions",
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (_, status_body) = submissive.get("/api/v1/submissive/status").await;
+        assert_eq!(status_body["locked"], true);
+        let session_id = status_body["session_id"].as_str().unwrap().to_string();
+
+        let (status, _) = submissive
+            .patch(
+                &format!("/api/v1/submissive/confinement-sessions/{session_id}"),
+                serde_json::json!({"ended_reason": "scheduled_release"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, status_body) = submissive.get("/api/v1/submissive/status").await;
+        assert_eq!(status_body["locked"], false);
+    }
+
+    #[tokio::test]
     async fn device_and_confinement_lifecycle() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(

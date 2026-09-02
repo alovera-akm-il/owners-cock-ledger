@@ -107,6 +107,104 @@ pub fn force_end(conn: &Connection, link_id: &str) -> rusqlite::Result<bool> {
     Ok(affected > 0)
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SetStatusError {
+    #[error("link not found or not yours")]
+    NotFound,
+    #[error("that status transition isn't allowed from the link's current status")]
+    InvalidTransition,
+    #[error(transparent)]
+    Db(#[from] rusqlite::Error),
+}
+
+/// `PATCH /keyholder/submissives/{id}/link` (03-api-design.md §2) —
+/// only forward transitions (`active`→`paused`, `active`→`ended`,
+/// `paused`→`ended`); there's no way back to `active` here on purpose
+/// (a new invite starts a fresh link instead, 02-roles-and-permissions.md
+/// §4). Keyholder-scoped, same as every other link mutation.
+pub fn set_status(
+    conn: &Connection,
+    link_id: &str,
+    keyholder_id: &str,
+    new_status: &str,
+) -> Result<(), SetStatusError> {
+    let current: Option<String> = conn
+        .query_row(
+            "SELECT status FROM keyholder_submissive_links WHERE id = ?1 AND keyholder_id = ?2",
+            params![link_id, keyholder_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(current) = current else {
+        return Err(SetStatusError::NotFound);
+    };
+
+    let allowed = matches!(
+        (current.as_str(), new_status),
+        ("active", "paused") | ("active", "ended") | ("paused", "ended")
+    );
+    if !allowed {
+        return Err(SetStatusError::InvalidTransition);
+    }
+
+    if new_status == "ended" {
+        conn.execute(
+            "UPDATE keyholder_submissive_links SET status = ?1, ended_at = ?2 WHERE id = ?3",
+            params![new_status, crate::auth::session::now(), link_id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE keyholder_submissive_links SET status = ?1 WHERE id = ?2",
+            params![new_status, link_id],
+        )?;
+    }
+    Ok(())
+}
+
+pub struct LinkSettings {
+    pub self_report_allowed: bool,
+    pub catalog_visible_to_submissive: bool,
+}
+
+/// `PATCH /keyholder/submissives/{id}/link/settings` (03-api-design.md
+/// §2). Returns `false` if no such link belongs to this Keyholder.
+pub fn set_settings(
+    conn: &Connection,
+    link_id: &str,
+    keyholder_id: &str,
+    settings: LinkSettings,
+) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE keyholder_submissive_links
+         SET self_report_allowed = ?1, catalog_visible_to_submissive = ?2
+         WHERE id = ?3 AND keyholder_id = ?4",
+        params![
+            settings.self_report_allowed,
+            settings.catalog_visible_to_submissive,
+            link_id,
+            keyholder_id
+        ],
+    )?;
+    Ok(affected > 0)
+}
+
+/// Read side of the settings above — gates the submissive self-report
+/// confinement endpoints (03-api-design.md §4) and catalog read access
+/// (03-api-design.md §7).
+pub fn settings_for_link(conn: &Connection, link_id: &str) -> rusqlite::Result<LinkSettings> {
+    conn.query_row(
+        "SELECT self_report_allowed, catalog_visible_to_submissive
+         FROM keyholder_submissive_links WHERE id = ?1",
+        params![link_id],
+        |row| {
+            Ok(LinkSettings {
+                self_report_allowed: row.get(0)?,
+                catalog_visible_to_submissive: row.get(1)?,
+            })
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +285,107 @@ mod tests {
         assert_eq!(status, "ended");
 
         assert!(!force_end(&conn, &link_id).unwrap());
+    }
+
+    #[test]
+    fn set_status_allows_forward_transitions_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        set_status(&conn, &link_id, &kh, "paused").unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "paused");
+
+        // Can't go back to active.
+        let result = set_status(&conn, &link_id, &kh, "active");
+        assert!(matches!(result, Err(SetStatusError::InvalidTransition)));
+
+        set_status(&conn, &link_id, &kh, "ended").unwrap();
+        let (status, ended_at): (String, Option<i64>) = conn
+            .query_row(
+                "SELECT status, ended_at FROM keyholder_submissive_links WHERE id = ?1",
+                params![link_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "ended");
+        assert!(ended_at.is_some());
+
+        // Nothing is a valid transition out of ended.
+        let result = set_status(&conn, &link_id, &kh, "paused");
+        assert!(matches!(result, Err(SetStatusError::InvalidTransition)));
+    }
+
+    #[test]
+    fn set_status_is_scoped_to_the_owning_keyholder() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        let result = set_status(&conn, &link_id, "someone-else", "paused");
+        assert!(matches!(result, Err(SetStatusError::NotFound)));
+    }
+
+    #[test]
+    fn settings_default_to_self_report_off_and_catalog_visible() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        let settings = settings_for_link(&conn, &link_id).unwrap();
+        assert!(!settings.self_report_allowed);
+        assert!(settings.catalog_visible_to_submissive);
+    }
+
+    #[test]
+    fn set_settings_updates_both_flags_and_is_scoped_to_the_keyholder() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(&dir.path().join("db.sqlite3")).unwrap();
+        let conn = pool.get().unwrap();
+        let (kh, sub) = seed_users(&conn);
+        let link_id = create(&conn, &kh, &sub).unwrap();
+
+        assert!(
+            !set_settings(
+                &conn,
+                &link_id,
+                "someone-else",
+                LinkSettings {
+                    self_report_allowed: true,
+                    catalog_visible_to_submissive: false,
+                },
+            )
+            .unwrap()
+        );
+
+        assert!(
+            set_settings(
+                &conn,
+                &link_id,
+                &kh,
+                LinkSettings {
+                    self_report_allowed: true,
+                    catalog_visible_to_submissive: false,
+                },
+            )
+            .unwrap()
+        );
+
+        let settings = settings_for_link(&conn, &link_id).unwrap();
+        assert!(settings.self_report_allowed);
+        assert!(!settings.catalog_visible_to_submissive);
     }
 }

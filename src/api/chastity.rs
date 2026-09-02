@@ -577,6 +577,90 @@ async fn own_session_history(
     .map_err(|_| INTERNAL_ERROR)?
 }
 
+/// Only reachable when `self_report_allowed` is set on the caller's own
+/// active link (03-api-design.md §4) — off by default, since the
+/// Keyholder is the system of record for lock/unlock events unless they
+/// opt a specific submissive in (01-data-model.md §3).
+fn require_self_report_allowed(
+    conn: &rusqlite::Connection,
+    submissive_id: &str,
+) -> Result<(), ApiError> {
+    let link_id = links::active_link_for_submissive(conn, submissive_id)
+        .map_err(|_| INTERNAL_ERROR)?
+        .ok_or(NOT_FOUND)?;
+    let settings = links::settings_for_link(conn, &link_id).map_err(|_| INTERNAL_ERROR)?;
+    if settings.self_report_allowed {
+        Ok(())
+    } else {
+        Err(FORBIDDEN)
+    }
+}
+
+/// `POST /submissive/confinement-sessions` — same shape as the
+/// Keyholder-side start; the timer-adjustment endpoints stay
+/// Keyholder-only even with self-report enabled (self-report covers "I
+/// put it back on," not "how long I'm supposed to stay in it").
+async fn submissive_start_session(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Json(req): Json<StartSessionRequest>,
+) -> Result<Json<StatusResponse>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        require_self_report_allowed(&conn, &user.user_id)?;
+        let result = confinement::start(
+            &conn,
+            confinement::StartSession {
+                submissive_id: &user.user_id,
+                device_id: &req.device_id,
+                started_reason: &req.started_reason,
+                target_release_at: req.target_release_at,
+                notes: req.notes.as_deref(),
+            },
+        );
+        match result {
+            Ok(_) => {}
+            Err(confinement::StartError::AlreadyOpen) => return Err(CONFLICT),
+            Err(confinement::StartError::Db(_)) => return Err(INTERNAL_ERROR),
+        }
+        let status = confinement::status_for(&conn, &user.user_id).map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(status_response(status)))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+/// `PATCH /submissive/confinement-sessions/{sessionId}` — same shape as
+/// the Keyholder-side close.
+async fn submissive_end_session(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(_session_id): Path<String>,
+    Json(req): Json<EndSessionRequest>,
+) -> Result<StatusCode, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        require_self_report_allowed(&conn, &user.user_id)?;
+        match confinement::end(
+            &conn,
+            &user.user_id,
+            &req.ended_reason,
+            &user.user_id,
+            req.notes.as_deref(),
+        ) {
+            Ok(()) => Ok(StatusCode::NO_CONTENT),
+            Err(confinement::NoOpenSessionError::NotOpen) => Err(CONFLICT),
+            Err(confinement::NoOpenSessionError::Db(_)) => Err(INTERNAL_ERROR),
+        }
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
 pub fn router() -> Router<db::AppState> {
     Router::new()
         .route(
@@ -623,5 +707,12 @@ pub fn router() -> Router<db::AppState> {
             "/submissive/confinement-sessions/{sessionId}/timer-adjustments",
             get(list_timer_adjustments_submissive),
         )
-        .route("/submissive/confinement-sessions", get(own_session_history))
+        .route(
+            "/submissive/confinement-sessions",
+            get(own_session_history).post(submissive_start_session),
+        )
+        .route(
+            "/submissive/confinement-sessions/{sessionId}",
+            patch(submissive_end_session),
+        )
 }

@@ -285,6 +285,9 @@ struct SubmissiveDetailTemplate {
     frequency_kind: String,
     keyholder_display_name: String,
     keyholder_initial: String,
+    link_status: String,
+    self_report_allowed: bool,
+    catalog_visible_to_submissive: bool,
 }
 
 async fn submissive_detail_page(
@@ -324,11 +327,24 @@ async fn submissive_detail_page(
             .collect::<Vec<_>>();
         let status = confinement::status_for(&conn, &target_id)?;
         let p = policy::get_for_link(&conn, &link_id)?;
-        Ok(Some((display_name, device_list, status, p)))
+        let link_status: String = conn.query_row(
+            "SELECT status FROM keyholder_submissive_links WHERE id = ?1",
+            params![link_id],
+            |row| row.get(0),
+        )?;
+        let settings = links::settings_for_link(&conn, &link_id)?;
+        Ok(Some((
+            display_name,
+            device_list,
+            status,
+            p,
+            link_status,
+            settings,
+        )))
     })
     .await;
 
-    let Ok(Ok(Some((display_name, device_list, status, p)))) = result else {
+    let Ok(Ok(Some((display_name, device_list, status, p, link_status, settings)))) = result else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
@@ -342,6 +358,9 @@ async fn submissive_detail_page(
         overdue: status.overdue,
         clock_paused: status.clock_paused,
         frequency_kind: p.map(|p| p.frequency_kind).unwrap_or_default(),
+        link_status,
+        self_report_allowed: settings.self_report_allowed,
+        catalog_visible_to_submissive: settings.catalog_visible_to_submissive,
         keyholder_initial: initial_of(&user.display_name),
         keyholder_display_name: user.display_name,
     })
