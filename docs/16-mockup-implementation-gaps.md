@@ -63,18 +63,18 @@ by actually driving the page through that specific state.
 
 | # | Finding | Page(s) | Status |
 |---|---|---|---|
-| 1 | Login page has no 2FA challenge step at all — a 2FA-enabled user cannot log in through the web UI | `login.html` | **Critical — to implement** |
-| 2 | Toy photo upload: DB column + API field exist, no upload route, no UI anywhere | Toy catalog (both roles) | High — to implement |
-| 3 | Safety alerts list shows no submissive name/attribution — a Keyholder with 2+ submissives can't tell whose alert is whose without a separate lookup | `safety_alerts.html` | High — to implement (safety-relevant) |
+| 1 | Login page has no 2FA challenge step at all — a 2FA-enabled user cannot log in through the web UI | `login.html` | **Fixed** |
+| 2 | Toy photo upload: DB column + API field exist, no upload route, no UI anywhere | Toy catalog (both roles) | **Fixed** |
+| 3 | Safety alerts list shows no submissive name/attribution — a Keyholder with 2+ submissives can't tell whose alert is whose without a separate lookup | `safety_alerts.html` | **Fixed** |
 | 4 | Structured hard/soft limits + free-text limits live on a separate page instead of the profile — user-requested consolidation | Profile, Limits | **Fixed** |
-| 5 | No per-submissive single-item proof review view (mockup's `proof-review.html` shape) — only the cross-submissive queue exists | Review flow | **Confirmed by user — to implement**, additive to the existing queue |
-| 6 | No keyholder-wide pending-redemption-requests view — only visible per-submissive | Keyholder dashboard | **Confirmed by user — to implement** |
+| 5 | No per-submissive single-item proof review view (mockup's `proof-review.html` shape) — only the cross-submissive queue exists | Review flow | **Fixed** — additive to the existing queue, per user confirmation |
+| 6 | No keyholder-wide pending-redemption-requests view — only visible per-submissive | Keyholder dashboard | **Fixed**, per user confirmation |
 | 7 | Submit-proof page: no live countdown to code expiry, no "request new code" if it expires mid-fill, no in-browser record capture (file upload only) | `submit_proof.html` | **Live countdown + request-new-code fixed.** In-browser record capture still deferred — see note below. |
 | 8 | Confinement timer was static text, not live | Dashboard, submissive detail | **Fixed** |
 | 9 | `submissive_detail.html` nav missing "Limits" link | Submissive detail | **Fixed** |
 | 10 | No mobile nav on any page (19 pages) | All | **Fixed** |
-| 11 | Toy `compatible_device_id` and `acquired_at`: API/DB support them, no UI anywhere (mockup never designed for them either) | Toy catalog | Low — to implement |
-| 12 | Device `description` field: API accepts it, no UI input (mockup never had one either) | Submissive detail (devices) | Low — to implement |
+| 11 | Toy `compatible_device_id` and `acquired_at`: API/DB support them, no UI anywhere (mockup never designed for them either) | Toy catalog | **Fixed** |
+| 12 | Device `description` field: API accepts it, no UI input (mockup never had one either) | Submissive detail (devices) | **Fixed** |
 | 13 | No Audit Log UI (backend writes the log; nothing reads it back) | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 14 | No submissive History page | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 15 | No keyholder-wide cross-submissive Toy catalog view | — (page doesn't exist) | Deferred (scoped out earlier) |
@@ -110,7 +110,7 @@ illustrative simplification" findings elsewhere in this document.
 
 ---
 
-## 2. Critical: no 2FA login-challenge UI
+## 2. Critical: no 2FA login-challenge UI (fixed)
 
 **`templates/login.html`** posts credentials to `POST /api/v1/auth/login`
 and does:
@@ -140,12 +140,17 @@ and, relevantly, a `tfa-code` input + `tfa-verify-btn` step that
 appears after password submission when the server signals 2FA is
 required.
 
-**Net effect:** every other 2FA surface in the app is real and
-tested — setup, confirm, recovery codes, disable, all wired to
+**Net effect (as found):** every other 2FA surface in the app is real
+and tested — setup, confirm, recovery codes, disable, all wired to
 `account_settings.html` and covered by
 `two_factor_setup_confirm_and_login_challenge_round_trip` — except the
 one moment a 2FA-enabled user actually needs it: logging back in. This
-is the highest-priority item in this document.
+was the highest-priority item in this document.
+
+**Fixed:** `login.html` now branches on `res.requires_2fa`, shows a
+code-entry step, and posts it to `/api/v1/auth/2fa/verify` before
+redirecting — the same two-call flow the API always expected, just
+completed by the page instead of abandoned after the first call.
 
 ---
 
@@ -209,33 +214,33 @@ above.
 
 | Mockup | Real | Audit | Findings |
 |---|---|---|---|
-| `keyholder-dashboard.html` | `dashboard.html` (`/dashboard`) | Structural | Mockup's top nav includes **Toys** and **Audit Log** as global items; real has neither (toys is per-submissive only, no cross-submissive route exists; audit log has no UI at all — item 11). Mockup's roster table and invite-modal shapes match the real implementation. |
-| `keyholder-toy-catalog.html` | `toy_catalog.html` (`/keyholder/submissives/{id}/toys`) | Deep | Mockup is a **global, cross-submissive** catalog with a submissive-selector dropdown; real is scoped to one submissive, reached only by drilling in — a different IA, and the real API has no cross-submissive toy-listing route to support the mockup's shape (item 13, deferred). Photo upload (item 2), `compatible_device_id` (item 8) unwired in both roles' toy forms. |
+| `keyholder-dashboard.html` | `dashboard.html` (`/dashboard`) | Structural | Mockup's top nav includes **Toys** and **Audit Log** as global items; real has neither (toys is per-submissive only, no cross-submissive route exists — item 15, deferred; audit log has no UI at all — item 13, deferred). Mockup's roster table and invite-modal shapes match the real implementation. |
+| `keyholder-toy-catalog.html` | `toy_catalog.html` (`/keyholder/submissives/{id}/toys`) | Deep | Mockup is a **global, cross-submissive** catalog with a submissive-selector dropdown; real is scoped to one submissive, reached only by drilling in — a different IA, and the real API has no cross-submissive toy-listing route to support the mockup's shape (item 15, deferred). Photo upload (item 2) and `compatible_device_id` (item 11) — both **fixed**. |
 | `keyholder-profile.html` | `account_settings.html` (`is_keyholder` branch) | Deep | Mockup's Personal info/Safety/Boundaries sections are split three ways; real merges them into one "Personal profile" section — functionally equivalent fields (bio, contact info, hard/soft limits, timezone), just fewer panels. 2FA, sessions, password change all real and matching. API tokens section is real-only (mockup predates it; correct, since tokens are a later addition per `01-data-model.md` §9). No "Your submissive's boundaries" read-only mirror section — see item 17: not a gap, the mockup's 1:1 assumption doesn't generalize to the real app's 1:many roster, and the information is already visible on the submissive's own detail page. |
 | `keyholder-limits-catalog.html` | `limits_catalog.html` (`/keyholder/limit-items`) | Deep | Confirmed no gap: the mockup's closing note ("Sensation, Chastity & Denial, Fluids, Psychological, Medical, and Exhibitionism ship the same way — a modest starter list per category") is real — `migrations/0029_limits.sql` seeds exactly those categories with starter items. |
-| `keyholder-safety-alerts.html` | `safety_alerts.html` (`/keyholder/safety-alerts`) | Deep | **Real gap (item 3):** the mockup labels every alert row with the submissive's name ("Riley," "Sam," "Jordan"); the real list has no name or attribution anywhere. `AlertResponse` (`src/api/safety.rs`) only exposes a raw `submissive_id`, and `safety_alerts.html`'s `renderAlert()` never resolves or displays it. For a Keyholder with more than one submissive, there is currently no way to tell whose alert is whose from this page. |
+| `keyholder-safety-alerts.html` | `safety_alerts.html` (`/keyholder/safety-alerts`) | Deep | **Fixed (item 3):** the mockup labels every alert row with the submissive's name ("Riley," "Sam," "Jordan"); the real list previously had no name or attribution anywhere (`AlertResponse` only exposed a raw `submissive_id`). `alert_response()` (`src/api/safety.rs`) now resolves and includes `submissive_display_name`, and `safety_alerts.html`'s `renderAlert()` displays it. |
 | `keyholder-recurring-tasks.html` | `recurring_tasks.html` (`/keyholder/submissives/{id}/recurring-tasks`) | Deep | Built this session directly against this mockup; matches. |
 | `keyholder-submissive-statistics.html` | `keyholder_submissive_statistics.html` | Deep | Built this session directly against this mockup; matches. |
-| `keyholder-points-and-redemptions.html` | *(folded into `submissive_detail.html`'s Points panel, per-submissive)* | Deep | **UI-approach divergence, resolved by consultation (item 6).** Mockup is a cross-submissive "Pending redemption requests" table; real requires opening each submissive individually to see theirs. Decision: keep the folded-in, per-submissive panel as-is (it's complete and working), but add the one missing piece — a keyholder-wide pending-redemptions view, the same aggregation pattern the Review Queue already uses across submissives. Not a full return to the mockup's standalone-page shape. |
-| `keyholder-audit-log.html` | *(none)* | — | Item 11, deferred. Backend (`domain::audit`) writes rows on every state-changing action already; nothing reads them back. |
+| `keyholder-points-and-redemptions.html` | *(folded into `submissive_detail.html`'s Points panel, per-submissive)* + `redemption_requests.html` (`/keyholder/redemption-requests`) | Deep | **UI-approach divergence, resolved by consultation and fixed (item 6).** Mockup is a cross-submissive "Pending redemption requests" table; real required opening each submissive individually to see theirs. Decision: keep the folded-in, per-submissive panel as-is (it's complete and working), and add the one missing piece — a keyholder-wide pending-redemptions view (`redemption_requests.html`), the same aggregation pattern the Review Queue already uses across submissives. Not a full return to the mockup's standalone-page shape. |
+| `keyholder-audit-log.html` | *(none)* | — | Item 13, deferred. Backend (`domain::audit`) writes rows on every state-changing action already; nothing reads them back. |
 | `catalog.html` | `catalog.html` (`/keyholder/catalog`) | Structural | Field counts match (4/4) for the task/reward/punishment template form. |
 | `checkin-templates.html` | `checkin_templates.html` (`/keyholder/checkin-templates`) | Structural | Field counts match; real has an extra `field-key` input the mockup doesn't show explicitly. |
 | `play-session-templates.html` | `play_session_templates.html` (`/keyholder/play-session-templates`) | Structural | Real has *more* fields than the mockup (6 vs 3) — real exceeds the mockup here, not a gap. |
-| `proof-review.html` | `proof_review.html` (`/keyholder/review`) | Deep | **UI-approach divergence, resolved by consultation (item 5).** The mockup is a single-submission review view reached from one submissive's own page (`← Riley` back-link); the real page is a cross-submissive "Review Queue" aggregating every submissive's pending proof. Decision: keep the queue *and* add the per-submissive single-item view the mockup shows — additive, not a replacement. |
+| `proof-review.html` | `proof_review.html` (`/keyholder/review`) + `submissive_review.html` (`/keyholder/submissives/{id}/review`) | Deep | **UI-approach divergence, resolved by consultation and fixed (item 5).** The mockup is a single-submission review view reached from one submissive's own page (`← Riley` back-link); the real page is a cross-submissive "Review Queue" aggregating every submissive's pending proof. Decision: keep the queue *and* add the per-submissive single-item view the mockup shows (`submissive_review.html`) — additive, not a replacement. |
 
 ### 4.3 Submissive pages
 
 | Mockup | Real | Audit | Findings |
 |---|---|---|---|
-| `submissive-dashboard.html` | `submissive_dashboard.html` (`/submissive`) | Deep | Live countdown — **fixed this session** (was static). Nav: mockup lists "Rewards & Points" and "History" as their own pages; real folds points into the dashboard inline and has no History page at all (item 12, deferred). |
+| `submissive-dashboard.html` | `submissive_dashboard.html` (`/submissive`) | Deep | Live countdown — **fixed**. Nav: mockup lists "Rewards & Points" and "History" as their own pages; real folds points into the dashboard inline and has no History page at all (item 14, deferred). |
 | `submissive-detail.html` | *(this is the Keyholder's page, see 4.2 — mockup name is misleading)* | Deep | Covered under `submissive_detail.html` in 4.2's row-equivalent; also: live countdown fixed, "Limits" nav-link bug fixed this session. |
-| `submissive-toy-catalog.html` | `submissive_toys.html` (`/submissive/toys`) | Deep | Same photo-upload and `compatible_device_id` gaps as the Keyholder-side toy catalog (item 2, item 8) — these are backend/schema-level gaps shared by both roles' toy UI, not role-specific. |
+| `submissive-toy-catalog.html` | `submissive_toys.html` (`/submissive/toys`) | Deep | Same photo-upload and `compatible_device_id` fixes as the Keyholder-side toy catalog (item 2, item 11) — these were backend/schema-level gaps shared by both roles' toy UI, not role-specific, so one fix covered both. |
 | `submissive-profile.html` | `account_settings.html` (submissive branch) | Deep | See §3 for the limits/kinks consolidation (fixed). Also fixed (item 16): a read-only "Your Keyholder's boundaries" panel now shows the linked Keyholder's bio/hard limits/soft limits, via the new `GET /api/v1/submissive/keyholder-profile` endpoint (`src/api/profiles.rs`). |
 | `submissive-limits.html` | *(folded into `account_settings.html`'s "Limits & kinks" section, per §3)* | Deep | Functionally solid match to the mockup (category grouping, rating buttons, notes) — now reached via the profile page instead of its own route. |
 | `submissive-play-sessions.html` | `submissive_play_sessions.html` (`/submissive/play-sessions`) | Structural | Not deep-audited. |
 | `submissive-play-session-detail.html` | `play_session_detail.html` (shared route, role-aware) | Structural | Real is substantially richer than the mockup (judgement flow, punishment/reward custom forms, schedule panel, toys panel) — real exceeds mockup, not a gap. |
 | `submissive-rewards.html` | *(folded into `submissive_dashboard.html`'s Points panel)* | Structural | Functionally present (redeemable list, redeem button, pending-redemption state) — just inline on the dashboard instead of a dedicated page. Not a gap, a placement choice consistent with the points-and-redemptions consolidation on the Keyholder side too. |
-| `submissive-history.html` | *(none)* | — | Item 12, deferred. Nothing in the real app currently explains "why did my time change" the way this mockup page promised (linked from the mockup dashboard's countdown hero). |
+| `submissive-history.html` | *(none)* | — | Item 14, deferred. Nothing in the real app currently explains "why did my time change" the way this mockup page promised (linked from the mockup dashboard's countdown hero). |
 | `submit-proof.html` | `submit_proof.html` (`/submissive/submit-proof`) + `assignment_proof.html` (task-specific) | Deep | See item 7 — live code-expiry countdown and in-page "request new code" **fixed**; in-browser record capture (upload-only currently) still deferred, on the basis that it's a materially larger feature (getUserMedia capture UI, a record/stop/preview flow, converting the captured blob into the same multipart upload the file-picker path already uses) rather than a small addition alongside the other two, and the punch list itself flagged it as likely separate follow-up work rather than bundled with the countdown/request-code fixes. Voice as a proof `kind` is correctly *absent* from `submit_proof.html`'s selector (verification-code proof is photo/video only per `04-verification-workflow.md`; voice is real and correctly present on the task-specific `assignment_proof.html` instead, driven by `media_options`). |
 | `submit-checkin.html` | `submit_checkin.html` (shared route) | Deep | Confirmed no gap. The mockup hardcodes one example template's fields (skin status, cage comfort, incidents, sleep quality, device, duration) as an illustration; the real page has a `#template-select` picker plus the same generic field-type renderer (`select`/`scale`/`number`/`boolean`/`text`) that `checkin_live.html` uses, so every field shape the mockup shows is reachable through a real template's configuration, not hardcoded. |
 | `checkin-live.html` | `checkin_live.html` (shared route, role-aware) | Deep | Confirmed no gap. The mockup states outright, in its own body text, that it "shows both people's screens side by side and simulates the update happening... in the real app, each person only sees their own page" — the two-pane layout and the `sim-*`/`#log` demo-control panel are explicitly disclosed mockup-only scaffolding, not a spec for a two-pane feature. The real single-pane page implements the disclosed real concept faithfully: color banner with the same three-state switcher, the same generic custom-field renderer, and real-time sync via Server-Sent Events (`EventSource` on `/api/v1/play-sessions/{id}/checkin-stream`) rather than the mockup's simulated `flash()` call — a working implementation of what the mockup only pretended to do live. |
