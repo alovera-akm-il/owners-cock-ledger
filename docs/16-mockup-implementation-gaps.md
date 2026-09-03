@@ -73,7 +73,7 @@ by actually driving the page through that specific state.
 | 8 | Confinement timer was static text, not live | Dashboard, submissive detail | **Fixed** |
 | 9 | `submissive_detail.html` nav missing "Limits" link | Submissive detail | **Fixed** |
 | 10 | No mobile nav on any page (19 pages) | All | **Fixed** |
-| 11 | Toy `compatible_device_id` and `acquired_at`: API/DB support them, no UI anywhere (mockup never designed for them either) | Toy catalog | **Fixed** |
+| 11 | Toy `compatible_device_id` and `acquired_at`: API/DB support them, no UI anywhere (mockup never designed for them either) | Toy catalog | `compatible_device_id` fixed; `acquired_at` was not actually wired up despite being marked Fixed here earlier — see item 23 |
 | 12 | Device `description` field: API accepts it, no UI input (mockup never had one either) | Submissive detail (devices) | **Fixed** |
 | 13 | No Audit Log UI (backend writes the log; nothing reads it back) | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 14 | No submissive History page | — (page doesn't exist) | Deferred (scoped out earlier) |
@@ -82,6 +82,10 @@ by actually driving the page through that specific state.
 | 17 | Mockup's `keyholder-profile.html` has a "Your submissive's boundaries" read-only mirror; real has no equivalent on the Keyholder's own profile page | `keyholder-profile.html` | Not a gap — see note below |
 | 18 | Keyholder dashboard is missing an entire feature the mockup designed: a cross-roster "Needs your attention" priority feed, four stat cards, and an enriched roster table (lock status/last verification/pending/open items) — the real page was a bare two-column table with a literal "not built yet" placeholder comment still in the code | `keyholder-dashboard.html` | **Fixed** |
 | 19 | Layout pattern: the mockup consistently uses a two-column grid on `submissive-dashboard.html`/`submissive-detail.html` (status/config left, activity/actions right); the real templates had identical content but stacked every panel full-width in one column | `submissive-dashboard.html`, `submissive-detail.html` | **Fixed** for these two pages — see note below on scope |
+| 20 | No email or display-name change anywhere in the real app — neither in the UI nor the API/domain layer — though the mockup's `keyholder-profile.html` designs a password-confirmed email-change flow and an editable display-name field | `keyholder-profile.html`, `submissive-profile.html` | Email change confirmed out of scope by the user. Display name: **Fixed.** |
+| 21 | Proof review has no inline consequence-attachment: the mockup lets a Keyholder attach a punishment (from catalog or created on the spot, optionally saved to catalog) as part of marking something Failed, in one action; the real flow requires a separate manual "Assign something" step afterward | `proof-review.html` | To implement |
+| 22 | Redemptions page shows only pending requests; the mockup's `keyholder-points-and-redemptions.html` also shows "Recently decided" (a decided-request history) | `keyholder-points-and-redemptions.html` | To implement |
+| 23 | Item 11's "Fixed" status was wrong: only `compatible_device_id` was ever wired into the toy form; `acquired_at` has no UI in either role's toy catalog page despite the API/DB supporting it (confirmed via direct code search — zero matches for `acquired` in either template) | Toy catalog (both roles) | To implement — tracking correction |
 
 Items 13–15 were already surfaced and explicitly deferred by the
 user's own scoping decision in this session ("bugs + timer + mobile
