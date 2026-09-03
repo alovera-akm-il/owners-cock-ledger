@@ -86,6 +86,10 @@
     <h2 class="text-sm font-semibold mb-3">Personal profile</h2>
     <form id="profile-form" class="space-y-3">
       <div id="profile-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+      <div class="max-w-xs">
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Display name</label>
+        <input id="profile-display-name" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
+      </div>
       <div>
         <label class="block text-xs font-medium text-slate-400 mb-1.5">Bio</label>
         <textarea id="profile-bio" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
@@ -330,6 +334,7 @@
   // ---------- Profile ----------
   function loadProfile() {
     apiCall('GET', '/api/v1/profile').done(function (p) {
+      $('#profile-display-name').val(p.display_name || '');
       $('#profile-bio').val(p.bio || '');
       $('#profile-hard-limits').val(p.hard_limits || '');
       $('#profile-soft-limits').val(p.soft_limits || '');
@@ -347,7 +352,13 @@
   $('#profile-form').on('submit', function (e) {
     e.preventDefault();
     $('#profile-message').addClass('hidden');
+    const displayName = $('#profile-display-name').val().trim();
+    if (!displayName) {
+      $('#profile-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text('Display name can\'t be empty.').removeClass('hidden');
+      return;
+    }
     const payload = {
+      display_name: displayName,
       bio: $('#profile-bio').val() || null,
       hard_limits: $('#profile-hard-limits').val() || null,
       soft_limits: $('#profile-soft-limits').val() || null,

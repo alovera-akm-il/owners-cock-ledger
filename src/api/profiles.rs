@@ -10,10 +10,15 @@ use serde::{Deserialize, Serialize};
 use crate::api::{ApiError, INTERNAL_ERROR};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
-use crate::domain::{links, profiles};
+use crate::domain::{links, profiles, users};
 
 const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "not permitted");
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
+const EMPTY_DISPLAY_NAME: ApiError = ApiError::new(
+    StatusCode::UNPROCESSABLE_ENTITY,
+    "unprocessable",
+    "display name can't be empty",
+);
 
 /// Distinguishes "field omitted" from "field explicitly cleared" — see
 /// the identical helper in `api::templates` for the full reasoning.
@@ -27,6 +32,10 @@ where
 
 #[derive(Serialize)]
 struct KeyholderProfileResponse {
+    // Not part of `profiles::KeyholderProfile` (that struct only covers
+    // `keyholder_profiles`) — filled in from `CurrentUser` by the handler,
+    // same pattern as `keyholder_notes` below.
+    display_name: String,
     bio: Option<String>,
     contact_info: Option<String>,
     timezone: Option<String>,
@@ -37,6 +46,7 @@ struct KeyholderProfileResponse {
 impl From<profiles::KeyholderProfile> for KeyholderProfileResponse {
     fn from(p: profiles::KeyholderProfile) -> Self {
         Self {
+            display_name: String::new(),
             bio: p.bio,
             contact_info: p.contact_info,
             timezone: p.timezone,
@@ -48,6 +58,7 @@ impl From<profiles::KeyholderProfile> for KeyholderProfileResponse {
 
 #[derive(Serialize)]
 struct SubmissiveProfileResponse {
+    display_name: String,
     bio: Option<String>,
     safeword: Option<String>,
     hard_limits: Option<String>,
@@ -64,6 +75,7 @@ struct SubmissiveProfileResponse {
 impl From<profiles::SubmissiveProfile> for SubmissiveProfileResponse {
     fn from(p: profiles::SubmissiveProfile) -> Self {
         Self {
+            display_name: String::new(),
             bio: p.bio,
             safeword: p.safeword,
             hard_limits: p.hard_limits,
@@ -87,18 +99,23 @@ async fn own_profile(
     State(pool): State<Pool>,
     user: CurrentUser,
 ) -> Result<Json<ProfileResponse>, ApiError> {
+    let display_name = user.display_name.clone();
     tokio::task::spawn_blocking(move || -> Result<ProfileResponse, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
         match user.role {
             Role::Keyholder => {
                 let p = profiles::get_keyholder_profile(&conn, &user.user_id)
                     .map_err(|_| INTERNAL_ERROR)?;
-                Ok(ProfileResponse::Keyholder(p.into()))
+                let mut response: KeyholderProfileResponse = p.into();
+                response.display_name = display_name;
+                Ok(ProfileResponse::Keyholder(response))
             }
             Role::Submissive => {
                 let p = profiles::get_submissive_profile(&conn, &user.user_id)
                     .map_err(|_| INTERNAL_ERROR)?;
-                Ok(ProfileResponse::Submissive(p.into()))
+                let mut response: SubmissiveProfileResponse = p.into();
+                response.display_name = display_name;
+                Ok(ProfileResponse::Submissive(response))
             }
         }
     })
@@ -109,6 +126,7 @@ async fn own_profile(
 
 #[derive(Deserialize, Default)]
 struct PatchOwnProfileRequest {
+    display_name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_some")]
     bio: Option<Option<String>>,
     // Keyholder-only field; ignored (not an error) when sent by a
@@ -139,8 +157,17 @@ async fn patch_own_profile(
     user: CurrentUser,
     Json(req): Json<PatchOwnProfileRequest>,
 ) -> Result<StatusCode, ApiError> {
+    if let Some(name) = &req.display_name
+        && name.trim().is_empty()
+    {
+        return Err(EMPTY_DISPLAY_NAME);
+    }
     tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
         let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        if let Some(name) = &req.display_name {
+            users::update_display_name(&conn, &user.user_id, name.trim())
+                .map_err(|_| INTERNAL_ERROR)?;
+        }
         match user.role {
             Role::Keyholder => {
                 profiles::update_keyholder_profile(

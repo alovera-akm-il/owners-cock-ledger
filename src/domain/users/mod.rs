@@ -1,7 +1,8 @@
-//! Core identity (01-data-model.md §2): account creation and the login
-//! lockout mechanism. Profile-field editing (03-api-design.md §3) isn't
-//! built yet — Phase 1 only needs enough of `users`/`*_profiles` to
-//! create accounts and log in.
+//! Core identity (01-data-model.md §2): account creation, the login
+//! lockout mechanism, and display-name editing. Role-specific profile
+//! fields (bio, limits, etc.) live in `*_profiles` and are edited via
+//! `domain::profiles` instead — this module only owns the `users` row
+//! itself.
 
 use rusqlite::{Connection, OptionalExtension, params};
 use thiserror::Error;
@@ -100,6 +101,24 @@ pub fn find_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Option<
         },
     )
     .optional()
+}
+
+/// Sets a new display name — the one `users` field either role can edit
+/// on their own profile (bio/limits/etc. live in the role-specific
+/// `*_profiles` tables instead; this is the only shared identity field
+/// with an edit path at all, since email changes aren't supported).
+/// Rejects empty/whitespace-only input; the caller decides how to
+/// surface that (422, in the API layer).
+pub fn update_display_name(
+    conn: &Connection,
+    user_id: &str,
+    display_name: &str,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE users SET display_name = ?1 WHERE id = ?2",
+        params![display_name, user_id],
+    )?;
+    Ok(())
 }
 
 /// `true` if the account is currently locked out (05-security-and-privacy.md §2).

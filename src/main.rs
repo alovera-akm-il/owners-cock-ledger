@@ -2535,6 +2535,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn display_name_is_editable_for_both_roles_and_rejects_empty() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-name@example.test", "sub-name@example.test")
+                .await;
+
+        let (_, profile) = keyholder.get("/api/v1/profile").await;
+        assert_eq!(profile["display_name"], "KH");
+        let (status, _) = keyholder
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"display_name": "Alex"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, profile) = keyholder.get("/api/v1/profile").await;
+        assert_eq!(profile["display_name"], "Alex");
+
+        let (_, profile) = submissive.get("/api/v1/profile").await;
+        assert_eq!(profile["display_name"], "Sub");
+        let (status, _) = submissive
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"display_name": "Riley"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, profile) = submissive.get("/api/v1/profile").await;
+        assert_eq!(profile["display_name"], "Riley");
+
+        // Empty (or whitespace-only) is rejected, not silently accepted.
+        let (status, _) = submissive
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"display_name": "   "}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let (_, profile) = submissive.get("/api/v1/profile").await;
+        assert_eq!(profile["display_name"], "Riley");
+
+        // The new name shows up fresh on a brand new login too, not just
+        // the request that changed it — confirming it's read live from
+        // `users`, not cached in the session.
+        let (status, login_body) = submissive
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "sub-name@example.test", "password": "another strong password"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(login_body["display_name"], "Riley");
+    }
+
+    #[tokio::test]
     async fn keyholder_notes_are_keyholder_only_and_hidden_from_the_submissives_own_profile() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
