@@ -211,6 +211,33 @@ async fn profile_for_keyholder(
     .map(Json)
 }
 
+/// `GET /submissive/keyholder-profile` — read-only mirror of the linked
+/// Keyholder's stated boundaries, the submissive-facing counterpart to
+/// `profile_for_keyholder` (mockup's `submissive-profile.html` "Your
+/// Keyholder's boundaries" panel, §16 of `16-mockup-implementation-gaps.md`).
+async fn keyholder_profile_for_submissive(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+) -> Result<Json<KeyholderProfileResponse>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<KeyholderProfileResponse, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let link_id = links::active_or_paused_link_for_submissive(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        let (keyholder_id, _) = links::parties(&conn, &link_id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        let p =
+            profiles::get_keyholder_profile(&conn, &keyholder_id).map_err(|_| INTERNAL_ERROR)?;
+        Ok(p.into())
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+    .map(Json)
+}
+
 #[derive(Deserialize)]
 struct PatchKeyholderNotesRequest {
     keyholder_notes: Option<String>,
@@ -244,6 +271,10 @@ async fn patch_keyholder_notes(
 pub fn router() -> Router<db::AppState> {
     Router::new()
         .route("/profile", get(own_profile).patch(patch_own_profile))
+        .route(
+            "/submissive/keyholder-profile",
+            get(keyholder_profile_for_submissive),
+        )
         .route(
             "/keyholder/submissives/{id}/profile",
             get(profile_for_keyholder),

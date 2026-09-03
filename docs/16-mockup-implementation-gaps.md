@@ -66,7 +66,7 @@ by actually driving the page through that specific state.
 | 1 | Login page has no 2FA challenge step at all — a 2FA-enabled user cannot log in through the web UI | `login.html` | **Critical — to implement** |
 | 2 | Toy photo upload: DB column + API field exist, no upload route, no UI anywhere | Toy catalog (both roles) | High — to implement |
 | 3 | Safety alerts list shows no submissive name/attribution — a Keyholder with 2+ submissives can't tell whose alert is whose without a separate lookup | `safety_alerts.html` | High — to implement (safety-relevant) |
-| 4 | Structured hard/soft limits + free-text limits live on a separate page instead of the profile — user-requested consolidation | Profile, Limits | Design decision, confirmed — to implement |
+| 4 | Structured hard/soft limits + free-text limits live on a separate page instead of the profile — user-requested consolidation | Profile, Limits | **Fixed** |
 | 5 | No per-submissive single-item proof review view (mockup's `proof-review.html` shape) — only the cross-submissive queue exists | Review flow | **Confirmed by user — to implement**, additive to the existing queue |
 | 6 | No keyholder-wide pending-redemption-requests view — only visible per-submissive | Keyholder dashboard | **Confirmed by user — to implement** |
 | 7 | Submit-proof page: no live countdown to code expiry, no "request new code" if it expires mid-fill, no in-browser record capture (file upload only) | `submit_proof.html` | Medium — to implement (record capture may split out as larger follow-up work) |
@@ -78,6 +78,8 @@ by actually driving the page through that specific state.
 | 13 | No Audit Log UI (backend writes the log; nothing reads it back) | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 14 | No submissive History page | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 15 | No keyholder-wide cross-submissive Toy catalog view | — (page doesn't exist) | Deferred (scoped out earlier) |
+| 16 | A submissive cannot see their Keyholder's stated boundaries anywhere (mockup's `submissive-profile.html` "Your Keyholder's boundaries" read-only panel has no real counterpart) | `submissive-profile.html` | **Fixed** |
+| 17 | Mockup's `keyholder-profile.html` has a "Your submissive's boundaries" read-only mirror; real has no equivalent on the Keyholder's own profile page | `keyholder-profile.html` | Not a gap — see note below |
 
 Items 13–15 were already surfaced and explicitly deferred by the
 user's own scoping decision in this session ("bugs + timer + mobile
@@ -93,6 +95,18 @@ mockup, and the resolution in both cases was "close the gap by adding
 the missing piece" rather than "the divergence is fine as-is." See
 the Review Queue and Points-and-Redemptions rows in §4 for the full
 reasoning each was weighed against.
+
+Item 17 is deliberately marked "not a gap" rather than deferred or
+consulted: the mockup's "Your submissive's boundaries" panel assumes a
+1:1 Keyholder↔submissive relationship (one profile page, one submissive
+to mirror), but the real app is 1:many — a Keyholder's own profile page
+has no single submissive to show. This isn't the real app taking a
+narrower or different approach that needs a user decision; it's the
+mockup's simplification not surviving contact with an architecture the
+real app already generalizes beyond. The information itself is already
+reachable via the submissive's own detail page, same posture as
+`checkin-live.html`'s and `submit-checkin.html`'s "mockup is an
+illustrative simplification" findings elsewhere in this document.
 
 ---
 
@@ -135,10 +149,11 @@ is the highest-priority item in this document.
 
 ---
 
-## 3. Profile page: structured limits/kinks consolidation (design decision)
+## 3. Profile page: structured limits/kinks consolidation (design decision, fixed)
 
-**Current state:** two separate systems exist for "boundaries," on two
-separate pages:
+**Current state:** one system now exists for "boundaries," on one page
+(`account_settings.html`). Previously there were two separate systems on
+two separate pages, described below for context.
 
 - **Free-text hard/soft limits** — a plain textarea pair on
   `account_settings.html` (`#profile-hard-limits`,
@@ -152,30 +167,27 @@ separate pages:
   (`/keyholder/limit-items`) for catalog management — two separate
   pages, reachable via their own nav links.
 
-**Decision (this session):** the structured rating UI should move onto
-the profile page instead of living at `/submissive/limits`, so a
-submissive sets both their free-text limits and their per-item ratings
-("kinks") in one place. Concretely, this means:
+**Decision (this session):** the structured rating UI moved onto the
+profile page instead of living at `/submissive/limits`, so a submissive
+sets both their free-text limits and their per-item ratings ("kinks")
+in one place. Implemented as:
 
-- Adding a rated-items section to `account_settings.html` (submissive
-  view) — reusing the existing rating-card component from
-  `submissive_limits.html` (already functionally solid; this is a
-  relocation, not a rebuild) — likely with a "Manage catalog →" link
-  out to the Keyholder's `/keyholder/limit-items` page, mirroring how
-  `submissive_detail.html` already links out to catalog-management
-  pages it doesn't own.
-- Removing `/submissive/limits` as a standalone route once its content
-  is absorbed, including its nav link and mobile-menu entry (both
-  currently present on 7 pages — see the nav-link table maintained as
-  part of this session's mobile-menu rollout).
+- A "Limits & kinks" section added to `account_settings.html` (submissive
+  view only, `{% if !is_keyholder %}`), reusing the rating-card component
+  from the old `submissive_limits.html` almost verbatim (category
+  grouping, hard/soft/okay buttons, notes textarea, clear-rating) —
+  a relocation, not a rebuild. No "Manage catalog →" link was added: that
+  page (`/keyholder/limit-items`) is Keyholder-only and redirects a
+  submissive away, so linking to it from the submissive's own profile
+  would just be a dead end.
+- `/submissive/limits` removed as a route (`SubmissiveLimitsTemplate` and
+  its handler deleted from `src/web/mod.rs`), its template file deleted,
+  and its "My Limits" nav link/mobile-menu entry removed from the 7 pages
+  that referenced it (the page itself no longer exists, so 6 remain to
+  clean up plus itself).
 - The Keyholder-side catalog *management* page (`/keyholder/limit-items`,
-  `limits_catalog.html`) is a different audience and action (curating
-  the item list, not rating it) — nothing here implies folding that
-  one into the Keyholder's own profile page too, only that the
-  submissive's *rating* UI moves.
-
-**Not yet implemented** — this section documents the decision and the
-concrete shape of the change; building it is separate work.
+  `limits_catalog.html`) is untouched — different audience and action
+  (curating the item list, not rating it).
 
 ---
 
@@ -199,7 +211,7 @@ above.
 |---|---|---|---|
 | `keyholder-dashboard.html` | `dashboard.html` (`/dashboard`) | Structural | Mockup's top nav includes **Toys** and **Audit Log** as global items; real has neither (toys is per-submissive only, no cross-submissive route exists; audit log has no UI at all — item 11). Mockup's roster table and invite-modal shapes match the real implementation. |
 | `keyholder-toy-catalog.html` | `toy_catalog.html` (`/keyholder/submissives/{id}/toys`) | Deep | Mockup is a **global, cross-submissive** catalog with a submissive-selector dropdown; real is scoped to one submissive, reached only by drilling in — a different IA, and the real API has no cross-submissive toy-listing route to support the mockup's shape (item 13, deferred). Photo upload (item 2), `compatible_device_id` (item 8) unwired in both roles' toy forms. |
-| `keyholder-profile.html` | `account_settings.html` (`is_keyholder` branch) | Deep | Mockup's Personal info/Safety/Boundaries sections are split three ways; real merges them into one "Personal profile" section — functionally equivalent fields (bio, contact info, hard/soft limits, timezone), just fewer panels. 2FA, sessions, password change all real and matching. API tokens section is real-only (mockup predates it; correct, since tokens are a later addition per `01-data-model.md` §9). No "Your submissive's boundaries" read-only mirror section (mockup's symmetric counterpart to submissive-profile's "Your Keyholder's boundaries") — a Keyholder currently has to open the submissive's own detail-page profile panel to see this instead of it appearing on their own profile page. |
+| `keyholder-profile.html` | `account_settings.html` (`is_keyholder` branch) | Deep | Mockup's Personal info/Safety/Boundaries sections are split three ways; real merges them into one "Personal profile" section — functionally equivalent fields (bio, contact info, hard/soft limits, timezone), just fewer panels. 2FA, sessions, password change all real and matching. API tokens section is real-only (mockup predates it; correct, since tokens are a later addition per `01-data-model.md` §9). No "Your submissive's boundaries" read-only mirror section — see item 17: not a gap, the mockup's 1:1 assumption doesn't generalize to the real app's 1:many roster, and the information is already visible on the submissive's own detail page. |
 | `keyholder-limits-catalog.html` | `limits_catalog.html` (`/keyholder/limit-items`) | Deep | Confirmed no gap: the mockup's closing note ("Sensation, Chastity & Denial, Fluids, Psychological, Medical, and Exhibitionism ship the same way — a modest starter list per category") is real — `migrations/0029_limits.sql` seeds exactly those categories with starter items. |
 | `keyholder-safety-alerts.html` | `safety_alerts.html` (`/keyholder/safety-alerts`) | Deep | **Real gap (item 3):** the mockup labels every alert row with the submissive's name ("Riley," "Sam," "Jordan"); the real list has no name or attribution anywhere. `AlertResponse` (`src/api/safety.rs`) only exposes a raw `submissive_id`, and `safety_alerts.html`'s `renderAlert()` never resolves or displays it. For a Keyholder with more than one submissive, there is currently no way to tell whose alert is whose from this page. |
 | `keyholder-recurring-tasks.html` | `recurring_tasks.html` (`/keyholder/submissives/{id}/recurring-tasks`) | Deep | Built this session directly against this mockup; matches. |
@@ -218,8 +230,8 @@ above.
 | `submissive-dashboard.html` | `submissive_dashboard.html` (`/submissive`) | Deep | Live countdown — **fixed this session** (was static). Nav: mockup lists "Rewards & Points" and "History" as their own pages; real folds points into the dashboard inline and has no History page at all (item 12, deferred). |
 | `submissive-detail.html` | *(this is the Keyholder's page, see 4.2 — mockup name is misleading)* | Deep | Covered under `submissive_detail.html` in 4.2's row-equivalent; also: live countdown fixed, "Limits" nav-link bug fixed this session. |
 | `submissive-toy-catalog.html` | `submissive_toys.html` (`/submissive/toys`) | Deep | Same photo-upload and `compatible_device_id` gaps as the Keyholder-side toy catalog (item 2, item 8) — these are backend/schema-level gaps shared by both roles' toy UI, not role-specific. |
-| `submissive-profile.html` | `account_settings.html` (submissive branch) | Deep | See §3 for the limits/kinks consolidation. Also: mockup's "Your Keyholder's boundaries" read-only panel (their hard/soft limits, for symmetry/context) has **no real counterpart** — a submissive currently cannot see their Keyholder's stated boundaries anywhere in the real app. This is a real, un-flagged-until-now gap, independent of the limits-consolidation decision. |
-| `submissive-limits.html` | `submissive_limits.html` (`/submissive/limits`) | Deep | Functionally solid match to the mockup (category grouping, rating buttons, notes) — the gap here is purely architectural placement, per §3, not implementation quality. |
+| `submissive-profile.html` | `account_settings.html` (submissive branch) | Deep | See §3 for the limits/kinks consolidation (fixed). Also fixed (item 16): a read-only "Your Keyholder's boundaries" panel now shows the linked Keyholder's bio/hard limits/soft limits, via the new `GET /api/v1/submissive/keyholder-profile` endpoint (`src/api/profiles.rs`). |
+| `submissive-limits.html` | *(folded into `account_settings.html`'s "Limits & kinks" section, per §3)* | Deep | Functionally solid match to the mockup (category grouping, rating buttons, notes) — now reached via the profile page instead of its own route. |
 | `submissive-play-sessions.html` | `submissive_play_sessions.html` (`/submissive/play-sessions`) | Structural | Not deep-audited. |
 | `submissive-play-session-detail.html` | `play_session_detail.html` (shared route, role-aware) | Structural | Real is substantially richer than the mockup (judgement flow, punishment/reward custom forms, schedule panel, toys panel) — real exceeds mockup, not a gap. |
 | `submissive-rewards.html` | *(folded into `submissive_dashboard.html`'s Points panel)* | Structural | Functionally present (redeemable list, redeem button, pending-redemption state) — just inline on the dashboard instead of a dedicated page. Not a gap, a placement choice consistent with the points-and-redemptions consolidation on the Keyholder side too. |

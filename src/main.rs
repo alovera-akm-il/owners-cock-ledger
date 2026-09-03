@@ -2603,6 +2603,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn submissive_can_read_their_keyholders_boundaries_but_not_write_them() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-boundaries@example.test",
+            "sub-boundaries@example.test",
+        )
+        .await;
+
+        keyholder
+            .patch(
+                "/api/v1/profile",
+                serde_json::json!({"bio": "Firm but fair.", "hard_limits": "no permanent marks", "soft_limits": "ask first"}),
+            )
+            .await;
+
+        let (status, kh_profile) = submissive.get("/api/v1/submissive/keyholder-profile").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(kh_profile["bio"], "Firm but fair.");
+        assert_eq!(kh_profile["hard_limits"], "no permanent marks");
+        assert_eq!(kh_profile["soft_limits"], "ask first");
+        assert!(kh_profile.get("contact_info").is_some());
+
+        // A keyholder has no linked keyholder of their own to fetch.
+        let (status, _) = keyholder.get("/api/v1/submissive/keyholder-profile").await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn link_settings_gate_submissive_self_report() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(

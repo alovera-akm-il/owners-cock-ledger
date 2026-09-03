@@ -124,6 +124,15 @@
   </section>
 
   {% if !is_keyholder %}
+  <!-- ============ YOUR KEYHOLDER'S BOUNDARIES ============ -->
+  <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+    <h2 class="text-sm font-semibold mb-1">Your Keyholder's boundaries</h2>
+    <p class="text-xs text-slate-500 mb-4">Read-only — set by your Keyholder on their own profile.</p>
+    <div id="kh-boundaries" class="space-y-3 text-sm">
+      <div class="text-center text-sm text-slate-500 py-4">Loading…</div>
+    </div>
+  </section>
+
   <!-- ============ LIMITS & KINKS ============ -->
   <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
     <h2 class="text-sm font-semibold mb-1">Limits & kinks</h2>
@@ -561,6 +570,27 @@
   });
   $('#token-reveal-done-btn').on('click', function () { $('#token-reveal-wrap').addClass('hidden'); });
   {% else %}
+  // ---------- Your Keyholder's boundaries (read-only) ----------
+  function loadKeyholderBoundaries() {
+    apiCall('GET', '/api/v1/submissive/keyholder-profile').done(function (p) {
+      const $wrap = $('#kh-boundaries').empty();
+      const rows = [
+        ['Bio', p.bio],
+        ['Hard limits', p.hard_limits],
+        ['Soft limits', p.soft_limits],
+      ];
+      rows.forEach(function (row) {
+        const $row = $('<div>');
+        $row.append($('<p class="text-xs font-medium text-slate-400 mb-0.5">').text(row[0]));
+        $row.append($('<p class="text-slate-200 whitespace-pre-wrap">').text(row[1] || '—'));
+        $wrap.append($row);
+      });
+    }).fail(function () {
+      $('#kh-boundaries').empty().append($('<div class="text-center text-sm text-slate-500 py-4">').text('Not available.'));
+    });
+  }
+  loadKeyholderBoundaries();
+
   // ---------- Limits & kinks ----------
   const RATING_STYLE = {
     hard: { active: 'border-red-500 bg-red-500/10 text-red-400', label: 'Hard limit' },
