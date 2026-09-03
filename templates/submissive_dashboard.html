@@ -63,10 +63,16 @@
       </div>
 </nav>
 
-<main class="max-w-3xl mx-auto px-6 py-8 space-y-6">
+<main class="max-w-4xl mx-auto px-6 py-8 space-y-6">
 
-  <div class="flex justify-end">
-    <a href="/checkins/new" class="text-xs text-amber-500 hover:text-amber-400">Fill in a check-in &rarr;</a>
+  <div class="flex items-start justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Welcome back, {{ display_name }}</h1>
+      {% if let Some(days) = linked_days %}
+        <p class="text-sm text-slate-400 mt-1">Kept by your Keyholder for {{ days }} days</p>
+      {% endif %}
+    </div>
+    <a href="/checkins/new" class="text-xs text-amber-500 hover:text-amber-400 whitespace-nowrap mt-2">Fill in a check-in &rarr;</a>
   </div>
 
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -127,11 +133,34 @@
     </div>
   </div>
 
-  <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
-    <p class="text-sm font-semibold mb-3">Tasks, rewards &amp; punishments</p>
-    <ul id="assignments-list" class="divide-y divide-slate-800 text-sm">
-      <li class="py-2 text-slate-500">Loading…</li>
-    </ul>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-800">
+        <p class="text-sm font-semibold">Recent outcomes</p>
+      </div>
+      <ul class="divide-y divide-slate-800">
+        {% for item in recent %}
+        <li class="px-5 py-3 flex items-center justify-between text-sm">
+          <span class="text-slate-300">{{ item.kind }} &middot; {{ item.submitted_ago }}</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full
+            {% if item.status == "verified" %}bg-emerald-500/10 text-emerald-400
+            {% else if item.status == "failed" %}bg-red-500/10 text-red-400
+            {% else if item.status == "redo" %}bg-amber-500/10 text-amber-400
+            {% else %}bg-slate-700/40 text-slate-400{% endif %}">{{ item.status }}</span>
+        </li>
+        {% endfor %}
+        {% if recent.is_empty() %}
+        <li class="px-5 py-8 text-center text-sm text-slate-500">No submissions yet.</li>
+        {% endif %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <p class="text-sm font-semibold mb-3">Open items</p>
+      <ul id="assignments-list" class="divide-y divide-slate-800 text-sm">
+        <li class="py-2 text-slate-500">Loading…</li>
+      </ul>
+    </div>
   </div>
 
   <div id="points-panel" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -145,27 +174,6 @@
       <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-300">Transaction history</summary>
       <ul id="points-ledger" class="mt-2 divide-y divide-slate-800 text-xs"></ul>
     </details>
-  </div>
-
-  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
-    <div class="px-5 py-3 border-b border-slate-800">
-      <p class="text-sm font-semibold">Recent submissions</p>
-    </div>
-    <ul class="divide-y divide-slate-800">
-      {% for item in recent %}
-      <li class="px-5 py-3 flex items-center justify-between text-sm">
-        <span class="text-slate-300">{{ item.kind }} &middot; {{ item.submitted_ago }}</span>
-        <span class="text-xs font-semibold px-2 py-0.5 rounded-full
-          {% if item.status == "verified" %}bg-emerald-500/10 text-emerald-400
-          {% else if item.status == "failed" %}bg-red-500/10 text-red-400
-          {% else if item.status == "redo" %}bg-amber-500/10 text-amber-400
-          {% else %}bg-slate-700/40 text-slate-400{% endif %}">{{ item.status }}</span>
-      </li>
-      {% endfor %}
-      {% if recent.is_empty() %}
-      <li class="px-5 py-8 text-center text-sm text-slate-500">No submissions yet.</li>
-      {% endif %}
-    </ul>
   </div>
 
   <div class="mt-6 rounded-xl border border-red-800/40 bg-red-950/20 p-4 flex items-center justify-between gap-4">
