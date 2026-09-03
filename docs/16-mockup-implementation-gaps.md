@@ -80,6 +80,8 @@ by actually driving the page through that specific state.
 | 15 | No keyholder-wide cross-submissive Toy catalog view | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 16 | A submissive cannot see their Keyholder's stated boundaries anywhere (mockup's `submissive-profile.html` "Your Keyholder's boundaries" read-only panel has no real counterpart) | `submissive-profile.html` | **Fixed** |
 | 17 | Mockup's `keyholder-profile.html` has a "Your submissive's boundaries" read-only mirror; real has no equivalent on the Keyholder's own profile page | `keyholder-profile.html` | Not a gap — see note below |
+| 18 | Keyholder dashboard is missing an entire feature the mockup designed: a cross-roster "Needs your attention" priority feed, four stat cards, and an enriched roster table (lock status/last verification/pending/open items) — the real page was a bare two-column table with a literal "not built yet" placeholder comment still in the code | `keyholder-dashboard.html` | **Fixed** |
+| 19 | Layout pattern: the mockup consistently uses a two-column grid on `submissive-dashboard.html`/`submissive-detail.html` (status/config left, activity/actions right); the real templates had identical content but stacked every panel full-width in one column | `submissive-dashboard.html`, `submissive-detail.html` | **Fixed** for these two pages — see note below on scope |
 
 Items 13–15 were already surfaced and explicitly deferred by the
 user's own scoping decision in this session ("bugs + timer + mobile
@@ -277,3 +279,78 @@ Keyholder sees vs. what a submissive sees on the same conceptual
 page," not a transition a single account goes through, and the table
 above is that comparison for every page where the two roles' content
 meaningfully diverges.
+
+---
+
+## 6. Visual/layout audit against the hosted mockup site (items 18–19)
+
+A follow-up pass comparing the app directly against the mockups as
+rendered (screenshots, both static-mockup and a real instance seeded
+with realistic data — see `scripts/seed_demo_data.py` below), rather
+than the field-by-field diff §4 used. This caught two things the
+field-level audit missed entirely, because both are about *how much
+is on the page and how it's arranged*, not whether any individual
+field exists:
+
+- **Item 18 (dashboard):** confirmed by reading the actual template —
+  `dashboard.html` still had the literal placeholder comment "Lock
+  status, verification, and open tasks will show up here once those
+  parts of the app are built" in production. Every one of those parts
+  has since been built elsewhere in the app (confinement status,
+  verification codes, assignments); the dashboard itself was just
+  never wired up to show any of it. This means the §4 row for
+  `keyholder-dashboard.html` (originally a "Structural" pass that only
+  diffed nav links) was wrong — it never actually looked at the body
+  content. Fixed: a "Needs your attention" feed aggregating
+  unacknowledged safety alerts, unreviewed auto-applied punishment
+  extensions, tasks due within 2 hours, and pending proof review
+  across the whole roster (sorted by severity then recency); four
+  stat cards (active submissives, pending review, open tasks, missed
+  verifications in the last 7 days); and roster table columns for
+  lock status, last verification, pending count, and open-item count.
+  New domain function: `confinement::list_unreviewed_adjustments_for_links`
+  (no cross-roster equivalent existed before this).
+
+- **Item 19 (two-column layout):** the mockup's `submissive-dashboard.html`
+  and `submissive-detail.html` both split primary status from secondary
+  lists into a side-by-side two-column grid; the real templates had
+  every field the mockup does (confirmed in §4) but stacked all of it
+  full-width in one column, which reads as much sparser even with
+  identical content. Fixed for these two pages by wrapping the
+  existing panels in a `grid lg:grid-cols-2` layout — deliberately
+  **without reordering any panel's content or renaming its underlying
+  API calls**, to keep the change low-risk. On `submissive_detail.html`
+  specifically, the two-column split groups panels by their existing
+  document order (left: Confinement/Oversight/Devices/Assign/Open-tasks;
+  right: Verification/Profile/Rated-limits/Points/Link-settings) rather
+  than mirroring the mockup's exact left/right *semantic* grouping
+  (status+config vs. activity+actions) — reordering to match exactly
+  was judged higher-risk than the visual-density win was worth. Also
+  added a "Welcome back, {name}" / "Kept by your Keyholder for N days"
+  header to `submissive_dashboard.html`, matching the mockup's framing.
+  The same layout pattern likely applies to other pages not touched in
+  this pass (`catalog.html`, `checkin_templates.html`, etc. were
+  spot-checked and found closer to the mockup already — see §4 — but
+  a full page-by-page layout audit beyond these two was out of scope
+  here).
+
+- **Branding — confirmed not a gap.** Every mockup file (all 30) reads
+  "The Ledger" with a plain amber-square logo; the real app is
+  "Owner's Cock Ledger" with the actual logo image, consistently
+  across every real template. Since the mismatch is 100% uniform
+  across the entire mockup set, this reads as a deliberate sanitized
+  name for the public GitHub Pages demo rather than a drifted gap —
+  confirmed with the user, left untouched.
+
+**`scripts/seed_demo_data.py`** — added alongside this pass: boots its
+own server against a scratch `DATA_DIR` and populates a full realistic
+dataset (three submissives named after the mockups' own example
+people — Riley, Sam, Jordan — with devices, confinement sessions,
+catalog templates, proof submissions in multiple review states, points
+and a pending redemption, rated limits, a safety alert, a full
+play-session lifecycle, check-ins, and a recurring task rule) purely
+over the real HTTP API, the same way a browser would. Exists because
+comparing an empty real instance against the mockups' always-populated
+example screens was itself a major source of "looks like a huge gap"
+that had nothing to do with the actual UI — most of the app looks
+much closer to the mockups once it has realistic data in it.
