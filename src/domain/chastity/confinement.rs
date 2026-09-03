@@ -269,6 +269,58 @@ pub fn list_adjustments(conn: &Connection, session_id: &str) -> rusqlite::Result
     .collect()
 }
 
+pub struct UnreviewedAdjustment {
+    pub submissive_id: String,
+    pub delta_seconds: i64,
+    pub adjusted_at: i64,
+    /// The task/punishment title that caused this, when the adjustment
+    /// was linked to an assignment (`caused_by_assignment_id`) — `None`
+    /// for a manually-applied one.
+    pub caused_by_title: Option<String>,
+}
+
+/// Every auto-applied punishment time-extension across a Keyholder's
+/// whole roster that hasn't been reviewed yet — the cross-roster
+/// counterpart to `list_adjustments` (single-session), feeding the
+/// dashboard's "needs your attention" panel. Only `reason =
+/// 'punishment_time_extension'` rows are ever reviewable
+/// (`review_adjustment` itself only matches that reason), so this only
+/// surfaces adjustments a Keyholder can actually act on.
+pub fn list_unreviewed_adjustments_for_links(
+    conn: &Connection,
+    link_ids: &[String],
+) -> rusqlite::Result<Vec<UnreviewedAdjustment>> {
+    if link_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = link_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT s.submissive_id, a.delta_seconds, a.adjusted_at, asg.title
+         FROM confinement_adjustments a
+         JOIN confinement_sessions s ON s.id = a.session_id
+         JOIN keyholder_submissive_links l ON l.submissive_id = s.submissive_id
+         LEFT JOIN assignments asg ON asg.id = a.caused_by_assignment_id
+         WHERE l.id IN ({placeholders})
+           AND a.keyholder_reviewed_at IS NULL
+           AND a.reason = 'punishment_time_extension'
+         ORDER BY a.adjusted_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::ToSql> = link_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
+    stmt.query_map(params.as_slice(), |row| {
+        Ok(UnreviewedAdjustment {
+            submissive_id: row.get(0)?,
+            delta_seconds: row.get(1)?,
+            adjusted_at: row.get(2)?,
+            caused_by_title: row.get(3)?,
+        })
+    })?
+    .collect()
+}
+
 pub enum ApplyEffectOutcome {
     Applied,
     /// No open session to extend/reduce — the assignment still gets
@@ -835,6 +887,84 @@ mod tests {
         assert_eq!(adjustments.len(), 1);
         assert_eq!(adjustments[0].reason, "punishment_time_extension");
         assert!(adjustments[0].keyholder_reviewed_at.is_none());
+    }
+
+    #[test]
+    fn list_unreviewed_adjustments_for_links_only_surfaces_reviewable_ones_for_the_right_link() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (submissive_id, device_id) = seed(&conn);
+
+        let keyholder_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash, role, display_name, created_at)
+             VALUES (?1, ?1 || '@example.test', 'hash', 'keyholder', 'KH', 0)",
+            params![keyholder_id],
+        )
+        .unwrap();
+        let link_id = crate::domain::links::create(&conn, &keyholder_id, &submissive_id).unwrap();
+
+        start(
+            &conn,
+            StartSession {
+                submissive_id: &submissive_id,
+                device_id: &device_id,
+                started_reason: "voluntary",
+                target_release_at: Some(1000),
+                notes: None,
+            },
+        )
+        .unwrap();
+
+        // A reviewable, auto-applied punishment.
+        apply_effect(
+            &conn,
+            ApplyEffect {
+                submissive_id: &submissive_id,
+                delta_seconds: 21_600,
+                reason: "punishment_time_extension",
+                caused_by_assignment_id: "assignment-1",
+                adjusted_by_user_id: None,
+                already_reviewed: false,
+            },
+        )
+        .unwrap();
+        // A non-reviewable reason (unreviewed but the wrong `reason`) —
+        // inserted directly, bypassing `adjust_timer`'s own side effect of
+        // auto-marking every *other* unreviewed row on the session
+        // reviewed too (08-punishments-and-deadlines.md §6), which would
+        // otherwise clear the punishment row above before this test gets
+        // to look at it.
+        let session_id = current(&conn, &submissive_id).unwrap().unwrap().id;
+        conn.execute(
+            "INSERT INTO confinement_adjustments
+                (id, session_id, delta_seconds, reason, adjusted_at, keyholder_reviewed_at)
+             VALUES (?1, ?2, ?3, 'manual', ?4, NULL)",
+            params![uuid::Uuid::new_v4().to_string(), session_id, 100, now()],
+        )
+        .unwrap();
+
+        let for_this_link =
+            list_unreviewed_adjustments_for_links(&conn, std::slice::from_ref(&link_id)).unwrap();
+        assert_eq!(for_this_link.len(), 1);
+        assert_eq!(for_this_link[0].submissive_id, submissive_id);
+        assert_eq!(for_this_link[0].delta_seconds, 21_600);
+
+        let for_other_link =
+            list_unreviewed_adjustments_for_links(&conn, &["nonexistent-link".to_string()])
+                .unwrap();
+        assert!(for_other_link.is_empty());
+
+        // Reviewing it clears it from the list.
+        let adjustment_id = list_adjustments(&conn, &session_id)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.reason == "punishment_time_extension")
+            .unwrap()
+            .id;
+        review_adjustment(&conn, &adjustment_id).unwrap();
+        let after_review = list_unreviewed_adjustments_for_links(&conn, &[link_id]).unwrap();
+        assert!(after_review.is_empty());
     }
 
     #[test]

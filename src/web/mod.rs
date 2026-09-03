@@ -8,7 +8,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::auth::session::{self, CurrentUser, Role, SESSION_COOKIE_NAME};
 use crate::db;
@@ -17,7 +17,7 @@ use crate::domain::chastity::{confinement, devices};
 use crate::domain::points;
 use crate::domain::rewards_punishments::{assignments, templates};
 use crate::domain::verification::codes;
-use crate::domain::{links, proofs};
+use crate::domain::{links, proofs, safety};
 
 fn render<T: Template>(tpl: T) -> Response {
     match tpl.render() {
@@ -107,6 +107,22 @@ struct RosterRow {
     display_name: String,
     initial: String,
     linked_days: i64,
+    lock_status_text: String,
+    last_verification_text: String,
+    pending_review_count: i64,
+    open_tasks_count: i64,
+}
+
+struct AttentionItem {
+    /// Drives the icon/color in the template: "critical" (safety), or
+    /// "warning" (needs a decision soon) or "info" (fyi, no action
+    /// required) — matching the mockup's three-tier urgency styling.
+    severity: &'static str,
+    title: String,
+    detail: String,
+    ago: String,
+    link: String,
+    link_text: &'static str,
 }
 
 #[derive(Template)]
@@ -116,6 +132,12 @@ struct DashboardTemplate {
     initial: String,
     roster: Vec<RosterRow>,
     roster_is_empty: bool,
+    attention: Vec<AttentionItem>,
+    attention_is_empty: bool,
+    active_count: usize,
+    pending_review_count: i64,
+    open_tasks_count: i64,
+    missed_verifications_count: i64,
 }
 
 async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
@@ -127,41 +149,281 @@ async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
     }
 
     let keyholder_id = user.user_id.clone();
-    let roster = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<RosterRow>> {
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
         let conn = pool.get()?;
         let now = session::now();
+
+        struct Basic {
+            submissive_id: String,
+            display_name: String,
+            started_at: i64,
+            link_id: String,
+        }
         let mut stmt = conn.prepare(
-            "SELECT u.id, u.display_name, l.started_at
+            "SELECT u.id, u.display_name, l.started_at, l.id
              FROM keyholder_submissive_links l
              JOIN users u ON u.id = l.submissive_id
              WHERE l.keyholder_id = ?1 AND l.status = 'active'
              ORDER BY l.started_at DESC",
         )?;
-        let rows = stmt
+        let basics = stmt
             .query_map(params![keyholder_id], |row| {
-                let submissive_id: String = row.get(0)?;
-                let display_name: String = row.get(1)?;
-                let started_at: i64 = row.get(2)?;
-                Ok(RosterRow {
-                    submissive_id,
-                    initial: initial_of(&display_name),
-                    display_name,
-                    linked_days: (now - started_at) / 86_400,
+                Ok(Basic {
+                    submissive_id: row.get(0)?,
+                    display_name: row.get(1)?,
+                    started_at: row.get(2)?,
+                    link_id: row.get(3)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+
+        let link_ids: Vec<String> = basics.iter().map(|b| b.link_id.clone()).collect();
+
+        let alerts = safety::list_for_links(&conn, &link_ids)?;
+        let unreviewed_adjustments =
+            confinement::list_unreviewed_adjustments_for_links(&conn, &link_ids)?;
+        let all_proofs = proofs::list_for_links(&conn, &link_ids)?;
+        let pending_proofs: Vec<_> = all_proofs
+            .iter()
+            .filter(|p| p.status == "pending")
+            .collect();
+        let all_assignments = assignments::list_for_links(&conn, &link_ids)?;
+        let open_tasks: Vec<_> = all_assignments
+            .iter()
+            .filter(|a| {
+                a.kind == "task"
+                    && matches!(
+                        a.status.as_str(),
+                        "assigned" | "acknowledged" | "proof_submitted"
+                    )
+            })
+            .collect();
+
+        let mut roster = Vec::with_capacity(basics.len());
+        let mut attention: Vec<(u8, i64, AttentionItem)> = Vec::new();
+        let mut missed_verifications_count = 0i64;
+
+        for b in &basics {
+            let status = confinement::status_for(&conn, &b.submissive_id)?;
+            let lock_status_text = if !status.locked {
+                "Unlocked".to_string()
+            } else if status.clock_paused {
+                "Locked · paused".to_string()
+            } else {
+                match status.time_remaining_seconds {
+                    Some(secs) if status.overdue => {
+                        format!("Locked · {} overdue", fmt_duration(secs))
+                    }
+                    Some(secs) => format!("Locked · {} left", fmt_duration(secs)),
+                    None => "Locked".to_string(),
+                }
+            };
+
+            if status.clock_paused {
+                let msg = status
+                    .session
+                    .as_ref()
+                    .and_then(|s| s.clock_pause_message.clone());
+                attention.push((
+                    2,
+                    now,
+                    AttentionItem {
+                        severity: "info",
+                        title: format!("{}'s lock timer is paused", b.display_name),
+                        detail: msg.unwrap_or_else(|| "no message given".to_string()),
+                        ago: String::new(),
+                        link: format!("/keyholder/submissives/{}", b.submissive_id),
+                        link_text: "View",
+                    },
+                ));
+            }
+
+            let history = codes::history_for_link(&conn, &b.link_id)?;
+            let last_verification_text = match history.first() {
+                Some(h) if h.consumed_at.is_some() => {
+                    format!(
+                        "Verified · {} ago",
+                        fmt_duration(now - h.consumed_at.unwrap())
+                    )
+                }
+                Some(h) if h.expires_at < now => {
+                    format!(
+                        "Missed window · {} overdue",
+                        fmt_duration(now - h.expires_at)
+                    )
+                }
+                Some(h) => format!(
+                    "Code active · expires in {}",
+                    fmt_duration(h.expires_at - now)
+                ),
+                None => "No codes yet".to_string(),
+            };
+            missed_verifications_count += history
+                .iter()
+                .filter(|h| {
+                    h.consumed_at.is_none() && h.expires_at < now && h.expires_at > now - 7 * 86_400
+                })
+                .count() as i64;
+
+            let pending_review_count = pending_proofs
+                .iter()
+                .filter(|p| p.submissive_id == b.submissive_id)
+                .count() as i64;
+            let open_tasks_count =
+                open_tasks.iter().filter(|a| a.link_id == b.link_id).count() as i64;
+
+            roster.push(RosterRow {
+                submissive_id: b.submissive_id.clone(),
+                initial: initial_of(&b.display_name),
+                display_name: b.display_name.clone(),
+                linked_days: (now - b.started_at) / 86_400,
+                lock_status_text,
+                last_verification_text,
+                pending_review_count,
+                open_tasks_count,
+            });
+        }
+
+        for a in &alerts {
+            if a.acknowledged_at.is_some() {
+                continue;
+            }
+            let name = basics
+                .iter()
+                .find(|b| b.submissive_id == a.submissive_id)
+                .map(|b| b.display_name.as_str())
+                .unwrap_or("Someone");
+            attention.push((
+                0,
+                a.raised_at,
+                AttentionItem {
+                    severity: "critical",
+                    title: format!("Safety alert from {name} — unacknowledged"),
+                    detail: a
+                        .message
+                        .clone()
+                        .unwrap_or_else(|| "(no message)".to_string()),
+                    ago: fmt_duration(now - a.raised_at) + " ago",
+                    link: "/keyholder/safety-alerts".to_string(),
+                    link_text: "View",
+                },
+            ));
+        }
+
+        for adj in &unreviewed_adjustments {
+            let name = basics
+                .iter()
+                .find(|b| b.submissive_id == adj.submissive_id)
+                .map(|b| b.display_name.as_str())
+                .unwrap_or("Someone");
+            let cause = adj
+                .caused_by_title
+                .clone()
+                .unwrap_or_else(|| "a punishment".to_string());
+            attention.push((
+                1,
+                adj.adjusted_at,
+                AttentionItem {
+                    severity: "warning",
+                    title: format!(
+                        "+{} auto-applied — needs your review",
+                        fmt_duration(adj.delta_seconds)
+                    ),
+                    detail: format!("{name}'s lock timer, from \"{cause}\""),
+                    ago: fmt_duration(now - adj.adjusted_at) + " ago",
+                    link: format!("/keyholder/submissives/{}", adj.submissive_id),
+                    link_text: "Review",
+                },
+            ));
+        }
+
+        for a in &open_tasks {
+            let Some(deadline) = a.deadline_at else {
+                continue;
+            };
+            if deadline <= now || deadline - now > 2 * 3600 {
+                continue;
+            }
+            let name = basics
+                .iter()
+                .find(|b| b.link_id == a.link_id)
+                .map(|b| b.display_name.as_str())
+                .unwrap_or("Someone");
+            attention.push((
+                1,
+                now - (deadline - now),
+                AttentionItem {
+                    severity: "warning",
+                    title: format!("Task deadline in {}", fmt_duration(deadline - now)),
+                    detail: format!("{name} · \"{}\"", a.title),
+                    ago: String::new(),
+                    link: format!(
+                        "/keyholder/submissives/{}",
+                        basics
+                            .iter()
+                            .find(|b| b.link_id == a.link_id)
+                            .map(|b| b.submissive_id.as_str())
+                            .unwrap_or("")
+                    ),
+                    link_text: "View",
+                },
+            ));
+        }
+
+        for p in &pending_proofs {
+            let name = basics
+                .iter()
+                .find(|b| b.submissive_id == p.submissive_id)
+                .map(|b| b.display_name.as_str())
+                .unwrap_or("Someone");
+            attention.push((
+                1,
+                p.submitted_at,
+                AttentionItem {
+                    severity: "warning",
+                    title: "Proof submitted, awaiting review".to_string(),
+                    detail: format!("{name} · {} · {}", p.purpose, p.kind),
+                    ago: fmt_duration(now - p.submitted_at) + " ago",
+                    link: "/keyholder/review".to_string(),
+                    link_text: "Review",
+                },
+            ));
+        }
+
+        attention.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        let attention: Vec<AttentionItem> =
+            attention.into_iter().map(|(_, _, item)| item).collect();
+
+        Ok((
+            roster,
+            attention,
+            pending_proofs.len() as i64,
+            open_tasks.len() as i64,
+            missed_verifications_count,
+        ))
     })
     .await;
 
-    let roster = match roster {
-        Ok(Ok(rows)) => rows,
-        _ => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    let Ok(Ok((
+        roster,
+        attention,
+        pending_review_count,
+        open_tasks_count,
+        missed_verifications_count,
+    ))) = result
+    else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
     render(DashboardTemplate {
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
+        active_count: roster.len(),
+        attention_is_empty: attention.is_empty(),
+        attention,
+        pending_review_count,
+        open_tasks_count,
+        missed_verifications_count,
         roster_is_empty: roster.is_empty(),
         roster,
     })
@@ -187,6 +449,7 @@ struct SubmissiveDashboardTemplate {
     clock_pause_message: Option<String>,
     current_code: Option<String>,
     current_code_expires_text: Option<String>,
+    linked_days: Option<i64>,
     recent: Vec<RecentSubmission>,
 }
 
@@ -207,6 +470,17 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
             Some(link_id) => codes::current_unconsumed(&conn, link_id)?,
             None => None,
         };
+        let linked_days = match &link_id {
+            Some(link_id) => conn
+                .query_row(
+                    "SELECT started_at FROM keyholder_submissive_links WHERE id = ?1",
+                    params![link_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+                .map(|started_at| (session::now() - started_at) / 86_400),
+            None => None,
+        };
         let recent = proofs::list_for_submissive(&conn, &submissive_id)?
             .into_iter()
             .take(5)
@@ -216,11 +490,11 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
                 submitted_ago: fmt_duration(session::now() - s.submitted_at) + " ago",
             })
             .collect::<Vec<_>>();
-        Ok((status, current_code, recent))
+        Ok((status, current_code, linked_days, recent))
     })
     .await;
 
-    let Ok(Ok((status, current_code, recent))) = result else {
+    let Ok(Ok((status, current_code, linked_days, recent))) = result else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
@@ -233,6 +507,7 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
         server_now_epoch: session::now(),
         overdue: status.overdue,
         clock_paused: status.clock_paused,
+        linked_days,
         clock_pause_message: status
             .session
             .as_ref()

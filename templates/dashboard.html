@@ -114,13 +114,62 @@
     </div>
   </div>
 
+  <!-- ============ NEEDS YOUR ATTENTION ============ -->
+  {% if !attention_is_empty %}
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b border-slate-800">
+      <p class="text-sm font-semibold">Needs your attention <span class="text-red-400">({{ attention.len() }})</span></p>
+    </div>
+    <div class="divide-y divide-slate-800">
+      {% for item in attention %}
+      <div class="px-5 py-4 flex items-start justify-between gap-4">
+        <div class="flex items-start gap-3 min-w-0">
+          <span class="mt-1.5 h-2 w-2 rounded-full shrink-0
+            {% if item.severity == "critical" %}bg-red-500
+            {% else if item.severity == "warning" %}bg-amber-500
+            {% else %}bg-sky-500{% endif %}"></span>
+          <div class="min-w-0">
+            <p class="text-sm font-medium {% if item.severity == "critical" %}text-red-400{% endif %}">{{ item.title }}</p>
+            <p class="text-xs text-slate-500 mt-0.5">{{ item.detail }}{% if !item.ago.is_empty() %} &middot; {{ item.ago }}{% endif %}</p>
+          </div>
+        </div>
+        <a href="{{ item.link }}" class="text-xs font-semibold text-amber-500 hover:text-amber-400 whitespace-nowrap shrink-0">{{ item.link_text }} &rarr;</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ============ STAT CARDS ============ -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Active submissives</p>
+      <p class="text-2xl font-semibold mt-1">{{ active_count }}</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Pending review</p>
+      <p class="text-2xl font-semibold mt-1{% if pending_review_count > 0 %} text-amber-500{% endif %}">{{ pending_review_count }}</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Open tasks</p>
+      <p class="text-2xl font-semibold mt-1">{{ open_tasks_count }}</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <p class="text-xs text-slate-400">Missed verifications (7d)</p>
+      <p class="text-2xl font-semibold mt-1{% if missed_verifications_count > 0 %} text-red-400{% endif %}">{{ missed_verifications_count }}</p>
+    </div>
+  </div>
+
   <!-- roster -->
   <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden">
     <table class="w-full text-sm">
       <thead>
         <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
           <th class="px-5 py-3 font-medium">Submissive</th>
-          <th class="px-5 py-3 font-medium">Status</th>
+          <th class="px-5 py-3 font-medium">Lock status</th>
+          <th class="px-5 py-3 font-medium">Last verification</th>
+          <th class="px-5 py-3 font-medium">Pending</th>
+          <th class="px-5 py-3 font-medium">Open items</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-800">
@@ -136,15 +185,32 @@
             </div>
           </td>
           <td class="px-5 py-4">
-            <span class="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Active
+            <span class="text-xs font-medium {% if row.lock_status_text.starts_with("Locked") %}text-emerald-400{% else %}text-slate-400{% endif %}">
+              <span class="inline-block h-1.5 w-1.5 rounded-full mr-1.5 {% if row.lock_status_text.starts_with("Locked") %}bg-emerald-400{% else %}bg-slate-500{% endif %}"></span>{{ row.lock_status_text }}
             </span>
+          </td>
+          <td class="px-5 py-4">
+            <span class="text-xs {% if row.last_verification_text.starts_with("Missed") %}text-red-400 font-medium{% else %}text-slate-400{% endif %}">{{ row.last_verification_text }}</span>
+          </td>
+          <td class="px-5 py-4">
+            {% if row.pending_review_count > 0 %}
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">{{ row.pending_review_count }} to review</span>
+            {% else %}
+              <span class="text-xs text-slate-600">&mdash;</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-4">
+            {% if row.open_tasks_count > 0 %}
+              <span class="text-xs text-slate-300">{{ row.open_tasks_count }} task{% if row.open_tasks_count != 1 %}s{% endif %} open</span>
+            {% else %}
+              <span class="text-xs text-slate-600">&mdash;</span>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
         {% if roster_is_empty %}
         <tr>
-          <td colspan="2" class="px-5 py-8 text-center text-sm text-slate-500">
+          <td colspan="5" class="px-5 py-8 text-center text-sm text-slate-500">
             Nobody linked yet — invite a submissive to get started.
           </td>
         </tr>
@@ -152,10 +218,6 @@
       </tbody>
     </table>
   </div>
-
-  <p class="text-xs text-slate-600 mt-6">
-    Lock status, verification, and open tasks will show up here once those parts of the app are built.
-  </p>
 
 </main>
 

@@ -3567,6 +3567,41 @@ mod tests {
         assert!(body.contains(&format!("/keyholder/submissives/{sub_id}")));
     }
 
+    #[tokio::test]
+    async fn dashboard_shows_needs_attention_feed_and_stat_counts() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-attention@example.test",
+            "sub-attention@example.test",
+        )
+        .await;
+
+        submissive
+            .post(
+                "/api/v1/submissive/safety-alert",
+                serde_json::json!({"message": "device feels too tight"}),
+            )
+            .await;
+        submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+
+        let (status, _, body) = keyholder.get_page("/dashboard").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Needs your attention"));
+        assert!(body.contains("Safety alert from Sub"));
+        assert!(body.contains("device feels too tight"));
+        assert!(body.contains("Proof submitted, awaiting review"));
+        // Stat cards: 1 active submissive, 1 pending review.
+        assert!(body.contains("Active submissives"));
+        assert!(body.contains("Pending review"));
+    }
+
     // ---- Phase 3: tasks, rewards, punishments, escalation ----
 
     #[tokio::test]
