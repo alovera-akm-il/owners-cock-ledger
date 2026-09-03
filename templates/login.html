@@ -55,6 +55,23 @@
           </button>
         </div>
 
+        <form id="tfa-form" class="hidden space-y-4">
+          <div id="tfa-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
+          <p class="text-sm text-center text-slate-300">Enter the 6-digit code from your authenticator app.</p>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5" for="tfa-code">Code</label>
+            <input id="tfa-code" name="tfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"
+              class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 font-mono tracking-widest text-center placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-600/60 focus:border-amber-600/60" />
+            <p class="text-[11px] text-slate-500 mt-1.5">A recovery code works here too, if you've lost access to the app.</p>
+          </div>
+          <button id="tfa-verify-btn" type="submit" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors py-2.5 text-sm font-semibold text-slate-950">
+            Verify
+          </button>
+          <p class="text-xs text-center pt-1">
+            <button id="tfa-back-btn" type="button" class="text-slate-500 hover:text-slate-300">&larr; Back to sign in</button>
+          </p>
+        </form>
+
       </div>
 
       <p class="text-center text-[11px] text-slate-600 mt-6">
@@ -76,6 +93,15 @@
     $('#login-message').attr('class', 'rounded-lg px-3 py-2 text-xs ' + cls).text(text);
   }
 
+  let pendingChallengeToken = null;
+
+  function showTfaMessage(text, tone) {
+    const cls = tone === 'error'
+      ? 'bg-red-600/10 border border-red-600/30 text-red-300'
+      : 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300';
+    $('#tfa-message').attr('class', 'rounded-lg px-3 py-2 text-xs ' + cls).removeClass('hidden').text(text);
+  }
+
   $('#login-form').on('submit', function (e) {
     e.preventDefault();
     $('#login-message').addClass('hidden');
@@ -86,11 +112,43 @@
       headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
       data: JSON.stringify({ email: $('#email').val(), password: $('#password').val() }),
     }).done(function (res) {
+      if (res.requires_2fa) {
+        pendingChallengeToken = res.challenge_token;
+        $('#tfa-message').addClass('hidden');
+        $('#tfa-code').val('');
+        $('#login-form').addClass('hidden');
+        $('#tfa-form').removeClass('hidden').addClass('panel-fade');
+        $('#tfa-code').focus();
+        return;
+      }
       window.location = res.role === 'keyholder' ? '/dashboard' : '/submissive';
     }).fail(function (xhr) {
       const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Something went wrong.';
       showMessage(msg, 'error');
     });
+  });
+
+  $('#tfa-form').on('submit', function (e) {
+    e.preventDefault();
+    $('#tfa-message').addClass('hidden');
+    $.ajax({
+      url: '/api/v1/auth/2fa/verify',
+      method: 'POST',
+      contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: JSON.stringify({ challenge_token: pendingChallengeToken, code: $('#tfa-code').val() }),
+    }).done(function (res) {
+      window.location = res.role === 'keyholder' ? '/dashboard' : '/submissive';
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'That code did not work.';
+      showTfaMessage(msg, 'error');
+    });
+  });
+
+  $('#tfa-back-btn').on('click', function () {
+    pendingChallengeToken = null;
+    $('#tfa-form').addClass('hidden');
+    $('#login-form').removeClass('hidden').addClass('panel-fade')[0].reset();
   });
 
   $('#forgot-password-btn').on('click', function () {
