@@ -9,6 +9,7 @@
 <link href="/static/css/app.css" rel="stylesheet">
 <script src="/static/js/jquery.min.js"></script>
 <script src="/static/js/notifications.js" defer></script>
+<script src="/static/js/countdown.js" defer></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
 <body class="h-full bg-slate-950 text-slate-100">
@@ -78,9 +79,15 @@
         {% if clock_paused %}
           <p class="text-2xl font-semibold tracking-tight mt-2">{{ remaining }} remaining</p>
         {% else %}
-          <p id="live-countdown" class="text-2xl font-semibold tracking-tight mt-2{% if overdue %} text-red-400{% endif %}" data-target-epoch="{{ target_release_at_epoch.unwrap() }}" data-server-now-epoch="{{ server_now_epoch }}">
-            {% if overdue %}{{ remaining }} overdue{% else %}{{ remaining }} remaining{% endif %}
-          </p>
+          <div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 mt-2 inline-block" data-target-epoch="{{ target_release_at_epoch.unwrap() }}" data-server-now-epoch="{{ server_now_epoch }}">
+            <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] font-mono font-bold text-xl text-slate-100 tabular-nums{% if overdue %} text-red-400{% endif %}">
+              <span data-cd="days" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="hours" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="minutes" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="seconds" class="text-center">00</span>
+            </div>
+            <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] text-[9px] uppercase tracking-wide text-slate-500 mt-1">
+              <span class="text-center">days</span><span></span><span class="text-center">hrs</span><span></span><span class="text-center">min</span><span></span><span class="text-center">sec</span>
+            </div>
+            <p data-cd="overdue-label" class="{% if !overdue %}hidden {% endif %}text-[10px] text-red-400 font-semibold mt-1 text-center">overdue</p>
+          </div>
         {% endif %}
       {% else %}
         <p class="text-sm text-slate-400 mt-2">No release target set — open-ended.</p>
@@ -204,35 +211,6 @@
     const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : null;
   }
-
-  (function () {
-    const el = document.getElementById('live-countdown');
-    if (!el) return;
-    const targetEpoch = parseInt(el.dataset.targetEpoch, 10);
-    const serverNowEpoch = parseInt(el.dataset.serverNowEpoch, 10);
-    const loadedAtClientMs = Date.now();
-
-    function fmt(seconds) {
-      const sign = seconds < 0 ? '-' : '';
-      seconds = Math.abs(Math.round(seconds));
-      const days = Math.floor(seconds / 86400);
-      const hours = Math.floor((seconds % 86400) / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      const secs = seconds % 60;
-      if (days > 0) return sign + days + 'd ' + hours + 'h ' + minutes + 'm';
-      if (hours > 0) return sign + hours + 'h ' + minutes + 'm ' + secs + 's';
-      return sign + minutes + 'm ' + secs + 's';
-    }
-
-    function tick() {
-      const elapsedSinceLoad = (Date.now() - loadedAtClientMs) / 1000;
-      const remaining = (targetEpoch - serverNowEpoch) - elapsedSinceLoad;
-      el.textContent = remaining <= 0 ? fmt(remaining) + ' overdue' : fmt(remaining) + ' remaining';
-      el.classList.toggle('text-red-400', remaining <= 0);
-    }
-    tick();
-    setInterval(tick, 1000);
-  })();
 
   $('#raise-safety-alert-btn').on('click', function () {
     $('#safety-alert-message').val('');
