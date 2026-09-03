@@ -1165,27 +1165,6 @@ async fn limits_catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Respon
 }
 
 #[derive(Template)]
-#[template(path = "submissive_limits.html")]
-struct SubmissiveLimitsTemplate {
-    display_name: String,
-    initial: String,
-}
-
-async fn submissive_limits_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
-    let Some(user) = resolve_current_user(&pool, &jar).await else {
-        return Redirect::to("/login").into_response();
-    };
-    if user.role != Role::Submissive {
-        return Redirect::to("/dashboard").into_response();
-    }
-
-    render(SubmissiveLimitsTemplate {
-        initial: initial_of(&user.display_name),
-        display_name: user.display_name,
-    })
-}
-
-#[derive(Template)]
 #[template(path = "submissive_play_sessions.html")]
 struct SubmissivePlaySessionsTemplate {
     display_name: String,
@@ -1321,7 +1300,6 @@ pub fn router() -> axum::Router<db::AppState> {
             get(play_session_templates_page),
         )
         .route("/keyholder/limit-items", get(limits_catalog_page))
-        .route("/submissive/limits", get(submissive_limits_page))
         .route(
             "/submissive/play-sessions",
             get(submissive_play_sessions_page),
