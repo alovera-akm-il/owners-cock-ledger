@@ -24,6 +24,7 @@ pub struct Toy {
     pub usage_notes: Option<String>,
     pub tags: Option<String>,
     pub photo_attachment_path: Option<String>,
+    pub photo_mime_type: Option<String>,
     pub acquired_at: Option<i64>,
     pub retirement_requested_at: Option<i64>,
     pub retired_at: Option<i64>,
@@ -32,7 +33,8 @@ pub struct Toy {
 
 const COLUMNS: &str = "id, submissive_id, added_by_user_id, name, category, material, brand, \
      size_notes, color, compatible_device_id, storage_location, care_instructions, usage_notes, \
-     tags, photo_attachment_path, acquired_at, retirement_requested_at, retired_at, retired_by_user_id";
+     tags, photo_attachment_path, photo_mime_type, acquired_at, retirement_requested_at, \
+     retired_at, retired_by_user_id";
 
 fn row_to_toy(row: &rusqlite::Row) -> rusqlite::Result<Toy> {
     Ok(Toy {
@@ -51,10 +53,11 @@ fn row_to_toy(row: &rusqlite::Row) -> rusqlite::Result<Toy> {
         usage_notes: row.get(12)?,
         tags: row.get(13)?,
         photo_attachment_path: row.get(14)?,
-        acquired_at: row.get(15)?,
-        retirement_requested_at: row.get(16)?,
-        retired_at: row.get(17)?,
-        retired_by_user_id: row.get(18)?,
+        photo_mime_type: row.get(15)?,
+        acquired_at: row.get(16)?,
+        retirement_requested_at: row.get(17)?,
+        retired_at: row.get(18)?,
+        retired_by_user_id: row.get(19)?,
     })
 }
 
@@ -151,6 +154,7 @@ pub struct ToyEdit<'a> {
     pub usage_notes: Option<Option<&'a str>>,
     pub tags: Option<Option<&'a str>>,
     pub photo_attachment_path: Option<Option<&'a str>>,
+    pub photo_mime_type: Option<Option<&'a str>>,
     pub acquired_at: Option<Option<i64>>,
 }
 
@@ -182,13 +186,17 @@ pub fn update(conn: &Connection, id: &str, edit: ToyEdit) -> rusqlite::Result<bo
     let photo_attachment_path = edit
         .photo_attachment_path
         .unwrap_or(current.photo_attachment_path.as_deref());
+    let photo_mime_type = edit
+        .photo_mime_type
+        .unwrap_or(current.photo_mime_type.as_deref());
     let acquired_at = edit.acquired_at.unwrap_or(current.acquired_at);
 
     conn.execute(
         "UPDATE toys SET name = ?1, category = ?2, material = ?3, brand = ?4, size_notes = ?5,
             color = ?6, compatible_device_id = ?7, storage_location = ?8, care_instructions = ?9,
-            usage_notes = ?10, tags = ?11, photo_attachment_path = ?12, acquired_at = ?13
-         WHERE id = ?14",
+            usage_notes = ?10, tags = ?11, photo_attachment_path = ?12, photo_mime_type = ?13,
+            acquired_at = ?14
+         WHERE id = ?15",
         params![
             name,
             category,
@@ -202,6 +210,7 @@ pub fn update(conn: &Connection, id: &str, edit: ToyEdit) -> rusqlite::Result<bo
             usage_notes,
             tags,
             photo_attachment_path,
+            photo_mime_type,
             acquired_at,
             id,
         ],

@@ -1,15 +1,16 @@
 //! Toy catalog (03-api-design.md §10a). Per-submissive, either role
 //! may create/edit; retiring is Keyholder-only.
 
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
-use crate::db::{self, Pool};
+use crate::db::{self, BlobDir, Pool};
 use crate::domain::{links, toys};
 use crate::notify;
 
@@ -20,6 +21,12 @@ const CONFLICT: ApiError = ApiError::new(
     "conflict",
     "request conflicts with current state",
 );
+const BAD_REQUEST: ApiError = ApiError::new(
+    StatusCode::BAD_REQUEST,
+    "bad_request",
+    "expected a single 'photo' field with an image/jpeg or image/png file",
+);
+const MAX_PHOTO_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
 
 fn deserialize_some<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
@@ -45,7 +52,7 @@ struct ToyResponse {
     care_instructions: Option<String>,
     usage_notes: Option<String>,
     tags: Option<serde_json::Value>,
-    photo_attachment_path: Option<String>,
+    photo_url: Option<String>,
     acquired_at: Option<String>,
     retirement_requested_at: Option<String>,
     retired_at: Option<String>,
@@ -54,6 +61,10 @@ struct ToyResponse {
 
 impl From<toys::Toy> for ToyResponse {
     fn from(t: toys::Toy) -> Self {
+        let photo_url = t
+            .photo_attachment_path
+            .is_some()
+            .then(|| format!("/api/v1/toys/{}/photo", t.id));
         Self {
             id: t.id,
             submissive_id: t.submissive_id,
@@ -69,7 +80,7 @@ impl From<toys::Toy> for ToyResponse {
             care_instructions: t.care_instructions,
             usage_notes: t.usage_notes,
             tags: t.tags.as_deref().and_then(|s| serde_json::from_str(s).ok()),
-            photo_attachment_path: t.photo_attachment_path,
+            photo_url,
             acquired_at: t.acquired_at.map(iso8601),
             retirement_requested_at: t.retirement_requested_at.map(iso8601),
             retired_at: t.retired_at.map(iso8601),
@@ -305,6 +316,7 @@ async fn patch_toy(
                 usage_notes: req.usage_notes.as_ref().map(|v| v.as_deref()),
                 tags: tags.as_ref().map(|v| v.as_deref()),
                 photo_attachment_path: None,
+                photo_mime_type: None,
                 acquired_at: None,
             },
         )
@@ -461,6 +473,128 @@ async fn decline_removal(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /toys/{id}/photo` — a single photo per toy, matching
+/// `photo_attachment_path`'s existing singular shape rather than
+/// introducing a multi-attachment table for one field. Either role may
+/// upload, same posture as editing any other toy field
+/// (12-toy-catalog.md §3).
+async fn upload_photo(
+    State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<ToyResponse>, ApiError> {
+    if user.role == Role::Keyholder {
+        user.require_scope("manage:chastity")
+            .map_err(|_| FORBIDDEN)?;
+    }
+    let mut photo: Option<(String, Vec<u8>)> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|_| BAD_REQUEST)? {
+        if field.name() != Some("photo") {
+            let _ = field.bytes().await;
+            continue;
+        }
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = field.bytes().await.map_err(|_| BAD_REQUEST)?.to_vec();
+        photo = Some((content_type, bytes));
+    }
+    let (content_type, bytes) = photo.ok_or(BAD_REQUEST)?;
+    if !matches!(content_type.as_str(), "image/jpeg" | "image/png") {
+        return Err(BAD_REQUEST);
+    }
+
+    tokio::task::spawn_blocking(move || -> Result<Json<ToyResponse>, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let toy = toys::get(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_toy(&conn, &user, &toy)?;
+
+        let stored =
+            crate::storage::store(&blob_dir, &content_type, &bytes).map_err(|_| BAD_REQUEST)?;
+        let updated = toys::update(
+            &conn,
+            &id,
+            toys::ToyEdit {
+                photo_attachment_path: Some(Some(&stored.storage_path)),
+                photo_mime_type: Some(Some(&content_type)),
+                ..Default::default()
+            },
+        )
+        .map_err(|_| INTERNAL_ERROR)?;
+        if !updated {
+            return Err(NOT_FOUND);
+        }
+        let t = toys::get(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)?;
+        Ok(Json(t.into()))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+async fn download_photo(
+    State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    if user.role == Role::Keyholder {
+        user.require_scope("read:submissives")
+            .map_err(|_| FORBIDDEN)?;
+    }
+    tokio::task::spawn_blocking(move || -> Result<Response, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let toy = toys::get(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_toy(&conn, &user, &toy)?;
+        let (Some(path), Some(mime)) = (&toy.photo_attachment_path, &toy.photo_mime_type) else {
+            return Err(NOT_FOUND);
+        };
+        let bytes = crate::storage::read(&blob_dir, path).map_err(|_| INTERNAL_ERROR)?;
+        Ok(([(header::CONTENT_TYPE, mime.clone())], bytes).into_response())
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+async fn delete_photo(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if user.role == Role::Keyholder {
+        user.require_scope("manage:chastity")
+            .map_err(|_| FORBIDDEN)?;
+    }
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let toy = toys::get(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_toy(&conn, &user, &toy)?;
+        toys::update(
+            &conn,
+            &id,
+            toys::ToyEdit {
+                photo_attachment_path: Some(None),
+                photo_mime_type: Some(None),
+                ..Default::default()
+            },
+        )
+        .map_err(|_| INTERNAL_ERROR)?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
 pub fn router() -> Router<db::AppState> {
     Router::new()
         .route(
@@ -469,6 +603,11 @@ pub fn router() -> Router<db::AppState> {
         )
         .route("/submissive/toys", get(list_own).post(create_own))
         .route("/toys/{id}", patch(patch_toy))
+        .route(
+            "/toys/{id}/photo",
+            post(upload_photo).get(download_photo).delete(delete_photo),
+        )
+        .layer(DefaultBodyLimit::max(MAX_PHOTO_UPLOAD_BYTES))
         .route(
             "/submissive/toys/{id}/request-removal",
             post(request_removal),

@@ -4028,6 +4028,98 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
+    /// `docs/16-mockup-implementation-gaps.md` item 2: the DB column and
+    /// API field always existed, but nothing could ever populate them —
+    /// no upload route, no UI. Covers upload, download, replace, delete,
+    /// and cross-link scoping for the new `/toys/{id}/photo` endpoints.
+    #[tokio::test]
+    async fn toy_photo_upload_download_and_delete_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-toyphoto@example.test",
+            "sub-toyphoto@example.test",
+        )
+        .await;
+
+        let (_, toy) = submissive
+            .post(
+                "/api/v1/submissive/toys",
+                serde_json::json!({"name": "bullet vibe"}),
+            )
+            .await;
+        let toy_id = toy["id"].as_str().unwrap().to_string();
+        assert!(toy["photo_url"].is_null());
+
+        // A non-image content type is rejected.
+        let (status, _) = submissive
+            .post_multipart(
+                &format!("/api/v1/toys/{toy_id}/photo"),
+                &[],
+                &[("photo", "notes.txt", "text/plain", b"not an image")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Upload a real photo.
+        let (status, uploaded) = submissive
+            .post_multipart(
+                &format!("/api/v1/toys/{toy_id}/photo"),
+                &[],
+                &[("photo", "toy.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let photo_url = uploaded["photo_url"].as_str().unwrap().to_string();
+        assert_eq!(photo_url, format!("/api/v1/toys/{toy_id}/photo"));
+
+        // Both the submissive and their Keyholder can fetch it back.
+        let (status, _) = submissive.get(&photo_url).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = keyholder.get(&photo_url).await;
+        assert_eq!(status, StatusCode::OK);
+
+        // Re-uploading replaces it (still exactly one photo per toy).
+        let (status, replaced) = submissive
+            .post_multipart(
+                &format!("/api/v1/toys/{toy_id}/photo"),
+                &[],
+                &[("photo", "toy2.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(replaced["photo_url"], photo_url);
+
+        // Deleting clears it.
+        let (status, _) = submissive.delete(&photo_url).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = submissive.get(&photo_url).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // An unrelated Keyholder can't reach this submissive's toy photo.
+        seed_keyholder(
+            &pool,
+            "kh-toyphoto-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-toyphoto-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_kh
+            .post_multipart(
+                &format!("/api/v1/toys/{toy_id}/photo"),
+                &[],
+                &[("photo", "toy.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
     #[tokio::test]
     async fn points_earn_manual_adjust_and_redeem_lifecycle() {
         let (_dir, pool) = temp_pool();
