@@ -239,6 +239,8 @@ struct SubmitProofTemplate {
     initial: String,
     current_code_id: Option<String>,
     current_code: Option<String>,
+    current_code_expires_at_epoch: Option<i64>,
+    server_now_epoch: i64,
 }
 
 async fn submit_proof_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
@@ -265,6 +267,8 @@ async fn submit_proof_page(State(pool): State<Pool>, jar: CookieJar) -> Response
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
         current_code_id: current_code.as_ref().map(|c| c.id.clone()),
+        current_code_expires_at_epoch: current_code.as_ref().map(|c| c.expires_at),
+        server_now_epoch: session::now(),
         current_code: current_code.map(|c| c.code),
     })
 }

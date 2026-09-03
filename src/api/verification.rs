@@ -142,6 +142,7 @@ async fn own_policy(
 
 #[derive(Serialize)]
 struct CodeResponse {
+    id: String,
     code: String,
     issued_at: String,
     expires_at: String,
@@ -150,6 +151,7 @@ struct CodeResponse {
 impl From<codes::Code> for CodeResponse {
     fn from(c: codes::Code) -> Self {
         Self {
+            id: c.id,
             code: c.code,
             issued_at: iso8601(c.issued_at),
             expires_at: iso8601(c.expires_at),

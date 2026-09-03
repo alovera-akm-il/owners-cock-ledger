@@ -64,13 +64,24 @@
 
 <main class="max-w-lg mx-auto px-6 py-8">
   <h1 class="text-xl font-semibold tracking-tight mb-1">Submit proof</h1>
-  <p class="text-sm text-slate-400 mb-6">
-    {% if let Some(code) = current_code %}
-      Write <span class="font-mono text-emerald-300">{{ code }}</span> somewhere visible in your photo or video, then upload it below.
-    {% else %}
-      No active verification code — this will be saved as an unscheduled note. <a href="/submissive" class="text-amber-500 hover:text-amber-400">Request a code first</a> if this is meant to prove a scheduled check-in.
-    {% endif %}
-  </p>
+
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-3 mb-6 text-sm">
+    <p id="code-status-text" class="text-slate-400">
+      {% if let Some(code) = current_code %}
+        Write <code id="code-value" class="font-mono text-emerald-300">{{ code }}</code> somewhere visible in your photo or video, then upload it below.
+      {% else %}
+        No active verification code — this will be saved as an unscheduled note.
+      {% endif %}
+    </p>
+    <p id="code-countdown" class="text-xs text-slate-500 mt-1{% if current_code_expires_at_epoch.is_none() %} hidden{% endif %}"
+      data-target-epoch="{% if let Some(expires_epoch) = current_code_expires_at_epoch %}{{ expires_epoch }}{% endif %}"
+      data-server-now-epoch="{{ server_now_epoch }}"></p>
+    <div id="request-code-action" class="mt-2{% if current_code.is_some() %} hidden{% endif %}">
+      <button id="request-new-code-btn" type="button" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-1.5">Request a code</button>
+      <p id="request-code-message" class="hidden mt-2 text-xs"></p>
+    </div>
+  </div>
+  <input type="hidden" id="current-code-id" value="{% if let Some(id) = current_code_id %}{{ id }}{% endif %}" />
 
   <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
     <form id="proof-form" class="space-y-4">
@@ -133,6 +144,71 @@
     $('#file-field').toggle($(this).val() !== 'note');
   });
 
+  let codeTickInterval = null;
+
+  function showCodeExpired() {
+    if (codeTickInterval) clearInterval(codeTickInterval);
+    $('#code-status-text').text('No active verification code — this will be saved as an unscheduled note.');
+    $('#code-countdown').addClass('hidden');
+    $('#current-code-id').val('');
+    $('#request-code-action').removeClass('hidden');
+  }
+
+  function startCodeCountdown(targetEpoch, serverNowEpoch) {
+    const el = document.getElementById('code-countdown');
+    if (!el) return;
+    if (codeTickInterval) clearInterval(codeTickInterval);
+    const loadedAtClientMs = Date.now();
+
+    function fmt(seconds) {
+      seconds = Math.max(0, Math.round(seconds));
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return minutes + 'm ' + secs + 's';
+    }
+
+    function tick() {
+      const elapsedSinceLoad = (Date.now() - loadedAtClientMs) / 1000;
+      const remaining = (targetEpoch - serverNowEpoch) - elapsedSinceLoad;
+      if (remaining <= 0) {
+        showCodeExpired();
+        return;
+      }
+      el.textContent = 'expires in ' + fmt(remaining);
+    }
+    tick();
+    codeTickInterval = setInterval(tick, 1000);
+  }
+
+  (function () {
+    const el = document.getElementById('code-countdown');
+    if (!el || !el.dataset.targetEpoch) return;
+    startCodeCountdown(parseInt(el.dataset.targetEpoch, 10), parseInt(el.dataset.serverNowEpoch, 10));
+  })();
+
+  $('#request-new-code-btn').on('click', function () {
+    $('#request-code-message').addClass('hidden');
+    $(this).prop('disabled', true);
+    $.ajax({
+      url: '/api/v1/submissive/verification-codes',
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).done(function (code) {
+      $('#current-code-id').val(code.id);
+      $('#code-status-text').html('Write <code id="code-value" class="font-mono text-emerald-300"></code> somewhere visible in your photo or video, then upload it below.');
+      $('#code-value').text(code.code);
+      $('#request-code-action').addClass('hidden');
+      const expiresEpoch = Math.floor(new Date(code.expires_at).getTime() / 1000);
+      $('#code-countdown').removeClass('hidden');
+      startCodeCountdown(expiresEpoch, Math.floor(Date.now() / 1000));
+    }).fail(function (xhr) {
+      const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not request a code right now.';
+      $('#request-code-message').removeClass('hidden').text(msg);
+    }).always(function () {
+      $('#request-new-code-btn').prop('disabled', false);
+    });
+  });
+
   $('#proof-form').on('submit', function (e) {
     e.preventDefault();
     $('#proof-message').addClass('hidden');
@@ -145,9 +221,10 @@
     }
 
     const formData = new FormData();
-    {% if let Some(code_id) = current_code_id %}
-      formData.append('verification_code_id', '{{ code_id }}');
-    {% endif %}
+    const codeId = $('#current-code-id').val();
+    if (codeId) {
+      formData.append('verification_code_id', codeId);
+    }
     formData.append('kind', kind);
     const notes = $('#notes').val();
     if (notes) {
