@@ -48,8 +48,8 @@
         </form>
 
         <div id="forgot-password-note" class="hidden text-center space-y-4">
-          <p class="text-sm">Password recovery isn't self-service on this server yet.</p>
-          <p class="text-xs text-slate-500">Ask your Keyholder, or a server admin can force a reset directly on the box (<code>admin reset-password</code>).</p>
+          <p class="text-sm">A server admin has to issue a reset token first (<code>admin reset-password</code>) — there's no self-service "email me a link" here.</p>
+          <p class="text-xs text-slate-500">Already have a token? <a href="/password-reset/redeem" class="text-amber-500 hover:text-amber-400 font-medium">Redeem it</a> to set a new password.</p>
           <button id="back-from-forgot-btn" type="button" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-1">
             &larr; Back to sign in
           </button>

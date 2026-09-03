@@ -56,7 +56,7 @@ pub async fn csrf_protect(jar: CookieJar, req: Request, next: Next) -> Response 
 
     let cookie = Cookie::build((CSRF_COOKIE_NAME, super::token::generate()))
         .path("/")
-        .secure(true)
+        .secure(super::cookies_secure())
         .same_site(SameSite::Strict)
         .http_only(false) // JS must read this to echo it back as a header
         .build();

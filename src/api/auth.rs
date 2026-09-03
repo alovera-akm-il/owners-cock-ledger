@@ -113,11 +113,12 @@ enum LoginResponseBody {
 
 pub fn session_cookie(session_id: String) -> Cookie<'static> {
     // HttpOnly, Secure, SameSite=Strict, matching 05-security-and-privacy.md
-    // §2 exactly.
+    // §2 exactly (Secure is conditional on INSECURE_COOKIES — see
+    // `crate::auth::cookies_secure`).
     Cookie::build((SESSION_COOKIE_NAME, session_id))
         .path("/")
         .http_only(true)
-        .secure(true)
+        .secure(crate::auth::cookies_secure())
         .same_site(SameSite::Strict)
         .build()
 }

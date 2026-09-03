@@ -89,6 +89,19 @@ async fn redeem_invite_page() -> Response {
     render(RedeemInviteTemplate)
 }
 
+#[derive(Template)]
+#[template(path = "password_reset_redeem.html")]
+struct PasswordResetRedeemTemplate;
+
+/// `/password-reset/redeem` — public, unauthenticated. The only way to
+/// actually complete an `admin reset-password`-issued token was
+/// previously a raw call to `POST /api/v1/auth/password-reset/redeem`;
+/// this gives the account holder a page to do that themselves instead
+/// of needing someone to run curl on their behalf.
+async fn password_reset_redeem_page() -> Response {
+    render(PasswordResetRedeemTemplate)
+}
+
 struct RosterRow {
     submissive_id: String,
     display_name: String,
@@ -1264,6 +1277,7 @@ pub fn router() -> axum::Router<db::AppState> {
         .route("/", get(index))
         .route("/login", get(login_page))
         .route("/invites/redeem", get(redeem_invite_page))
+        .route("/password-reset/redeem", get(password_reset_redeem_page))
         .route("/dashboard", get(dashboard_page))
         .route("/submissive", get(submissive_dashboard_page))
         .route("/submissive/submit-proof", get(submit_proof_page))

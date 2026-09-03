@@ -266,7 +266,10 @@ Schema is `password_reset_tokens`, defined once in
 #### `POST /auth/password-reset/redeem` (new endpoint, `03-api-design.md` §1)
 
 Public, requires a valid/unexpired/unconsumed token — `{token,
-new_password}`. Sets `password_hash`, consumes the token, and
+new_password}`. Reachable through a page at `/password-reset/redeem`
+(paste the token, choose a new password) as well as directly, so the
+account holder never has to be handed a raw API call to complete this.
+Sets `password_hash`, consumes the token, and
 **revokes every other existing session for this account in the same
 transaction**, exactly like `POST /auth/password/change` already
 does. That last part matters here specifically: a password reset is

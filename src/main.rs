@@ -396,7 +396,7 @@ async fn serve(pool: db::Pool) -> anyhow::Result<()> {
     };
     let app = build_router(state);
 
-    let listen_addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
+    let listen_addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
     let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
     tracing::info!(addr = %listen_addr, "listening");
 
@@ -510,7 +510,7 @@ fn admin_reset_password(pool: db::Pool, email: String, yes: bool) -> anyhow::Res
         issued.token
     );
     println!(
-        "Expires at {}. Relay it to the account holder to redeem via POST /auth/password-reset/redeem.",
+        "Expires at {}. Relay it to the account holder — they redeem it at /password-reset/redeem.",
         api::iso8601(issued.expires_at)
     );
     Ok(())
@@ -1945,6 +1945,15 @@ mod tests {
         let (status, _, body) = client.get_page("/invites/redeem").await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("Create account"));
+    }
+
+    #[tokio::test]
+    async fn password_reset_redeem_page_renders() {
+        let (_dir, pool) = temp_pool();
+        let mut client = TestClient::new(pool);
+        let (status, _, body) = client.get_page("/password-reset/redeem").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Set new password"));
     }
 
     #[tokio::test]
