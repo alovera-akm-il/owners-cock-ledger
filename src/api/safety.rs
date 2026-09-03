@@ -7,7 +7,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
-use rusqlite::OptionalExtension;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
@@ -88,6 +88,7 @@ async fn raise_safety_alert(
 struct AlertResponse {
     id: String,
     submissive_id: String,
+    submissive_display_name: String,
     raised_at: String,
     raised_via: String,
     message: Option<String>,
@@ -96,23 +97,25 @@ struct AlertResponse {
     resolved_at: Option<String>,
 }
 
-impl From<safety::Alert> for AlertResponse {
-    fn from(a: safety::Alert) -> Self {
-        Self {
-            id: a.id,
-            submissive_id: a.submissive_id,
-            raised_at: iso8601(a.raised_at),
-            raised_via: a.raised_via,
-            message: a.message,
-            acknowledged_at: a.acknowledged_at.map(iso8601),
-            acknowledged_by_user_id: a.acknowledged_by_user_id,
-            resolved_at: a.resolved_at.map(iso8601),
-        }
+fn alert_response(a: safety::Alert, submissive_display_name: String) -> AlertResponse {
+    AlertResponse {
+        id: a.id,
+        submissive_id: a.submissive_id,
+        submissive_display_name,
+        raised_at: iso8601(a.raised_at),
+        raised_via: a.raised_via,
+        message: a.message,
+        acknowledged_at: a.acknowledged_at.map(iso8601),
+        acknowledged_by_user_id: a.acknowledged_by_user_id,
+        resolved_at: a.resolved_at.map(iso8601),
     }
 }
 
 /// `GET /keyholder/safety-alerts` — across every active link, unresolved
-/// first.
+/// first. Resolves each alert's `submissive_id` to a display name here
+/// (docs/16-mockup-implementation-gaps.md item 3) — for a Keyholder
+/// with more than one submissive, a bare id gives no way to tell whose
+/// alert is whose on the highest-priority page in the app.
 async fn list_safety_alerts(
     State(pool): State<Pool>,
     user: CurrentUser,
@@ -121,16 +124,27 @@ async fn list_safety_alerts(
         .map_err(|_| FORBIDDEN)?;
     user.require_scope("read:safety-alerts")
         .map_err(|_| FORBIDDEN)?;
-    let alerts = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<safety::Alert>> {
+    let responses = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<AlertResponse>> {
         let conn = pool.get()?;
         let link_ids = links::active_link_ids_for_keyholder(&conn, &user.user_id)?;
-        Ok(safety::list_for_links(&conn, &link_ids)?)
+        let alerts = safety::list_for_links(&conn, &link_ids)?;
+        alerts
+            .into_iter()
+            .map(|a| {
+                let display_name: String = conn.query_row(
+                    "SELECT display_name FROM users WHERE id = ?1",
+                    params![a.submissive_id],
+                    |row| row.get(0),
+                )?;
+                Ok(alert_response(a, display_name))
+            })
+            .collect()
     })
     .await
     .map_err(|_| INTERNAL_ERROR)?
     .map_err(|_| INTERNAL_ERROR)?;
 
-    Ok(Json(alerts.into_iter().map(Into::into).collect()))
+    Ok(Json(responses))
 }
 
 fn keyholder_owns_alert(

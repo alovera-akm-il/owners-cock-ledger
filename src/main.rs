@@ -3053,6 +3053,7 @@ mod tests {
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0]["message"], "device feels too tight");
         assert_eq!(alerts[0]["raised_via"], "submissive");
+        assert_eq!(alerts[0]["submissive_display_name"], "Sub");
         assert!(alerts[0]["acknowledged_at"].is_null());
         let alert_id = alerts[0]["id"].as_str().unwrap().to_string();
 

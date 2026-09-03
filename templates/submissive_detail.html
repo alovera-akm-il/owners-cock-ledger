@@ -153,6 +153,8 @@
     <form id="add-device-form" class="hidden mt-3 space-y-2">
       <input id="device-name" type="text" placeholder="Device name"
         class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600" />
+      <input id="device-description" type="text" placeholder="Description (optional)"
+        class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-600" />
       <div class="flex gap-2">
         <button type="submit" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-2">Save</button>
         <button type="button" id="cancel-add-device" class="text-xs font-medium text-slate-400 px-3 py-2">Cancel</button>
@@ -535,7 +537,7 @@
     e.preventDefault();
     const name = $('#device-name').val();
     if (!name) return;
-    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/devices', { name: name })
+    apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/devices', { name: name, description: $('#device-description').val() || null })
       .done(function () { window.location.reload(); })
       .fail(function (xhr) { showMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not add device.', false); });
   });
