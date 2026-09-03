@@ -4218,6 +4218,8 @@ mod tests {
             .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(request["status"], "pending");
+        assert_eq!(request["reward_title"], "movie night");
+        assert_eq!(request["submissive_display_name"], "Sub");
         let request_id = request["id"].as_str().unwrap().to_string();
 
         let (_, kh_feed) = keyholder.get("/api/v1/notifications").await;
@@ -4233,6 +4235,8 @@ mod tests {
             .get("/api/v1/keyholder/reward-redemption-requests")
             .await;
         assert_eq!(pending.as_array().unwrap().len(), 1);
+        assert_eq!(pending[0]["reward_title"], "movie night");
+        assert_eq!(pending[0]["submissive_display_name"], "Sub");
 
         let (status, _) = keyholder
             .patch(

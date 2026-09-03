@@ -492,6 +492,31 @@ async fn safety_alerts_page(State(pool): State<Pool>, jar: CookieJar) -> Respons
 }
 
 #[derive(Template)]
+#[template(path = "redemption_requests.html")]
+struct RedemptionRequestsTemplate {
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/redemption-requests` (docs/16-mockup-implementation-gaps.md
+/// item 6) — a cross-submissive aggregation of pending reward
+/// redemptions, the same "roll every submissive's open items into one
+/// list" pattern the Review Queue already uses for proof.
+async fn redemption_requests_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    render(RedemptionRequestsTemplate {
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
 #[template(path = "toy_catalog.html")]
 struct ToyCatalogTemplate {
     submissive_id: String,
@@ -1201,6 +1226,10 @@ pub fn router() -> axum::Router<db::AppState> {
         )
         .route("/keyholder/review", get(review_queue_page))
         .route("/keyholder/safety-alerts", get(safety_alerts_page))
+        .route(
+            "/keyholder/redemption-requests",
+            get(redemption_requests_page),
+        )
         .route("/keyholder/catalog", get(catalog_page))
         .route("/keyholder/checkin-templates", get(checkin_templates_page))
         .route("/checkins/new", get(submit_checkin_page))

@@ -6,11 +6,13 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
 use crate::db::{self, Pool};
+use crate::domain::rewards_punishments::templates;
 use crate::domain::{links, points};
 use crate::notify;
 
@@ -141,7 +143,9 @@ async fn adjust_points(
 struct RedemptionRequestResponse {
     id: String,
     link_id: String,
+    submissive_display_name: String,
     template_id: String,
+    reward_title: String,
     points_cost: i64,
     status: String,
     requested_at: String,
@@ -150,20 +154,38 @@ struct RedemptionRequestResponse {
     resulting_assignment_id: Option<String>,
 }
 
-impl From<points::RedemptionRequest> for RedemptionRequestResponse {
-    fn from(r: points::RedemptionRequest) -> Self {
-        Self {
-            id: r.id,
-            link_id: r.link_id,
-            template_id: r.template_id,
-            points_cost: r.points_cost,
-            status: r.status,
-            requested_at: iso8601(r.requested_at),
-            decided_at: r.decided_at.map(iso8601),
-            decided_by_user_id: r.decided_by_user_id,
-            resulting_assignment_id: r.resulting_assignment_id,
-        }
-    }
+/// Resolves `link_id`/`template_id` to a display name and reward title
+/// so a keyholder-wide list (docs/16-mockup-implementation-gaps.md
+/// item 6) doesn't need a second round-trip per row just to say whose
+/// request it is and what they're asking for.
+fn redemption_response(
+    conn: &rusqlite::Connection,
+    r: points::RedemptionRequest,
+) -> rusqlite::Result<RedemptionRequestResponse> {
+    let (_, submissive_id) = links::parties(conn, &r.link_id)?.unwrap_or_default();
+    let submissive_display_name: String = conn
+        .query_row(
+            "SELECT display_name FROM users WHERE id = ?1",
+            params![submissive_id],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+    let reward_title = templates::get(conn, &r.template_id)?
+        .map(|t| t.title)
+        .unwrap_or_else(|| "(deleted template)".to_string());
+    Ok(RedemptionRequestResponse {
+        id: r.id,
+        link_id: r.link_id,
+        submissive_display_name,
+        template_id: r.template_id,
+        reward_title,
+        points_cost: r.points_cost,
+        status: r.status,
+        requested_at: iso8601(r.requested_at),
+        decided_at: r.decided_at.map(iso8601),
+        decided_by_user_id: r.decided_by_user_id,
+        resulting_assignment_id: r.resulting_assignment_id,
+    })
 }
 
 async fn redeem(
@@ -174,7 +196,7 @@ async fn redeem(
     user.require_role(&[Role::Submissive])
         .map_err(|_| FORBIDDEN)?;
     let pool2 = pool.clone();
-    let (request, keyholder_id) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+    let (response, keyholder_id) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
         let conn = pool2.get().map_err(|_| INTERNAL_ERROR)?;
         let link_id = links::active_link_for_submissive(&conn, &user.user_id)
             .map_err(|_| INTERNAL_ERROR)?
@@ -192,7 +214,8 @@ async fn redeem(
         let (keyholder_id, _) = links::parties(&conn, &link_id)
             .map_err(|_| INTERNAL_ERROR)?
             .ok_or(INTERNAL_ERROR)?;
-        Ok((request, keyholder_id))
+        let response = redemption_response(&conn, request).map_err(|_| INTERNAL_ERROR)?;
+        Ok((response, keyholder_id))
     })
     .await
     .map_err(|_| INTERNAL_ERROR)??;
@@ -207,13 +230,13 @@ async fn redeem(
             body: None,
             link_path: Some("/dashboard"),
             related_entity_type: Some("reward_redemption_requests"),
-            related_entity_id: Some(&request.id),
+            related_entity_id: Some(&response.id),
             push: true,
         },
     )
     .await;
 
-    Ok(Json(request.into()))
+    Ok(Json(response))
 }
 
 #[derive(Deserialize)]
@@ -237,7 +260,12 @@ async fn list_redemption_requests(
             .map_err(|_| INTERNAL_ERROR)?;
         let list = points::list_requests_for_links(&conn, &link_ids, !q.all)
             .map_err(|_| INTERNAL_ERROR)?;
-        Ok(Json(list.into_iter().map(Into::into).collect()))
+        let responses: Vec<RedemptionRequestResponse> = list
+            .into_iter()
+            .map(|r| redemption_response(&conn, r))
+            .collect::<rusqlite::Result<_>>()
+            .map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(responses))
     })
     .await
     .map_err(|_| INTERNAL_ERROR)?
