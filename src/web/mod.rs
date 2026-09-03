@@ -698,6 +698,8 @@ async fn submissive_detail_page(
 
 struct ReviewQueueItem {
     id: String,
+    submissive_id: String,
+    submissive_display_name: String,
     kind: String,
     purpose: String,
     submitted_ago: String,
@@ -767,6 +769,8 @@ async fn submissive_review_page(
                 let first = attachments.into_iter().next();
                 items.push(ReviewQueueItem {
                     id: s.id,
+                    submissive_id: s.submissive_id,
+                    submissive_display_name: display_name.clone(),
                     kind: s.kind,
                     purpose: s.purpose,
                     submitted_ago: fmt_duration(now - s.submitted_at) + " ago",
@@ -808,12 +812,28 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
         let link_ids = links::active_link_ids_for_keyholder(&conn, &keyholder_id)?;
         let submissions = proofs::list_for_links(&conn, &link_ids)?;
         let now = session::now();
+        let mut name_cache: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         let mut items = Vec::new();
         for s in submissions.into_iter().filter(|s| s.status == "pending") {
             let attachments = proofs::list_attachments(&conn, &s.id)?;
             let first = attachments.into_iter().next();
+            let submissive_display_name = match name_cache.get(&s.submissive_id) {
+                Some(name) => name.clone(),
+                None => {
+                    let name: String = conn.query_row(
+                        "SELECT display_name FROM users WHERE id = ?1",
+                        params![s.submissive_id],
+                        |row| row.get(0),
+                    )?;
+                    name_cache.insert(s.submissive_id.clone(), name.clone());
+                    name
+                }
+            };
             items.push(ReviewQueueItem {
                 id: s.id,
+                submissive_id: s.submissive_id,
+                submissive_display_name,
                 kind: s.kind,
                 purpose: s.purpose,
                 submitted_ago: fmt_duration(now - s.submitted_at) + " ago",

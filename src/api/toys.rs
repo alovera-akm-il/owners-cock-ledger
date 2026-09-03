@@ -255,6 +255,8 @@ struct PatchToyRequest {
     usage_notes: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_some")]
     tags: Option<Option<serde_json::Value>>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    acquired_at: Option<Option<String>>,
 }
 
 /// Ownership check shared by every `.../toys/{id}` route: a Keyholder
@@ -317,7 +319,10 @@ async fn patch_toy(
                 tags: tags.as_ref().map(|v| v.as_deref()),
                 photo_attachment_path: None,
                 photo_mime_type: None,
-                acquired_at: None,
+                acquired_at: req
+                    .acquired_at
+                    .as_ref()
+                    .map(|v| v.as_deref().and_then(parse_iso8601)),
             },
         )
         .map_err(|_| INTERNAL_ERROR)?;

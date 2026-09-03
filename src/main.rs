@@ -3069,6 +3069,138 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn review_queue_and_per_submissive_page_attribute_cards_to_a_submissive() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-attr@example.test", "sub-attr@example.test")
+                .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+
+        let (status, _, queue_body) = keyholder.get_page("/keyholder/review").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(queue_body.contains("Sub"));
+
+        let (status, _, per_sub_body) = keyholder
+            .get_page(&format!("/keyholder/submissives/{sub_id}/review"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(per_sub_body.contains("Sub"));
+    }
+
+    #[tokio::test]
+    async fn failing_a_review_can_attach_an_ad_hoc_or_catalog_punishment() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-attach@example.test",
+            "sub-attach@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "steel #1"}),
+            )
+            .await;
+        let (_, devices) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/devices"))
+            .await;
+        let device_id = devices[0]["id"].as_str().unwrap();
+        let (_, status_before) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary", "target_release_at": 1_000_000}),
+            )
+            .await;
+        assert_eq!(status_before["locked"], true);
+
+        // Ad-hoc punishment, the "Create new" tab not saved to catalog.
+        let (_, submission1) = submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+        let id1 = submission1["id"].as_str().unwrap();
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/proof-submissions/{id1}/review"),
+                serde_json::json!({"status": "failed", "review_notes": null}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/assignments"),
+                serde_json::json!({
+                    "kind": "punishment", "title": "ad-hoc extra day",
+                    "effect_kind": "time_extension", "time_extension_seconds": 86400,
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, status_after) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(
+            status_after["target_release_at"],
+            api::iso8601(1_000_000 + 86400)
+        );
+
+        // From-catalog punishment, the "From catalog" tab.
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/templates",
+                serde_json::json!({
+                    "kind": "punishment", "title": "catalog extra day",
+                    "effect_kind": "time_extension", "time_extension_seconds": 43200,
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap();
+        let (_, submission2) = submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+        let id2 = submission2["id"].as_str().unwrap();
+        keyholder
+            .post(
+                &format!("/api/v1/keyholder/proof-submissions/{id2}/review"),
+                serde_json::json!({"status": "failed", "review_notes": null}),
+            )
+            .await;
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/assignments"),
+                serde_json::json!({"template_id": template_id}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, status_final) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/status"))
+            .await;
+        assert_eq!(
+            status_final["target_release_at"],
+            api::iso8601(1_000_000 + 86400 + 43200)
+        );
+        let _ = blob_dir;
+    }
+
+    #[tokio::test]
     async fn submissive_cannot_review_or_touch_another_submissives_devices() {
         let (_dir, pool) = temp_pool();
         let (mut keyholder, mut submissive, _blob_dir) =
@@ -4074,6 +4206,61 @@ mod tests {
                 .iter()
                 .any(|n| n["type"] == "task.failed")
         );
+    }
+
+    #[tokio::test]
+    async fn toy_acquired_at_round_trips_through_patch_and_clears() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) =
+            linked_keyholder_and_submissive(&pool, "kh-acq@example.test", "sub-acq@example.test")
+                .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, toy) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/toys"),
+                serde_json::json!({"name": "steel cage", "acquired_at": "2025-01-01T00:00:00Z"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let toy_id = toy["id"].as_str().unwrap().to_string();
+        assert!(
+            toy["acquired_at"]
+                .as_str()
+                .unwrap()
+                .starts_with("2025-01-01")
+        );
+
+        // PATCH can change it...
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/toys/{toy_id}"),
+                serde_json::json!({"acquired_at": "2024-06-15T00:00:00Z"}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/toys"))
+            .await;
+        assert!(
+            list[0]["acquired_at"]
+                .as_str()
+                .unwrap()
+                .starts_with("2024-06-15")
+        );
+
+        // ...and explicitly clear it.
+        let (status, _) = keyholder
+            .patch(
+                &format!("/api/v1/toys/{toy_id}"),
+                serde_json::json!({"acquired_at": null}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = keyholder
+            .get(&format!("/api/v1/keyholder/submissives/{sub_id}/toys"))
+            .await;
+        assert!(list[0]["acquired_at"].is_null());
     }
 
     #[tokio::test]

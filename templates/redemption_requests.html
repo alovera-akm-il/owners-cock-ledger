@@ -74,8 +74,13 @@
     <p class="text-sm text-slate-400 mt-1">Pending reward redemption requests across everyone currently linked to you.</p>
   </div>
 
-  <div id="requests-list" class="space-y-4">
+  <div id="requests-list" class="space-y-4 mb-8">
     <p class="text-sm text-slate-500">Loading…</p>
+  </div>
+
+  <div>
+    <h2 class="text-sm font-semibold text-slate-400 mb-3">Recently decided</h2>
+    <div id="decided-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800"></div>
   </div>
 </main>
 
@@ -139,15 +144,40 @@
     return $row;
   }
 
+  function renderDecided(r) {
+    const $row = $('<div class="px-5 py-3 flex items-center justify-between gap-4 text-sm">');
+    const $left = $('<div class="min-w-0">');
+    $left.append($('<p>').append(
+      $('<span class="font-medium">').text(r.submissive_display_name),
+      $('<span class="text-slate-500">').text(' — "' + r.reward_title + '" for ' + r.points_cost + ' points'),
+    ));
+    $left.append($('<p class="text-xs text-slate-500 mt-0.5">').text('Decided ' + (r.decided_at ? timeAgo(r.decided_at) : '')));
+    $row.append($left);
+    const cls = r.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400';
+    $row.append($('<span class="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ' + cls + '">').text(r.status));
+    return $row;
+  }
+
   function loadRequests() {
     apiCall('GET', '/api/v1/keyholder/reward-redemption-requests').done(function (list) {
       const $list = $('#requests-list').empty();
       const pending = list.filter(function (r) { return r.status === 'pending'; });
       if (pending.length === 0) {
         $list.append('<p class="text-sm text-slate-500">Nothing pending — everyone\'s all caught up.</p>');
-        return;
+      } else {
+        pending.forEach(function (r) { $list.append(renderRequest(r)); });
       }
-      pending.forEach(function (r) { $list.append(renderRequest(r)); });
+
+      const $decided = $('#decided-list').empty();
+      const decided = list
+        .filter(function (r) { return r.status !== 'pending'; })
+        .sort(function (a, b) { return new Date(b.decided_at) - new Date(a.decided_at); })
+        .slice(0, 10);
+      if (decided.length === 0) {
+        $decided.append('<p class="px-5 py-4 text-sm text-slate-500">Nothing decided yet.</p>');
+      } else {
+        decided.forEach(function (r) { $decided.append(renderDecided(r)); });
+      }
     });
   }
   loadRequests();

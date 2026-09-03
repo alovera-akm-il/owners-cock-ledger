@@ -102,11 +102,17 @@
       <input id="f-size-notes" type="text" placeholder="Size notes (length, diameter, etc.)" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
       <input id="f-storage-location" type="text" placeholder="Storage location" class="bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
     </div>
-    <div>
-      <label class="block text-xs font-medium text-slate-400 mb-1.5">Compatible device</label>
-      <select id="f-compatible-device" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-        <option value="">Not device-specific</option>
-      </select>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Compatible device</label>
+        <select id="f-compatible-device" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
+          <option value="">Not device-specific</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Acquired (optional)</label>
+        <input id="f-acquired-at" type="date" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" />
+      </div>
     </div>
     <textarea id="f-care-instructions" rows="2" placeholder="Care instructions" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
     <textarea id="f-usage-notes" rows="2" placeholder="Usage notes (e.g. requires extra lubricant, check battery before use)" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200"></textarea>
@@ -206,7 +212,7 @@
     $('#form-heading').text('Add toy');
     $('#form-message').addClass('hidden');
     $('#limit-warning').addClass('hidden');
-    ['name', 'category', 'material', 'brand', 'color', 'size-notes', 'storage-location', 'care-instructions', 'usage-notes', 'tags', 'compatible-device']
+    ['name', 'category', 'material', 'brand', 'color', 'size-notes', 'storage-location', 'care-instructions', 'usage-notes', 'tags', 'compatible-device', 'acquired-at']
       .forEach(function (f) { $('#f-' + f).val(''); });
     $('#photo-section').addClass('hidden');
     $('#photo-save-first-note').removeClass('hidden');
@@ -237,6 +243,7 @@
     $('#f-usage-notes').val(t.usage_notes || '');
     $('#f-tags').val((t.tags || []).join(', '));
     $('#f-compatible-device').val(t.compatible_device_id || '');
+    $('#f-acquired-at').val(t.acquired_at ? t.acquired_at.slice(0, 10) : '');
     $('#photo-save-first-note').addClass('hidden');
     $('#photo-section').removeClass('hidden');
     $('#photo-message').addClass('hidden');
@@ -311,6 +318,7 @@
       usage_notes: $('#f-usage-notes').val() || null,
       tags: tags.length ? tags : null,
       compatible_device_id: $('#f-compatible-device').val() || null,
+      acquired_at: $('#f-acquired-at').val() ? $('#f-acquired-at').val() + 'T00:00:00Z' : null,
     };
     const request = id
       ? apiCall('PATCH', '/api/v1/toys/' + id, payload)
@@ -344,6 +352,7 @@
     if (t.size_notes) $body.append($('<p class="text-xs text-slate-500">').text(t.size_notes));
     if (t.storage_location) $body.append($('<p class="text-xs text-slate-600">').text('Stored: ' + t.storage_location));
     if (t.compatible_device_id) $body.append($('<p class="text-xs text-slate-600">').text('Compatible with: ' + (deviceNamesById[t.compatible_device_id] || 'unknown device')));
+    if (t.acquired_at) $body.append($('<p class="text-xs text-slate-600">').text('Acquired: ' + t.acquired_at.slice(0, 10)));
     if (t.usage_notes) $body.append($('<p class="text-xs text-slate-600">').text('Usage: ' + t.usage_notes));
     if (t.tags && t.tags.length) {
       const $tags = $('<div class="flex flex-wrap gap-1 mt-2">');
