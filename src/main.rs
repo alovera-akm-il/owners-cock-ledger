@@ -3432,6 +3432,60 @@ mod tests {
         assert_eq!(location.as_deref(), Some("/submissive"));
     }
 
+    /// docs/16-mockup-implementation-gaps.md item 5: the per-submissive
+    /// review view, additive to the cross-submissive Review Queue —
+    /// same underlying pending-proof data, scoped to one link.
+    #[tokio::test]
+    async fn submissive_review_page_shows_only_that_submissives_pending_proof() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-subreview@example.test",
+            "sub-subreview@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (status, _, body) = keyholder
+            .get_page(&format!("/keyholder/submissives/{sub_id}/review"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Nothing waiting on review"));
+
+        submissive
+            .post_multipart(
+                "/api/v1/submissive/proof-submissions",
+                &[("kind", "note")],
+                &[],
+            )
+            .await;
+
+        let (status, _, body) = keyholder
+            .get_page(&format!("/keyholder/submissives/{sub_id}/review"))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("note"));
+
+        // An unrelated Keyholder can't see this page at all.
+        seed_keyholder(
+            &pool,
+            "kh-subreview-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-subreview-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _, _) = other_kh
+            .get_page(&format!("/keyholder/submissives/{sub_id}/review"))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
     #[tokio::test]
     async fn account_settings_page_renders_for_both_roles() {
         let (_dir, pool) = temp_pool();

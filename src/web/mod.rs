@@ -423,6 +423,85 @@ struct ProofReviewTemplate {
     initial: String,
 }
 
+#[derive(Template)]
+#[template(path = "submissive_review.html")]
+struct SubmissiveReviewTemplate {
+    submissive_id: String,
+    submissive_display_name: String,
+    pending: Vec<ReviewQueueItem>,
+    pending_is_empty: bool,
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/submissives/{id}/review` (docs/16-mockup-implementation-gaps.md
+/// item 5) — the single-submissive review view the mockup shows,
+/// reached from that submissive's own page. Additive to the
+/// cross-submissive Review Queue, not a replacement for it: same
+/// `ReviewQueueItem` shape and card markup, scoped to one link instead
+/// of every active one.
+async fn submissive_review_page(
+    State(pool): State<Pool>,
+    jar: CookieJar,
+    Path(submissive_id): Path<String>,
+) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    let keyholder_id = user.user_id.clone();
+    let target_id = submissive_id.clone();
+    let result = tokio::task::spawn_blocking(
+        move || -> anyhow::Result<Option<(String, Vec<ReviewQueueItem>)>> {
+            let conn = pool.get()?;
+            let Some(link_id) =
+                links::active_or_paused_link_for_keyholder(&conn, &keyholder_id, &target_id)?
+            else {
+                return Ok(None);
+            };
+            let display_name: String = conn.query_row(
+                "SELECT display_name FROM users WHERE id = ?1",
+                params![target_id],
+                |row| row.get(0),
+            )?;
+            let submissions = proofs::list_for_links(&conn, &[link_id])?;
+            let now = session::now();
+            let mut items = Vec::new();
+            for s in submissions.into_iter().filter(|s| s.status == "pending") {
+                let attachments = proofs::list_attachments(&conn, &s.id)?;
+                let first = attachments.into_iter().next();
+                items.push(ReviewQueueItem {
+                    id: s.id,
+                    kind: s.kind,
+                    purpose: s.purpose,
+                    submitted_ago: fmt_duration(now - s.submitted_at) + " ago",
+                    code: s.verification_code_value,
+                    attachment_id: first.as_ref().map(|a| a.id.clone()),
+                    attachment_mime: first.as_ref().map(|a| a.mime_type.clone()),
+                });
+            }
+            Ok(Some((display_name, items)))
+        },
+    )
+    .await;
+
+    let Ok(Ok(Some((submissive_display_name, pending)))) = result else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    render(SubmissiveReviewTemplate {
+        submissive_id,
+        submissive_display_name,
+        pending_is_empty: pending.is_empty(),
+        pending,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
 async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
     let Some(user) = resolve_current_user(&pool, &jar).await else {
         return Redirect::to("/login").into_response();
@@ -1225,6 +1304,10 @@ pub fn router() -> axum::Router<db::AppState> {
             get(keyholder_submissive_statistics_page),
         )
         .route("/keyholder/review", get(review_queue_page))
+        .route(
+            "/keyholder/submissives/{id}/review",
+            get(submissive_review_page),
+        )
         .route("/keyholder/safety-alerts", get(safety_alerts_page))
         .route(
             "/keyholder/redemption-requests",

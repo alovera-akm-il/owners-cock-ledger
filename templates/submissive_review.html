@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Review {{ submissive_display_name }}</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
+        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
+        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+      </a>
+      <div class="hidden lg:flex items-center gap-6 text-sm">
+        <a href="/dashboard" class="text-slate-400 hover:text-slate-200">Submissives</a>
+        <a href="/keyholder/catalog" class="text-slate-400 hover:text-slate-200">Catalog</a>
+        <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
+        <a href="/keyholder/checkin-templates" class="text-slate-400 hover:text-slate-200">Check-ins</a>
+        <a href="/keyholder/play-session-templates" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="/keyholder/limit-items" class="text-slate-400 hover:text-slate-200">Limits</a>
+        <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
+        <a href="/keyholder/redemption-requests" class="text-slate-400 hover:text-slate-200">Redemptions</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
+          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
+        </button>
+        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+            <span class="text-xs font-semibold">Notifications</span>
+            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
+          </div>
+          <div id="notif-panel-list"></div>
+        </div>
+      </div>
+      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
+      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
+      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
+      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="mobile-menu-btn" class="lg:hidden h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
+        <svg id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
+      </button>
+      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
+    </div>
+  </div>
+      <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
+        <a href="/dashboard" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Submissives</a>
+        <a href="/keyholder/catalog" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Catalog</a>
+        <a href="/keyholder/review" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Review queue</a>
+        <a href="/keyholder/checkin-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Check-ins</a>
+        <a href="/keyholder/play-session-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Play Sessions</a>
+        <a href="/keyholder/limit-items" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Limits</a>
+        <a href="/keyholder/safety-alerts" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Safety Alerts</a>
+        <a href="/keyholder/redemption-requests" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Redemptions</a>
+      </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <a href="/keyholder/submissives/{{ submissive_id }}" class="text-xs text-slate-500 hover:text-slate-300">&larr; Back to {{ submissive_display_name }}</a>
+  <h1 class="text-2xl font-semibold tracking-tight mb-1 mt-3">Review {{ submissive_display_name }}</h1>
+  <p class="text-sm text-slate-400 mb-6">Just this submissive's pending proof submissions, newest first.</p>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    {% for item in pending %}
+    <div class="p-5 flex gap-4" data-submission-id="{{ item.id }}">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm">
+          <span class="font-medium">{{ item.kind }}</span>
+          <span class="text-slate-500">&middot; {{ item.purpose }} &middot; {{ item.submitted_ago }}</span>
+        </p>
+        {% if let Some(code) = item.code %}
+          <p class="text-xs text-slate-500 mt-1">code: <span class="font-mono text-slate-300">{{ code }}</span></p>
+        {% endif %}
+        {% if let Some(attachment_id) = item.attachment_id %}
+          {% if let Some(mime) = item.attachment_mime %}
+            {% if mime.starts_with("image/") %}
+              <img src="/api/v1/keyholder/proof-submissions/{{ item.id }}/attachments/{{ attachment_id }}"
+                class="mt-2 max-h-64 rounded-lg border border-slate-800" />
+            {% else %}
+              <a class="mt-2 inline-block text-xs text-amber-500 hover:text-amber-400"
+                href="/api/v1/keyholder/proof-submissions/{{ item.id }}/attachments/{{ attachment_id }}">View attachment</a>
+            {% endif %}
+          {% endif %}
+        {% endif %}
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <input type="text" placeholder="review note (optional)" class="review-notes bg-slate-950 border border-slate-800 rounded-lg text-xs px-2 py-1.5 text-slate-200 flex-1 min-w-[10rem]" />
+          <button class="review-btn text-xs font-semibold text-slate-950 bg-emerald-600 hover:bg-emerald-500 rounded-lg px-3 py-1.5" data-status="verified">Verified</button>
+          <button class="review-btn text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-3 py-1.5" data-status="redo">Redo</button>
+          <button class="review-btn text-xs font-semibold text-slate-100 bg-red-600 hover:bg-red-500 rounded-lg px-3 py-1.5" data-status="failed">Failed</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if pending_is_empty %}
+    <div class="p-8 text-center text-sm text-slate-500">Nothing waiting on review for {{ submissive_display_name }}.</div>
+    {% endif %}
+  </div>
+</main>
+
+<script>
+  $('#mobile-menu-btn').on('click', function (e) {
+    e.stopPropagation();
+    $('#mobile-menu').slideToggle(150);
+    $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
+  });
+  $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () {
+    $('#mobile-menu').slideUp(150);
+    $('#menu-icon-open').removeClass('hidden');
+    $('#menu-icon-close').addClass('hidden');
+  });
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  $('#logout-btn').on('click', function () {
+    $.ajax({
+      url: '/api/v1/auth/logout',
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).always(function () { window.location = '/login'; });
+  });
+
+  $('.review-btn').on('click', function () {
+    const $card = $(this).closest('[data-submission-id]');
+    const submissionId = $card.data('submission-id');
+    const status = $(this).data('status');
+    const notes = $card.find('.review-notes').val();
+
+    $.ajax({
+      url: '/api/v1/keyholder/proof-submissions/' + submissionId + '/review',
+      method: 'POST',
+      contentType: 'application/json',
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+      data: JSON.stringify({ status: status, review_notes: notes || null }),
+    }).done(function () {
+      $card.addClass('panel-fade').fadeOut(200, function () { $(this).remove(); });
+    }).fail(function (xhr) {
+      alert((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not submit review.');
+    });
+  });
+</script>
+</body>
+</html>
