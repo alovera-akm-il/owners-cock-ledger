@@ -26,6 +26,7 @@
         <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
         <a href="/keyholder/checkin-templates" class="text-slate-400 hover:text-slate-200">Check-ins</a>
         <a href="/keyholder/play-session-templates" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
+        <a href="/keyholder/limit-items" class="text-slate-400 hover:text-slate-200">Limits</a>
         <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
       </div>
     </div>
@@ -47,9 +48,22 @@
       <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
       <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ keyholder_display_name }}</a>
       <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ keyholder_initial }}</a>
+      <button id="mobile-menu-btn" class="lg:hidden h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
+        <svg id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
+      </button>
       <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
     </div>
   </div>
+      <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
+        <a href="/dashboard" class="block px-3 py-2.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-100">Submissives</a>
+        <a href="/keyholder/catalog" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Catalog</a>
+        <a href="/keyholder/review" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Review queue</a>
+        <a href="/keyholder/checkin-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Check-ins</a>
+        <a href="/keyholder/play-session-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Play Sessions</a>
+        <a href="/keyholder/limit-items" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Limits</a>
+        <a href="/keyholder/safety-alerts" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Safety Alerts</a>
+      </div>
 </nav>
 
 <main class="max-w-4xl mx-auto px-6 py-8 space-y-6" data-submissive-id="{{ submissive_id }}" data-link-id="{{ link_id }}" data-points-enabled="{% if points_enabled %}true{% else %}false{% endif %}">
@@ -68,7 +82,15 @@
     <p class="text-sm font-semibold mb-3">Confinement</p>
     <div id="status-panel">
       {% if locked %}
-        <p class="text-sm text-emerald-400 font-medium">Locked{% if let Some(t) = target_release_text %} &middot; {{ t }}{% if overdue %} overdue{% else %} remaining{% endif %}{% endif %}</p>
+        {% if let Some(t) = target_release_text %}
+          {% if clock_paused %}
+            <p class="text-sm text-emerald-400 font-medium">Locked &middot; {{ t }} remaining</p>
+          {% else %}
+            <p class="text-sm text-emerald-400 font-medium">Locked &middot; <span id="live-countdown" class="{% if overdue %}text-red-400{% endif %}" data-target-epoch="{{ target_release_at_epoch.unwrap() }}" data-server-now-epoch="{{ server_now_epoch }}">{% if overdue %}{{ t }} overdue{% else %}{{ t }} remaining{% endif %}</span></p>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-emerald-400 font-medium">Locked</p>
+        {% endif %}
         {% if clock_paused %}<p class="text-xs text-sky-300 mt-1">Timer paused</p>{% endif %}
         <div class="mt-3 flex flex-wrap gap-2">
           <button id="pause-btn" class="text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2">{% if clock_paused %}Update pause message{% else %}Pause timer{% endif %}</button>
@@ -367,11 +389,51 @@
 </main>
 
 <script>
+  $('#mobile-menu-btn').on('click', function (e) {
+    e.stopPropagation();
+    $('#mobile-menu').slideToggle(150);
+    $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
+  });
+  $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () {
+    $('#mobile-menu').slideUp(150);
+    $('#menu-icon-open').removeClass('hidden');
+    $('#menu-icon-close').addClass('hidden');
+  });
   function getCookie(name) {
     const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : null;
   }
   const subId = $('main').data('submissive-id');
+
+  (function () {
+    const el = document.getElementById('live-countdown');
+    if (!el) return;
+    const targetEpoch = parseInt(el.dataset.targetEpoch, 10);
+    const serverNowEpoch = parseInt(el.dataset.serverNowEpoch, 10);
+    const loadedAtClientMs = Date.now();
+
+    function fmt(seconds) {
+      const sign = seconds < 0 ? '-' : '';
+      seconds = Math.abs(Math.round(seconds));
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      if (days > 0) return sign + days + 'd ' + hours + 'h ' + minutes + 'm';
+      if (hours > 0) return sign + hours + 'h ' + minutes + 'm ' + secs + 's';
+      return sign + minutes + 'm ' + secs + 's';
+    }
+
+    function tick() {
+      const elapsedSinceLoad = (Date.now() - loadedAtClientMs) / 1000;
+      const remaining = (targetEpoch - serverNowEpoch) - elapsedSinceLoad;
+      el.textContent = remaining <= 0 ? fmt(remaining) + ' overdue' : fmt(remaining) + ' remaining';
+      el.classList.toggle('text-red-400', remaining <= 0);
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
 
   $('#logout-btn').on('click', function () {
     $.ajax({

@@ -47,9 +47,21 @@
       <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
       <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
       <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
+      <button id="mobile-menu-btn" class="lg:hidden h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
+        <svg id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
+      </button>
       <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
     </div>
   </div>
+      <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
+        <a href="/submissive" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">My Status</a>
+        <a href="/submissive/submit-proof" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Submit Proof</a>
+        <a href="/submissive/toys" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">My Toys</a>
+        <a href="/submissive/play-sessions" class="block px-3 py-2.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-100">Play Sessions</a>
+        <a href="/submissive/limits" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">My Limits</a>
+        <a href="/submissive/statistics" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Statistics</a>
+      </div>
 </nav>
 
 <main class="max-w-3xl mx-auto px-6 py-8">
@@ -70,6 +82,17 @@
 </main>
 
 <script>
+  $('#mobile-menu-btn').on('click', function (e) {
+    e.stopPropagation();
+    $('#mobile-menu').slideToggle(150);
+    $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
+  });
+  $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
+  $(document).on('click', function () {
+    $('#mobile-menu').slideUp(150);
+    $('#menu-icon-open').removeClass('hidden');
+    $('#menu-icon-close').addClass('hidden');
+  });
   function getCookie(name) {
     const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : null;
