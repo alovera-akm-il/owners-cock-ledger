@@ -248,12 +248,19 @@ pub struct Adjustment {
     pub adjusted_at: i64,
     pub notes: Option<String>,
     pub keyholder_reviewed_at: Option<i64>,
+    /// The task/punishment title that caused this, when the adjustment
+    /// was linked to an assignment (`caused_by_assignment_id`) — `None`
+    /// for a manually-applied one. Same join `list_unreviewed_adjustments_for_links`
+    /// uses for the cross-roster feed.
+    pub caused_by_title: Option<String>,
 }
 
 pub fn list_adjustments(conn: &Connection, session_id: &str) -> rusqlite::Result<Vec<Adjustment>> {
     let mut stmt = conn.prepare(
-        "SELECT id, delta_seconds, reason, adjusted_by_user_id, adjusted_at, notes, keyholder_reviewed_at
-         FROM confinement_adjustments WHERE session_id = ?1 ORDER BY adjusted_at DESC",
+        "SELECT a.id, a.delta_seconds, a.reason, a.adjusted_by_user_id, a.adjusted_at, a.notes, a.keyholder_reviewed_at, asg.title
+         FROM confinement_adjustments a
+         LEFT JOIN assignments asg ON asg.id = a.caused_by_assignment_id
+         WHERE a.session_id = ?1 ORDER BY a.adjusted_at DESC",
     )?;
     stmt.query_map(params![session_id], |row| {
         Ok(Adjustment {
@@ -264,6 +271,7 @@ pub fn list_adjustments(conn: &Connection, session_id: &str) -> rusqlite::Result
             adjusted_at: row.get(4)?,
             notes: row.get(5)?,
             keyholder_reviewed_at: row.get(6)?,
+            caused_by_title: row.get(7)?,
         })
     })?
     .collect()

@@ -450,6 +450,8 @@ struct SubmissiveDashboardTemplate {
     current_code: Option<String>,
     current_code_expires_text: Option<String>,
     linked_days: Option<i64>,
+    device_name: Option<String>,
+    locked_elapsed_text: Option<String>,
     recent: Vec<RecentSubmission>,
 }
 
@@ -481,6 +483,13 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
                 .map(|started_at| (session::now() - started_at) / 86_400),
             None => None,
         };
+        let device_name = match status.session.as_ref() {
+            Some(s) => devices::list(&conn, &submissive_id)?
+                .into_iter()
+                .find(|d| d.id == s.device_id)
+                .map(|d| d.name),
+            None => None,
+        };
         let recent = proofs::list_for_submissive(&conn, &submissive_id)?
             .into_iter()
             .take(5)
@@ -490,13 +499,18 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
                 submitted_ago: fmt_duration(session::now() - s.submitted_at) + " ago",
             })
             .collect::<Vec<_>>();
-        Ok((status, current_code, linked_days, recent))
+        Ok((status, current_code, linked_days, device_name, recent))
     })
     .await;
 
-    let Ok(Ok((status, current_code, linked_days, recent))) = result else {
+    let Ok(Ok((status, current_code, linked_days, device_name, recent))) = result else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
+
+    let locked_elapsed_text = status
+        .session
+        .as_ref()
+        .map(|s| fmt_duration(session::now() - s.started_at) + " so far");
 
     render(SubmissiveDashboardTemplate {
         initial: initial_of(&user.display_name),
@@ -508,6 +522,8 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
         overdue: status.overdue,
         clock_paused: status.clock_paused,
         linked_days,
+        device_name,
+        locked_elapsed_text,
         clock_pause_message: status
             .session
             .as_ref()
@@ -591,6 +607,18 @@ struct SubmissiveDetailTemplate {
     points_balance: i64,
     oversight_paused: bool,
     oversight_pause_message: Option<String>,
+    device_name: Option<String>,
+    locked_elapsed_text: Option<String>,
+    session_started_at_epoch: Option<i64>,
+    session_started_reason: Option<String>,
+    weekly_punishment_added_text: Option<String>,
+    unreviewed_adjustments: Vec<UnreviewedAdjustmentRow>,
+}
+
+struct UnreviewedAdjustmentRow {
+    id: String,
+    delta_text: String,
+    caused_by_title: Option<String>,
 }
 
 async fn submissive_detail_page(
@@ -643,6 +671,30 @@ async fn submissive_detail_page(
                 params![link_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )?;
+        let device_name = status
+            .session
+            .as_ref()
+            .and_then(|s| device_list.iter().find(|d| d.id == s.device_id))
+            .map(|d| d.name.clone());
+        let adjustments = match status.session.as_ref() {
+            Some(s) => confinement::list_adjustments(&conn, &s.id)?,
+            None => Vec::new(),
+        };
+        let one_week_ago = session::now() - 7 * 86_400;
+        let weekly_punishment_seconds: i64 = adjustments
+            .iter()
+            .filter(|a| a.reason == "punishment_time_extension" && a.adjusted_at >= one_week_ago)
+            .map(|a| a.delta_seconds)
+            .sum();
+        let unreviewed_adjustments = adjustments
+            .iter()
+            .filter(|a| a.reason == "punishment_time_extension" && a.keyholder_reviewed_at.is_none())
+            .map(|a| UnreviewedAdjustmentRow {
+                id: a.id.clone(),
+                delta_text: fmt_duration(a.delta_seconds),
+                caused_by_title: a.caused_by_title.clone(),
+            })
+            .collect::<Vec<_>>();
         Ok(Some((
             display_name,
             device_list,
@@ -653,6 +705,9 @@ async fn submissive_detail_page(
             points_balance,
             oversight_paused_at.is_some(),
             oversight_pause_message,
+            device_name,
+            weekly_punishment_seconds,
+            unreviewed_adjustments,
         )))
     })
     .await;
@@ -667,6 +722,9 @@ async fn submissive_detail_page(
         points_balance,
         oversight_paused,
         oversight_pause_message,
+        device_name,
+        weekly_punishment_seconds,
+        unreviewed_adjustments,
     )))) = result
     else {
         return StatusCode::NOT_FOUND.into_response();
@@ -693,6 +751,16 @@ async fn submissive_detail_page(
         oversight_pause_message,
         keyholder_initial: initial_of(&user.display_name),
         keyholder_display_name: user.display_name,
+        device_name,
+        locked_elapsed_text: status
+            .session
+            .as_ref()
+            .map(|s| fmt_duration(session::now() - s.started_at) + " so far"),
+        session_started_at_epoch: status.session.as_ref().map(|s| s.started_at),
+        session_started_reason: status.session.as_ref().map(|s| s.started_reason.clone()),
+        weekly_punishment_added_text: (weekly_punishment_seconds > 0)
+            .then(|| fmt_duration(weekly_punishment_seconds)),
+        unreviewed_adjustments,
     })
 }
 
@@ -1132,11 +1200,15 @@ struct SubmitCheckinTemplate {
     initial: String,
     is_keyholder: bool,
     submissive_id: Option<String>,
+    play_session_id: Option<String>,
 }
 
 /// `/checkins/new` — either role. A Keyholder logging one for a
 /// specific submissive passes `?submissive_id=`; a submissive always
-/// logs against their own (sole) active link.
+/// logs against their own (sole) active link. Either role may also pass
+/// `?play_session_id=` to tag the check-in to a live play session (fills
+/// its next open schedule slot, if any, same as a scheduled mid-session
+/// check-in would).
 async fn submit_checkin_page(
     State(pool): State<Pool>,
     jar: CookieJar,
@@ -1155,6 +1227,7 @@ async fn submit_checkin_page(
         } else {
             None
         },
+        play_session_id: query.get("play_session_id").cloned(),
     })
 }
 

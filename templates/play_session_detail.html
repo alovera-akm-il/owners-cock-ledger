@@ -150,6 +150,7 @@
         </div>
         <div id="actions-in-progress" class="hidden rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-5 space-y-2">
           <p class="text-xs font-medium text-emerald-400 mb-1">Live now</p>
+          <a id="log-checkin-btn" href="#" class="block w-full text-center rounded-lg border border-sky-700 hover:border-sky-600 text-sky-400 py-2 text-sm font-medium">Log a check-in</a>
           <button id="end-session-btn" class="w-full rounded-lg bg-amber-600 hover:bg-amber-500 py-2 text-sm font-semibold text-slate-950">End session</button>
           {% if is_keyholder %}
           <button id="cancel-session-btn-live" class="w-full rounded-lg border border-red-800 hover:border-red-700 py-2 text-sm font-medium text-red-400">Cancel session</button>
@@ -169,6 +170,22 @@
     </div>
   </div>
 </main>
+
+<!-- ============ CHECK-IN DETAILS MODAL ============ -->
+<div id="checkin-modal-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
+  <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full">
+    <div class="flex items-start justify-between gap-4 mb-1">
+      <h3 id="checkin-modal-title" class="text-sm font-semibold text-slate-100"></h3>
+      <span id="checkin-modal-color" class="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"></span>
+    </div>
+    <p id="checkin-modal-submitted" class="text-xs text-slate-500 mb-4"></p>
+    <dl id="checkin-modal-fields" class="space-y-2.5 mb-4"></dl>
+    <div class="flex items-center justify-end gap-3">
+      <a id="checkin-modal-reopen-live" href="#" class="hidden text-xs font-semibold text-amber-500 hover:text-amber-400">Reopen live &rarr;</a>
+      <button id="checkin-modal-close-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-3 py-2">Close</button>
+    </div>
+  </div>
+</div>
 
 <script>
   const SESSION_ID = '{{ session_id }}';
@@ -204,13 +221,78 @@
 
   let toyNames = {};
   let checkinTemplateTitles = {};
+  let checkinTemplatesById = {};
+  let checkinsById = {};
   let rewardTemplates = [];
   let punishmentTemplates = [];
+  let streamConnected = false;
 
   function fmtMinutes(seconds) {
     if (!seconds) return '—';
     return Math.round(seconds / 60) + ' min';
   }
+
+  const COLOR_BADGE = {
+    green: 'text-emerald-400 bg-emerald-500/10',
+    yellow: 'text-amber-400 bg-amber-500/10',
+    red: 'text-red-400 bg-red-500/10',
+  };
+
+  function fieldLabelFor(templateId, key) {
+    const template = checkinTemplatesById[templateId];
+    const fields = (template && template.fields) || [];
+    const field = fields.find(f => f.field_key === key);
+    return field ? field.label : key;
+  }
+
+  function displayValue(val) {
+    if (val === true) return 'Yes';
+    if (val === false) return 'No';
+    if (val === null || val === undefined || val === '') return '—';
+    return val;
+  }
+
+  // Compact "label: value" summary of a fulfilled check-in's custom
+  // fields, using the template's field definitions for human labels —
+  // so a completed slot shows what was actually reported, not just a
+  // checkmark.
+  function fieldSummary(checkin) {
+    const parts = Object.entries(checkin.field_values || {}).map(function ([key, val]) {
+      return fieldLabelFor(checkin.template_id, key) + ': ' + displayValue(val);
+    });
+    return parts.join(' · ');
+  }
+
+  // Full detail view of one fulfilled check-in, opened from the schedule
+  // row -- separate from the "reopen live" edit action, which only shows
+  // up here (and only while the session is still live) rather than being
+  // the row's default click behavior.
+  function openCheckinModal(slot, checkin, templateLabel, liveEligible) {
+    $('#checkin-modal-title').text('Slot ' + slot.sequence_number + ' · ' + templateLabel);
+    $('#checkin-modal-color').removeClass().addClass('text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ' + (COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800')).text(checkin.color);
+    $('#checkin-modal-submitted').text('Submitted ' + new Date(checkin.created_at).toLocaleString());
+    const $fields = $('#checkin-modal-fields').empty();
+    const entries = Object.entries(checkin.field_values || {});
+    if (entries.length === 0) {
+      $fields.append($('<p class="text-xs text-slate-500">').text('No additional fields.'));
+    } else {
+      entries.forEach(function ([key, val]) {
+        $fields.append($('<div>').append(
+          $('<dt class="text-[11px] text-slate-500">').text(fieldLabelFor(checkin.template_id, key)),
+          $('<dd class="text-sm text-slate-200">').text(displayValue(val))
+        ));
+      });
+    }
+    if (liveEligible) {
+      $('#checkin-modal-reopen-live').removeClass('hidden').attr('href', '/play-sessions/' + SESSION_ID + '/checkin-live?template=' + encodeURIComponent(checkin.template_id) + '&slot=' + slot.sequence_number);
+    } else {
+      $('#checkin-modal-reopen-live').addClass('hidden');
+    }
+    $('#checkin-modal-backdrop').removeClass('hidden');
+  }
+
+  $('#checkin-modal-close-btn').on('click', function () { $('#checkin-modal-backdrop').addClass('hidden'); });
+  $('#checkin-modal-backdrop').on('click', function (e) { if (e.target === this) $(this).addClass('hidden'); });
 
   function renderSchedule(session) {
     const schedule = session.checkin_schedule || [];
@@ -220,20 +302,42 @@
     $('#schedule-progress').text(done + ' of ' + schedule.length + ' done');
     const $list = $('#schedule-list').empty();
     const liveEligible = session.status === 'in_progress';
+    const elapsed = session.started_at ? (Date.now() - new Date(session.started_at).getTime()) / 1000 : null;
     schedule.forEach(function (slot) {
       const label = checkinTemplateTitles[slot.checkin_template_id] || 'Check-in';
       const liveHref = '/play-sessions/' + session.id + '/checkin-live?template=' + encodeURIComponent(slot.checkin_template_id) + '&slot=' + slot.sequence_number;
-      const $row = $(liveEligible ? '<a class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700">' : '<div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-800">');
-      if (liveEligible) $row.attr('href', liveHref);
+      const checkin = slot.fulfilled_checkin_id ? checkinsById[slot.fulfilled_checkin_id] : null;
+      const dueNow = liveEligible && !slot.fulfilled_checkin_id && elapsed !== null && elapsed >= slot.planned_offset_seconds;
+      const $wrap = $('<div class="rounded-lg bg-slate-950 border px-3 py-2.5">').addClass(dueNow ? 'border-amber-600/50' : 'border-slate-800');
+      // A fulfilled slot opens the details modal on click, regardless of
+      // whether the session is still live; an unfulfilled one links
+      // straight into the live fill-in flow while the session is live,
+      // and isn't clickable at all once it's not.
+      const $row = $(checkin
+        ? '<button type="button" class="w-full flex items-center justify-between text-left hover:opacity-90">'
+        : (liveEligible ? '<a class="flex items-center justify-between hover:opacity-90">' : '<div class="flex items-center justify-between">'));
+      if (!checkin && liveEligible) $row.attr('href', liveHref);
       $row.append($('<span class="text-sm text-slate-300">').text('Slot ' + slot.sequence_number + ' · +' + Math.round(slot.planned_offset_seconds / 60) + ' min (' + label + ')'));
       if (slot.fulfilled_checkin_id) {
-        $row.append($('<span class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">').text(liveEligible ? 'done ✓ — reopen live →' : 'done ✓'));
+        const colorCls = checkin ? (COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800') : 'text-emerald-400 bg-emerald-500/10';
+        const colorText = checkin ? checkin.color : 'done';
+        $row.append($('<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full">').addClass(colorCls).text(colorText + ' ✓' + (checkin ? ' — view →' : '')));
+      } else if (dueNow) {
+        $row.append($('<span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">').text('due now — fill it in →'));
       } else if (liveEligible) {
-        $row.append($('<span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">').text('open live →'));
+        $row.append($('<span class="text-[11px] font-semibold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">').text('not due yet'));
       } else {
         $row.append($('<span class="text-[11px] text-slate-500">').text('not filled in yet'));
       }
-      $list.append($row);
+      if (checkin) {
+        $row.on('click', function () { openCheckinModal(slot, checkin, label, liveEligible); });
+      }
+      $wrap.append($row);
+      if (checkin) {
+        const summary = fieldSummary(checkin);
+        if (summary) $wrap.append($('<p class="text-[11px] text-slate-500 mt-1.5">').text(summary));
+      }
+      $list.append($wrap);
     });
   }
 
@@ -277,6 +381,24 @@
     renderSchedule(session);
     renderActions(session);
 
+    // Prefer the live, template-locked check-in flow whenever the
+    // session has a check-in template assigned (mockups/13-checkins.md
+    // §5) — same page the scheduled-slot rows below link to, so a
+    // submissive can only fill in the version the Keyholder assigned,
+    // and both sides see it update live via SSE. Only fall back to the
+    // generic, free-template /checkins/new form for a fully ad-hoc
+    // session with no check-in template configured at all.
+    if (session.checkin_template_id) {
+      const schedule = session.checkin_schedule || [];
+      const openSlot = schedule.find(function (s) { return !s.fulfilled_checkin_id; });
+      const seq = openSlot ? openSlot.sequence_number : schedule.length + 1;
+      $('#log-checkin-btn').attr('href', '/play-sessions/' + session.id + '/checkin-live?template=' + encodeURIComponent(session.checkin_template_id) + '&slot=' + seq);
+    } else {
+      const checkinParams = new URLSearchParams({ play_session_id: session.id });
+      if (IS_KEYHOLDER) checkinParams.set('submissive_id', session.submissive_id);
+      $('#log-checkin-btn').attr('href', '/checkins/new?' + checkinParams.toString());
+    }
+
     const isPending = session.status === 'pending_judgement';
     const isCompleted = session.status === 'completed';
     {% if is_keyholder %}
@@ -305,19 +427,50 @@
       const toyPath = IS_KEYHOLDER
         ? '/api/v1/keyholder/submissives/' + session.submissive_id + '/toys'
         : '/api/v1/submissive/toys';
-      apiCall('GET', toyPath).done(function (list) {
-        list.forEach(function (t) { toyNames[t.id] = t.name; });
-      }).always(function () { render(session); });
+      const checkinsPath = (IS_KEYHOLDER
+        ? '/api/v1/keyholder/submissives/' + session.submissive_id + '/checkins'
+        : '/api/v1/submissive/checkins') + '?related_play_session_id=' + SESSION_ID;
+      $.when(
+        apiCall('GET', toyPath).done(function (list) { list.forEach(function (t) { toyNames[t.id] = t.name; }); }),
+        apiCall('GET', checkinsPath).done(function (list) { list.forEach(function (c) { checkinsById[c.id] = c; }); })
+      ).always(function () {
+        render(session);
+        if (session.status === 'in_progress' && !streamConnected) {
+          streamConnected = true;
+          connectSessionStream();
+        }
+      });
     }).fail(function () {
       $('#loading').text('Could not load this session.');
     });
+  }
+
+  // Live-updates the schedule panel as check-ins land, so a Keyholder
+  // watching this page sees a submissive's submission the moment it
+  // happens instead of needing to reload (same SSE stream checkin-live.html
+  // uses per check-in, scoped here to the whole session).
+  function connectSessionStream() {
+    const es = new EventSource('/api/v1/play-sessions/' + SESSION_ID + '/checkin-stream');
+    es.addEventListener('checkin_update', function (e) {
+      let checkin;
+      try { checkin = JSON.parse(e.data); } catch (err) { return; }
+      checkinsById[checkin.id] = checkin;
+      if (!currentSession) return;
+      const schedule = currentSession.checkin_schedule || [];
+      if (!schedule.some(s => s.fulfilled_checkin_id === checkin.id)) {
+        const openSlot = schedule.find(s => !s.fulfilled_checkin_id && s.checkin_template_id === checkin.template_id);
+        if (openSlot) openSlot.fulfilled_checkin_id = checkin.id;
+      }
+      renderSchedule(currentSession);
+    });
+    es.addEventListener('session_ended', function () { es.close(); });
   }
 
   function loadSupportingData() {
     const checkinPath = IS_KEYHOLDER ? '/api/v1/keyholder/checkin-templates' : '/api/v1/submissive/checkin-templates';
     const deferreds = [];
     deferreds.push(apiCall('GET', checkinPath).done(function (list) {
-      list.forEach(function (t) { checkinTemplateTitles[t.id] = t.title; });
+      list.forEach(function (t) { checkinTemplateTitles[t.id] = t.title; checkinTemplatesById[t.id] = t; });
     }));
     if (IS_KEYHOLDER) {
       deferreds.push(apiCall('GET', '/api/v1/keyholder/templates?kind=reward').done(function (list) {

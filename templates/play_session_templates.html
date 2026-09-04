@@ -338,9 +338,11 @@
     apiCall('GET', '/api/v1/keyholder/submissives').done(function (list) {
       submissives = list;
       const $sel = $('#assign-submissive').empty();
+      $sel.append($('<option value="">').text('Choose a submissive…'));
       list.forEach(function (s) {
         $sel.append($('<option>').val(s.submissive_id).text(s.display_name));
       });
+      $sel.val('');
       loadToysForAssign();
     });
   }

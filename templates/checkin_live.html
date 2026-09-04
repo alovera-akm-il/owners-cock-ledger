@@ -223,7 +223,17 @@
   });
 
   function applyRemoteUpdate(checkin) {
-    if (checkin.id !== checkinId) return;
+    if (!checkinId) {
+      // Nobody had started this check-in on our end yet — the other
+      // party just did, over on their own page. Adopt it as ours so it
+      // shows up here immediately instead of waiting for a reload.
+      if (checkin.template_id !== CHECKIN_TEMPLATE_ID) return;
+      checkinId = checkin.id;
+      $('#create-btn').addClass('hidden');
+      $('#last-updated').removeClass('hidden').text('Live — now showing for both of you.');
+    } else if (checkin.id !== checkinId) {
+      return;
+    }
     if (checkin.color !== currentColor) setColor(checkin.color, true);
     Object.entries(checkin.field_values || {}).forEach(function ([key, val]) {
       const $el = $('#custom-fields [data-key="' + key + '"]');

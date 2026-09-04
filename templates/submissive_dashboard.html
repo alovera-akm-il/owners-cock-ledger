@@ -77,27 +77,40 @@
 
   <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
     {% if locked %}
-      <div class="flex items-center gap-2">
-        <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
-        <p class="text-sm font-semibold text-emerald-400">Locked</p>
-      </div>
-      {% if let Some(remaining) = time_remaining_text %}
-        {% if clock_paused %}
-          <p class="text-2xl font-semibold tracking-tight mt-2">{{ remaining }} remaining</p>
-        {% else %}
-          <div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 mt-2 inline-block" data-target-epoch="{{ target_release_at_epoch.unwrap() }}" data-server-now-epoch="{{ server_now_epoch }}">
-            <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] font-mono font-bold text-xl text-slate-100 tabular-nums{% if overdue %} text-red-400{% endif %}">
-              <span data-cd="days" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="hours" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="minutes" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="seconds" class="text-center">00</span>
-            </div>
-            <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] text-[9px] uppercase tracking-wide text-slate-500 mt-1">
-              <span class="text-center">days</span><span></span><span class="text-center">hrs</span><span></span><span class="text-center">min</span><span></span><span class="text-center">sec</span>
-            </div>
-            <p data-cd="overdue-label" class="{% if !overdue %}hidden {% endif %}text-[10px] text-red-400 font-semibold mt-1 text-center">overdue</p>
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+            <p class="text-sm font-semibold text-emerald-400">Locked</p>
+            {% if let Some(elapsed) = locked_elapsed_text %}
+              <span class="text-slate-500 text-sm">&middot; {{ elapsed }}</span>
+            {% endif %}
           </div>
-        {% endif %}
-      {% else %}
-        <p class="text-sm text-slate-400 mt-2">No release target set — open-ended.</p>
-      {% endif %}
+          {% if let Some(device) = device_name %}
+            <p class="text-xs text-slate-500 mt-1">Device: {{ device }}</p>
+          {% endif %}
+        </div>
+        <div class="text-left md:text-right">
+          {% if let Some(remaining) = time_remaining_text %}
+            {% if clock_paused %}
+              <p class="text-2xl font-semibold tracking-tight">{{ remaining }} remaining</p>
+            {% else %}
+              <p class="text-xs font-medium text-slate-400 mb-2" data-target-date-label data-target-date-epoch="{{ target_release_at_epoch.unwrap() }}"></p>
+              <div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 inline-block" data-target-epoch="{{ target_release_at_epoch.unwrap() }}" data-server-now-epoch="{{ server_now_epoch }}">
+                <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] font-mono font-bold text-xl text-slate-100 tabular-nums{% if overdue %} text-red-400{% endif %}">
+                  <span data-cd="days" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="hours" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="minutes" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="seconds" class="text-center">00</span>
+                </div>
+                <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] text-[9px] uppercase tracking-wide text-slate-500 mt-1">
+                  <span class="text-center">days</span><span></span><span class="text-center">hrs</span><span></span><span class="text-center">min</span><span></span><span class="text-center">sec</span>
+                </div>
+                <p data-cd="overdue-label" class="{% if !overdue %}hidden {% endif %}text-[10px] text-red-400 font-semibold mt-1 text-center">overdue</p>
+              </div>
+            {% endif %}
+          {% else %}
+            <p class="text-sm text-slate-400">No release target set — open-ended.</p>
+          {% endif %}
+        </div>
+      </div>
       {% if clock_paused %}
         <div class="mt-3 rounded-lg bg-sky-500/10 border border-sky-600/30 px-3 py-2 text-xs text-sky-300">
           Timer paused{% if let Some(msg) = clock_pause_message %} — {{ msg }}{% endif %}
@@ -215,6 +228,11 @@
     $('#menu-icon-open').removeClass('hidden');
     $('#menu-icon-close').addClass('hidden');
   });
+  $('[data-target-date-label]').each(function () {
+    const epoch = parseInt($(this).attr('data-target-date-epoch'), 10);
+    $(this).text('Supposed to be locked until ' + new Date(epoch * 1000).toLocaleString());
+  });
+
   function getCookie(name) {
     const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : null;
@@ -281,8 +299,9 @@
       return;
     }
     open.forEach(function (a) {
-      const $li = $('<li class="py-2 flex items-center justify-between gap-3">');
-      $li.append($('<span>').text(a.title + ' · ' + a.kind + ' · ' + a.status));
+      const $li = $('<li class="py-2">');
+      const $top = $('<div class="flex items-center justify-between gap-3">');
+      $top.append($('<span>').text(a.title + ' · ' + a.kind + ' · ' + a.status));
       const $actions = $('<span class="flex gap-2">');
       if (a.status === 'assigned' && (a.kind !== 'task' || a.completion_type === 'acknowledge_only')) {
         const $ack = $('<button class="text-xs text-amber-400 hover:text-amber-300">Acknowledge</button>');
@@ -294,7 +313,14 @@
       if (a.status === 'assigned' && a.kind === 'task' && a.completion_type === 'proof_required') {
         $actions.append($('<a class="text-xs text-amber-400 hover:text-amber-300">').attr('href', '/submissive/assignments/' + a.id + '/proof').text('Submit proof'));
       }
-      $li.append($actions);
+      $top.append($actions);
+      $li.append($top);
+      if (a.deadline_at) {
+        const deadlineMs = new Date(a.deadline_at).getTime();
+        const overdue = deadlineMs <= Date.now();
+        $li.append($('<p class="text-xs mt-1">').addClass(overdue ? 'text-red-400' : 'text-amber-400')
+          .text((overdue ? 'was due ' : 'due ') + new Date(a.deadline_at).toLocaleString()));
+      }
       $list.append($li);
     });
   }

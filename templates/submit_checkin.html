@@ -49,9 +49,14 @@
   </div>
 </nav>
 
-<main class="max-w-2xl mx-auto px-6 py-8" data-is-keyholder="{% if is_keyholder %}true{% else %}false{% endif %}" data-submissive-id="{{ submissive_id.as_deref().unwrap_or_default() }}">
+<main class="max-w-2xl mx-auto px-6 py-8" data-is-keyholder="{% if is_keyholder %}true{% else %}false{% endif %}" data-submissive-id="{{ submissive_id.as_deref().unwrap_or_default() }}" data-play-session-id="{{ play_session_id.as_deref().unwrap_or_default() }}">
   <h1 class="text-2xl font-semibold tracking-tight mb-1">Fill in a check-in</h1>
+  {% if let Some(id) = play_session_id %}
+  <p class="text-sm text-slate-400 mb-1">Not live — no one else is watching this happen in real time, so just fill it in and submit whenever.</p>
+  <p class="text-xs text-sky-400 mb-6"><a href="{% if is_keyholder %}/keyholder{% else %}/submissive{% endif %}/play-sessions/{{ id }}" class="hover:text-sky-300">&larr; Back to the play session</a> — this check-in will be logged against it.</p>
+  {% else %}
   <p class="text-sm text-slate-400 mb-6">Not live — no one else is watching this happen in real time, so just fill it in and submit whenever.</p>
+  {% endif %}
 
   <div class="mb-4">
     <label class="block text-xs font-medium text-slate-400 mb-1.5">Template</label>
@@ -102,6 +107,7 @@
 
   const isKeyholder = $('main').data('is-keyholder');
   const subId = $('main').data('submissive-id');
+  const playSessionId = $('main').data('play-session-id') || null;
   const templatesPath = isKeyholder ? '/api/v1/keyholder/checkin-templates' : '/api/v1/submissive/checkin-templates';
   const devicesPath = isKeyholder ? '/api/v1/keyholder/submissives/' + subId + '/devices' : '/api/v1/submissive/devices';
   const createPath = isKeyholder ? '/api/v1/keyholder/submissives/' + subId + '/checkins' : '/api/v1/submissive/checkins';
@@ -212,6 +218,7 @@
       template_id: templateId,
       color: selectedColor,
       field_values: fieldValues,
+      related_play_session_id: playSessionId,
     }).done(function () {
       $('#submit-checkin-btn').prop('disabled', true).text('Submitted ✓');
       showMsg('Submitted.', true);

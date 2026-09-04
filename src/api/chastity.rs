@@ -499,6 +499,7 @@ struct AdjustmentResponse {
     adjusted_at: String,
     notes: Option<String>,
     keyholder_reviewed_at: Option<String>,
+    caused_by_title: Option<String>,
 }
 
 impl From<confinement::Adjustment> for AdjustmentResponse {
@@ -511,6 +512,7 @@ impl From<confinement::Adjustment> for AdjustmentResponse {
             adjusted_at: iso8601(a.adjusted_at),
             notes: a.notes,
             keyholder_reviewed_at: a.keyholder_reviewed_at.map(iso8601),
+            caused_by_title: a.caused_by_title,
         }
     }
 }
