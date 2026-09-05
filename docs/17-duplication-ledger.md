@@ -23,7 +23,7 @@ itself.
 | # | Finding | Page(s) | Size | Status |
 |---|---|---|---|---|
 | 1 | Nearly the entire file is byte-identical between the two roles' statistics pages — same inline script verbatim, only the endpoint and one label word differ | `keyholder_submissive_statistics.html`, `submissive_statistics.html` | Large | **Fixed** |
-| 2 | Same toy-inventory feature, ~80% overlapping markup and JS (form fields, card-rendering function, device-list fetch/edit flow) | `toy_catalog.html`, `submissive_toys.html` | Large | Open |
+| 2 | Same toy-inventory feature, ~80% overlapping markup and JS (form fields, card-rendering function, device-list fetch/edit flow) | `toy_catalog.html`, `submissive_toys.html` | Large | **Fixed** |
 | 3 | Three drill-down pages each hand-roll their own ~30-line nav bar (logo, bell, role badge, avatar, logout) instead of using the shared nav partial | `play_session_detail.html`, `checkin_live.html`, `submit_checkin.html` | Medium | Open |
 | 4 | Confinement lock/unlock widget rendered by both roles for the same session, same "owner reads/writes, other party reads a mirror" shape as the limits merge | `submissive_dashboard.html`, `submissive_detail.html` | Medium | Open |
 
@@ -62,7 +62,7 @@ glob, which matters for every later item on this list too, since all
 of them involve the same "extract inline script to a shared file"
 move.
 
-## 3. Toy catalog (keyholder) vs. submissive toys
+## 3. Toy catalog (keyholder) vs. submissive toys (fixed)
 
 `templates/toy_catalog.html` and `templates/submissive_toys.html`
 render the same toy-inventory feature with ~80% overlapping markup and
@@ -80,6 +80,18 @@ that remain are legitimately role-specific, not incidental:
 Good fit for the same pattern used on the limits merge: one shared
 template, with the role-conditional surface limited to which
 endpoint/verb to hit and which of the above extra affordances show up.
+
+**Fixed.** The two template files stay separate (different Askama
+contexts, different grid-column count, different placeholder copy on
+a few form fields — none of that is logic, so it stayed as literal
+per-template markup), but the ~230-line shared script — form
+reset/edit, photo upload/remove, save, card rendering, the list load —
+is now one file, `static/js/toy_catalog.js`. Role-specific behavior
+(the size/storage/usage-notes fields on the card, retire-instantly vs.
+request-removal, the decline/approve actions, the advisory limit
+cross-check) branches on an `IS_KEYHOLDER` flag and a couple of
+optional endpoint data-attributes read once at the top of the file,
+rather than existing as two parallel copies of the same functions.
 
 ## 4. Duplicated hand-rolled mini-nav
 
