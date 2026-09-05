@@ -173,8 +173,8 @@
 </main>
 
 <!-- ============ CHECK-IN DETAILS MODAL ============ -->
-<div id="checkin-modal-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
-  <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full">
+<div id="checkin-modal-backdrop" class="modal-backdrop hidden flex">
+  <div class="modal-card border border-slate-800 max-w-md">
     <div class="flex items-start justify-between gap-4 mb-1">
       <h3 id="checkin-modal-title" class="text-sm font-semibold text-slate-100"></h3>
       <span id="checkin-modal-color" class="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"></span>
@@ -248,6 +248,8 @@
     return parts.join(' · ');
   }
 
+  const checkinModal = initModal('checkin');
+
   // Full detail view of one check-in, opened from either a scheduled
   // slot's row or an ad-hoc check-in's row. `reopenLiveHref` is only
   // passed for a fulfilled *scheduled* slot while the session is still
@@ -290,11 +292,10 @@
     } else {
       $('#checkin-modal-reopen-live').addClass('hidden');
     }
-    $('#checkin-modal-backdrop').removeClass('hidden');
+    checkinModal.open();
   }
 
-  $('#checkin-modal-close-btn').on('click', function () { $('#checkin-modal-backdrop').addClass('hidden'); });
-  $('#checkin-modal-backdrop').on('click', function (e) { if (e.target === this) $(this).addClass('hidden'); });
+  $('#checkin-modal-close-btn').on('click', function () { checkinModal.close(); });
 
   // A generic, view-only row for a check-in that isn't (or is no longer)
   // tied to a specific numbered slot -- used both for a session with no

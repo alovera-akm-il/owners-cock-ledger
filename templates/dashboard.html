@@ -83,8 +83,8 @@
   </div>
 
   <!-- ============ INVITE MODAL ============ -->
-  <div id="invite-modal-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full">
+  <div id="invite-modal-backdrop" class="modal-backdrop hidden flex">
+    <div class="modal-card border border-slate-800 max-w-md">
       <div id="invite-setup" class="space-y-4">
         <h3 class="text-sm font-semibold">Invite a submissive</h3>
         <div>
@@ -224,14 +224,14 @@
 
 <script>
 
+  const inviteModal = initModal('invite');
   $('#open-invite-btn').on('click', function () {
     $('#invite-setup-error').addClass('hidden');
     $('#invite-setup').removeClass('hidden').addClass('panel-fade');
     $('#invite-reveal').addClass('hidden');
-    $('#invite-modal-backdrop').removeClass('hidden').addClass('panel-fade');
+    inviteModal.open();
   });
-  $('#invite-modal-backdrop').on('click', function (e) { if (e.target === this) $(this).addClass('hidden'); });
-  $('.close-invite-modal-btn').on('click', () => $('#invite-modal-backdrop').addClass('hidden'));
+  $('.close-invite-modal-btn').on('click', () => inviteModal.close());
 
   $('#generate-invite-btn').on('click', function () {
     $('#invite-setup-error').addClass('hidden');

@@ -223,8 +223,8 @@
     </div>
 
     <!-- shared password+code confirmation modal for disable / regenerate -->
-    <div id="tfa-confirm-modal-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-sm w-full space-y-3">
+    <div id="tfa-confirm-modal-backdrop" class="modal-backdrop hidden flex">
+      <div class="modal-card border border-slate-800 max-w-sm space-y-3">
         <h3 id="tfa-confirm-modal-title" class="text-sm font-semibold"></h3>
         <div id="tfa-confirm-modal-message" class="hidden rounded-lg px-3 py-2 text-xs"></div>
         <div>
@@ -443,25 +443,23 @@
     loadTfaStatus();
   });
 
+  const tfaConfirmModal = initModal('tfa-confirm');
   let tfaModalAction = null;
   function openTfaConfirmModal(title, action) {
     $('#tfa-confirm-modal-title').text(title);
     $('#tfa-confirm-modal-message').addClass('hidden');
     $('#tfa-confirm-password, #tfa-confirm-code-input').val('');
     tfaModalAction = action;
-    $('#tfa-confirm-modal-backdrop').removeClass('hidden').addClass('panel-fade');
+    tfaConfirmModal.open();
   }
-  $('#tfa-confirm-modal-cancel-btn, #tfa-confirm-modal-backdrop').on('click', function (e) {
-    if (e.target !== this) return;
-    $('#tfa-confirm-modal-backdrop').addClass('hidden');
-  });
+  $('#tfa-confirm-modal-cancel-btn').on('click', function () { tfaConfirmModal.close(); });
   $('#tfa-disable-btn').on('click', function () { openTfaConfirmModal('Disable 2FA', 'disable'); });
   $('#tfa-regenerate-btn').on('click', function () { openTfaConfirmModal('Regenerate recovery codes', 'regenerate'); });
   $('#tfa-confirm-modal-submit-btn').on('click', function () {
     const payload = { current_password: $('#tfa-confirm-password').val(), code: $('#tfa-confirm-code-input').val() };
     const path = tfaModalAction === 'disable' ? '/api/v1/auth/2fa/disable' : '/api/v1/auth/2fa/recovery-codes/regenerate';
     apiCall('POST', path, payload).done(function (res) {
-      $('#tfa-confirm-modal-backdrop').addClass('hidden');
+      tfaConfirmModal.close();
       if (tfaModalAction === 'regenerate') {
         const $codes = $('#tfa-recovery-codes-list').empty();
         res.recovery_codes.forEach(function (c) { $codes.append($('<div>').text(c)); });

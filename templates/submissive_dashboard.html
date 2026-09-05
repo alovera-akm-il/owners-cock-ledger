@@ -194,8 +194,8 @@
 </main>
 
 <!-- ============ SAFETY ALERT MODAL ============ -->
-<div id="safety-alert-modal-backdrop" class="hidden fixed inset-0 bg-black/60 z-30 flex items-center justify-center p-4">
-  <div class="bg-slate-900 border border-red-800/50 rounded-xl p-6 max-w-md w-full">
+<div id="safety-alert-modal-backdrop" class="modal-backdrop hidden flex">
+  <div class="modal-card border border-red-800/50 max-w-md">
     <h3 class="text-sm font-semibold text-red-400 mb-2">Raise a safety alert</h3>
     <p class="text-xs text-slate-400 mb-4">This goes straight to your Keyholder, marked as the highest priority.</p>
     <div id="safety-alert-message-status" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
@@ -214,13 +214,14 @@
     $(this).text('Supposed to be locked until ' + new Date(epoch * 1000).toLocaleString());
   });
 
+  const safetyAlertModal = initModal('safety-alert');
   $('#raise-safety-alert-btn').on('click', function () {
     $('#safety-alert-message').val('');
     $('#safety-alert-message-status').addClass('hidden');
-    $('#safety-alert-modal-backdrop').removeClass('hidden').addClass('panel-fade');
+    safetyAlertModal.open();
   });
   $('#cancel-safety-alert-btn').on('click', function () {
-    $('#safety-alert-modal-backdrop').addClass('hidden');
+    safetyAlertModal.close();
   });
   $('#confirm-safety-alert-btn').on('click', function () {
     $.ajax({
@@ -231,7 +232,7 @@
       data: JSON.stringify({ message: $('#safety-alert-message').val() || null }),
     }).done(function () {
       $('#safety-alert-message-status').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-emerald-600/10 border border-emerald-600/30 text-emerald-300').text('Sent — your Keyholder has been notified.').removeClass('hidden');
-      setTimeout(() => $('#safety-alert-modal-backdrop').addClass('hidden'), 1200);
+      setTimeout(() => safetyAlertModal.close(), 1200);
     }).fail(function (xhr) {
       const msg = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not send right now.';
       $('#safety-alert-message-status').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-red-600/10 border border-red-600/30 text-red-300').text(msg).removeClass('hidden');

@@ -24,6 +24,20 @@ function errorMessage(xhr, fallback) {
   return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
 }
 
+// Every modal in the app is a `#{prefix}-modal-backdrop` div (see
+// .modal-backdrop/.modal-card in tailwind/input.css) — this wires the one
+// behavior they all share (click outside the card closes it) and hands
+// back open()/close() for the page's own trigger/submit logic to call.
+// Called at top-level parse time by pages that need it (same ordering
+// requirement as apiCall above), so it can't be deferred to DOM-ready.
+function initModal(prefix) {
+  const $backdrop = $('#' + prefix + '-modal-backdrop');
+  function open() { $backdrop.removeClass('hidden').addClass('panel-fade'); }
+  function close() { $backdrop.addClass('hidden'); }
+  $backdrop.on('click', function (e) { if (e.target === this) close(); });
+  return { open: open, close: close };
+}
+
 $(function () {
   if ($('#mobile-menu-btn').length) {
     $('#mobile-menu-btn').on('click', function (e) {

@@ -60,3 +60,25 @@
     animation: none;
   }
 }
+
+/* The shared confirm/detail-modal shell (Duplication Ledger §03): every
+   modal in the app is a `#{prefix}-modal-backdrop` div wrapping one card,
+   opened/closed via `initModal()` in app-shell.js, which toggles the
+   `hidden` class. `hidden`/`flex` deliberately stay OUT of `.modal-backdrop`
+   itself and are kept as literal utility classes on each element instead —
+   `.modal-backdrop` sits after `@tailwind utilities` in this file, so
+   baking `display` into it here would make it win the cascade over a
+   same-specificity `.hidden`/`.flex` toggled at runtime regardless of
+   which one jQuery adds/removes, silently breaking the open/close toggle.
+   `.modal-card` only covers the properties that never vary — border
+   color/width and max-width differ per modal (e.g. the safety-alert
+   card's red border), so those also stay as ordinary utility classes on
+   the element for the same reason: a later custom class always beats an
+   earlier same-specificity utility, regardless of the order they're
+   written in the HTML. */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black/60 z-30 items-center justify-center p-4;
+}
+.modal-card {
+  @apply bg-slate-900 rounded-xl p-6 w-full;
+}
