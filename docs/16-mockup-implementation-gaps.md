@@ -160,11 +160,24 @@ completed by the page instead of abandoned after the first call.
 
 ---
 
-## 3. Profile page: structured limits/kinks consolidation (design decision, fixed)
+## 3. Profile page: structured limits/kinks consolidation (design decision, fixed, later superseded)
 
-**Current state:** one system now exists for "boundaries," on one page
-(`account_settings.html`). Previously there were two separate systems on
-two separate pages, described below for context.
+**Historical note, added after this section went stale:** everything
+below this point describes a mechanism that no longer exists. It was
+accurate when written, but a later "Limits & boundaries" redesign
+(`docs/17-duplication-ledger.md`'s intro list, commit `11976e8`)
+replaced it entirely — no rating buttons, no category grouping, no
+notes textarea, and no submissive-only guard remain in
+`account_settings.html` today. Kept below anyway because the "why"
+(consolidating two pages into one, removing `/submissive/limits`)
+is still real project history, not because it's still an accurate
+description of the current UI. **For the current mechanism, see
+`docs/17-duplication-ledger.md`'s intro and §2–§3.**
+
+**Current state (as of this section, since superseded):** one system
+now exists for "boundaries," on one page (`account_settings.html`).
+Previously there were two separate systems on two separate pages,
+described below for context.
 
 - **Free-text hard/soft limits** — a plain textarea pair on
   `account_settings.html` (`#profile-hard-limits`,
@@ -199,6 +212,17 @@ in one place. Implemented as:
 - The Keyholder-side catalog *management* page (`/keyholder/limit-items`,
   `limits_catalog.html`) is untouched — different audience and action
   (curating the item list, not rating it).
+
+**What changed in the later redesign** (full detail in
+`docs/17-duplication-ledger.md`): the "Limits & kinks" rating-button
+section above was itself removed and replaced by three symmetric
+autocomplete-enabled free-text fields (Hard/Soft/Okay), and — unlike
+the submissive-only section described above — the replacement renders
+for **both roles**, each against its own endpoint
+(`/api/v1/submissive/limit-items` vs. the newer
+`/api/v1/keyholder/limit-ratings`). The `/submissive/limits` removal
+and the "no Manage catalog link" reasoning above both still hold; the
+rating-card UI they were removed alongside does not.
 
 ---
 
