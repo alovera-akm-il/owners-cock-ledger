@@ -1,14 +1,15 @@
 //! Check-in templates and instances (03-api-design.md §10b).
 
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
-use axum::routing::{get, patch};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, INTERNAL_ERROR, iso8601};
 use crate::auth::session::{CurrentUser, Role};
-use crate::db::{self, Pool};
+use crate::db::{self, BlobDir, Pool};
 use crate::domain::{checkins, links, play_sessions};
 use crate::live::PlaySessionStreams;
 use crate::notify;
@@ -17,6 +18,28 @@ const FORBIDDEN: ApiError = ApiError::new(StatusCode::FORBIDDEN, "forbidden", "n
 const NOT_FOUND: ApiError = ApiError::new(StatusCode::NOT_FOUND, "not_found", "not found");
 const BAD_REQUEST: ApiError =
     ApiError::new(StatusCode::BAD_REQUEST, "bad_request", "malformed request");
+const BAD_PHOTO: ApiError = ApiError::new(
+    StatusCode::BAD_REQUEST,
+    "bad_request",
+    "expected a single 'photo' field with an image/jpeg, image/png, video/mp4, or video/webm file",
+);
+const BAD_AUDIO: ApiError = ApiError::new(
+    StatusCode::BAD_REQUEST,
+    "bad_request",
+    "expected a single 'audio' field with an audio/webm, audio/mp4, audio/mpeg (mp3), or audio/wav file",
+);
+const MAX_CHECKIN_MEDIA_BYTES: usize = 400 * 1024 * 1024;
+
+fn valid_photo_content_type(t: &str) -> bool {
+    matches!(t, "image/jpeg" | "image/png" | "video/mp4" | "video/webm")
+}
+
+fn valid_audio_content_type(t: &str) -> bool {
+    matches!(
+        t,
+        "audio/webm" | "audio/mp4" | "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav" | "audio/wave"
+    )
+}
 
 #[derive(Serialize)]
 struct FieldResponse {
@@ -142,7 +165,10 @@ struct CreateTemplateRequest {
 }
 
 fn valid_field_type(t: &str) -> bool {
-    matches!(t, "scale" | "select" | "number" | "text" | "boolean")
+    matches!(
+        t,
+        "scale" | "select" | "number" | "text" | "boolean" | "photo" | "audio"
+    )
 }
 
 async fn create_template(
@@ -269,11 +295,23 @@ struct CheckinResponse {
     related_play_session_id: Option<String>,
     created_by_user_id: String,
     created_at: String,
+    photo_url: Option<String>,
+    photo_mime_type: Option<String>,
+    audio_url: Option<String>,
 }
 
 impl From<checkins::Checkin> for CheckinResponse {
     fn from(c: checkins::Checkin) -> Self {
         Self {
+            photo_url: c
+                .photo_attachment_path
+                .is_some()
+                .then(|| format!("/api/v1/checkins/{}/photo", c.id)),
+            photo_mime_type: c.photo_mime_type.clone(),
+            audio_url: c
+                .audio_attachment_path
+                .is_some()
+                .then(|| format!("/api/v1/checkins/{}/audio", c.id)),
             id: c.id,
             link_id: c.link_id,
             template_id: c.template_id,
@@ -288,30 +326,110 @@ impl From<checkins::Checkin> for CheckinResponse {
     }
 }
 
-#[derive(Deserialize)]
-struct CreateCheckinRequest {
-    template_id: String,
-    color: String,
-    field_values: serde_json::Value,
-    related_confinement_session_id: Option<String>,
-    related_assignment_id: Option<String>,
-    related_play_session_id: Option<String>,
-}
-
 fn valid_color(c: &str) -> bool {
     matches!(c, "green" | "yellow" | "red")
 }
 
+/// The multipart shape both create routes share. `field_values` travels
+/// as a JSON-text field (same trick `proofs.rs` uses for its `metadata`
+/// field) rather than the request's native JSON body, since a request
+/// that might also carry a `photo` file has to be multipart as a whole —
+/// Axum doesn't offer a "JSON body, but also maybe a file" extractor.
+struct ParsedCheckinCreate {
+    template_id: String,
+    color: String,
+    field_values: String,
+    related_confinement_session_id: Option<String>,
+    related_assignment_id: Option<String>,
+    related_play_session_id: Option<String>,
+    photo: Option<(String, Vec<u8>)>,
+    audio: Option<(String, Vec<u8>)>,
+}
+
+async fn parse_checkin_multipart(mut multipart: Multipart) -> Result<ParsedCheckinCreate, ApiError> {
+    let mut template_id = None;
+    let mut color = None;
+    let mut field_values = None;
+    let mut related_confinement_session_id = None;
+    let mut related_assignment_id = None;
+    let mut related_play_session_id = None;
+    let mut photo = None;
+    let mut audio = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|_| BAD_REQUEST)? {
+        match field.name().unwrap_or("") {
+            "template_id" => template_id = Some(field.text().await.map_err(|_| BAD_REQUEST)?),
+            "color" => color = Some(field.text().await.map_err(|_| BAD_REQUEST)?),
+            "field_values" => field_values = Some(field.text().await.map_err(|_| BAD_REQUEST)?),
+            "related_confinement_session_id" => {
+                let v = field.text().await.map_err(|_| BAD_REQUEST)?;
+                related_confinement_session_id = (!v.is_empty()).then_some(v);
+            }
+            "related_assignment_id" => {
+                let v = field.text().await.map_err(|_| BAD_REQUEST)?;
+                related_assignment_id = (!v.is_empty()).then_some(v);
+            }
+            "related_play_session_id" => {
+                let v = field.text().await.map_err(|_| BAD_REQUEST)?;
+                related_play_session_id = (!v.is_empty()).then_some(v);
+            }
+            "photo" => {
+                let content_type = field
+                    .content_type()
+                    .unwrap_or("application/octet-stream")
+                    .to_string();
+                let bytes = field.bytes().await.map_err(|_| BAD_PHOTO)?.to_vec();
+                photo = Some((content_type, bytes));
+            }
+            "audio" => {
+                let content_type = field
+                    .content_type()
+                    .unwrap_or("application/octet-stream")
+                    .to_string();
+                let bytes = field.bytes().await.map_err(|_| BAD_AUDIO)?.to_vec();
+                audio = Some((content_type, bytes));
+            }
+            _ => {
+                let _ = field.bytes().await;
+            }
+        }
+    }
+
+    if let Some((content_type, _)) = &photo
+        && !valid_photo_content_type(content_type)
+    {
+        return Err(BAD_PHOTO);
+    }
+    if let Some((content_type, _)) = &audio
+        && !valid_audio_content_type(content_type)
+    {
+        return Err(BAD_AUDIO);
+    }
+
+    Ok(ParsedCheckinCreate {
+        template_id: template_id.ok_or(BAD_REQUEST)?,
+        color: color.ok_or(BAD_REQUEST)?,
+        field_values: field_values.unwrap_or_else(|| "{}".to_string()),
+        related_confinement_session_id,
+        related_assignment_id,
+        related_play_session_id,
+        photo,
+        audio,
+    })
+}
+
 async fn create_for_keyholder(
     State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
     State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
     Path(submissive_id): Path<String>,
-    Json(req): Json<CreateCheckinRequest>,
+    multipart: Multipart,
 ) -> Result<Json<CheckinResponse>, ApiError> {
     user.require_role(&[Role::Keyholder])
         .map_err(|_| FORBIDDEN)?;
-    if !valid_color(&req.color) {
+    let parsed = parse_checkin_multipart(multipart).await?;
+    if !valid_color(&parsed.color) {
         return Err(BAD_REQUEST);
     }
     let pool2 = pool.clone();
@@ -322,18 +440,19 @@ async fn create_for_keyholder(
                 links::active_or_paused_link_for_keyholder(&conn, &user.user_id, &submissive_id)
                     .map_err(|_| INTERNAL_ERROR)?
                     .ok_or(NOT_FOUND)?;
-            let field_values = req.field_values.to_string();
             let (id, alert_id) = checkins::create_checkin(
                 &mut conn,
                 checkins::NewCheckin {
                     link_id: &link_id,
-                    template_id: &req.template_id,
-                    color: &req.color,
-                    field_values: &field_values,
-                    related_confinement_session_id: req.related_confinement_session_id.as_deref(),
-                    related_assignment_id: req.related_assignment_id.as_deref(),
-                    related_play_session_id: req.related_play_session_id.as_deref(),
+                    template_id: &parsed.template_id,
+                    color: &parsed.color,
+                    field_values: &parsed.field_values,
+                    related_confinement_session_id: parsed.related_confinement_session_id.as_deref(),
+                    related_assignment_id: parsed.related_assignment_id.as_deref(),
+                    related_play_session_id: parsed.related_play_session_id.as_deref(),
                     created_by_user_id: &user.user_id,
+                    has_photo: parsed.photo.is_some(),
+                    has_audio: parsed.audio.is_some(),
                 },
                 &submissive_id,
             )
@@ -342,6 +461,18 @@ async fn create_for_keyholder(
                 checkins::CreateCheckinError::MissingRequiredField => BAD_REQUEST,
                 checkins::CreateCheckinError::Db(_) => INTERNAL_ERROR,
             })?;
+            if let Some((content_type, bytes)) = &parsed.photo {
+                let stored = crate::storage::store(&blob_dir, content_type, bytes)
+                    .map_err(|_| BAD_PHOTO)?;
+                checkins::set_photo(&conn, &id, &stored.storage_path, content_type)
+                    .map_err(|_| INTERNAL_ERROR)?;
+            }
+            if let Some((content_type, bytes)) = &parsed.audio {
+                let stored = crate::storage::store(&blob_dir, content_type, bytes)
+                    .map_err(|_| BAD_AUDIO)?;
+                checkins::set_audio(&conn, &id, &stored.storage_path, content_type)
+                    .map_err(|_| INTERNAL_ERROR)?;
+            }
             let checkin = checkins::get_checkin(&conn, &id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(INTERNAL_ERROR)?;
@@ -362,13 +493,15 @@ async fn create_for_keyholder(
 
 async fn create_own(
     State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
     State(streams): State<PlaySessionStreams>,
     user: CurrentUser,
-    Json(req): Json<CreateCheckinRequest>,
+    multipart: Multipart,
 ) -> Result<Json<CheckinResponse>, ApiError> {
     user.require_role(&[Role::Submissive])
         .map_err(|_| FORBIDDEN)?;
-    if !valid_color(&req.color) {
+    let parsed = parse_checkin_multipart(multipart).await?;
+    if !valid_color(&parsed.color) {
         return Err(BAD_REQUEST);
     }
     let pool2 = pool.clone();
@@ -378,18 +511,19 @@ async fn create_own(
             let link_id = links::active_link_for_submissive(&conn, &user.user_id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(NOT_FOUND)?;
-            let field_values = req.field_values.to_string();
             let (id, alert_id) = checkins::create_checkin(
                 &mut conn,
                 checkins::NewCheckin {
                     link_id: &link_id,
-                    template_id: &req.template_id,
-                    color: &req.color,
-                    field_values: &field_values,
-                    related_confinement_session_id: req.related_confinement_session_id.as_deref(),
-                    related_assignment_id: req.related_assignment_id.as_deref(),
-                    related_play_session_id: req.related_play_session_id.as_deref(),
+                    template_id: &parsed.template_id,
+                    color: &parsed.color,
+                    field_values: &parsed.field_values,
+                    related_confinement_session_id: parsed.related_confinement_session_id.as_deref(),
+                    related_assignment_id: parsed.related_assignment_id.as_deref(),
+                    related_play_session_id: parsed.related_play_session_id.as_deref(),
                     created_by_user_id: &user.user_id,
+                    has_photo: parsed.photo.is_some(),
+                    has_audio: parsed.audio.is_some(),
                 },
                 &user.user_id,
             )
@@ -398,6 +532,18 @@ async fn create_own(
                 checkins::CreateCheckinError::MissingRequiredField => BAD_REQUEST,
                 checkins::CreateCheckinError::Db(_) => INTERNAL_ERROR,
             })?;
+            if let Some((content_type, bytes)) = &parsed.photo {
+                let stored = crate::storage::store(&blob_dir, content_type, bytes)
+                    .map_err(|_| BAD_PHOTO)?;
+                checkins::set_photo(&conn, &id, &stored.storage_path, content_type)
+                    .map_err(|_| INTERNAL_ERROR)?;
+            }
+            if let Some((content_type, bytes)) = &parsed.audio {
+                let stored = crate::storage::store(&blob_dir, content_type, bytes)
+                    .map_err(|_| BAD_AUDIO)?;
+                checkins::set_audio(&conn, &id, &stored.storage_path, content_type)
+                    .map_err(|_| INTERNAL_ERROR)?;
+            }
             let checkin = checkins::get_checkin(&conn, &id)
                 .map_err(|_| INTERNAL_ERROR)?
                 .ok_or(INTERNAL_ERROR)?;
@@ -659,6 +805,204 @@ async fn patch_checkin(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /checkins/{id}/photo` — either party, on their own link. Optional
+/// attachment, set independently of create/`PATCH` so the color/fields
+/// request stays plain JSON (13-checkins.md doesn't require the photo at
+/// creation time) — same division of labor as toy photos.
+async fn upload_photo(
+    State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
+    State(streams): State<PlaySessionStreams>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<CheckinResponse>, ApiError> {
+    let mut photo: Option<(String, Vec<u8>)> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|_| BAD_PHOTO)? {
+        if field.name() != Some("photo") {
+            let _ = field.bytes().await;
+            continue;
+        }
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = field.bytes().await.map_err(|_| BAD_PHOTO)?.to_vec();
+        photo = Some((content_type, bytes));
+    }
+    let (content_type, bytes) = photo.ok_or(BAD_PHOTO)?;
+    if !valid_photo_content_type(&content_type) {
+        return Err(BAD_PHOTO);
+    }
+
+    let updated = tokio::task::spawn_blocking(move || -> Result<checkins::Checkin, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let checkin = checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_checkin(&conn, &user, &checkin)?;
+
+        let stored =
+            crate::storage::store(&blob_dir, &content_type, &bytes).map_err(|_| BAD_PHOTO)?;
+        checkins::set_photo(&conn, &id, &stored.storage_path, &content_type)
+            .map_err(|_| INTERNAL_ERROR)?;
+        checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let response: CheckinResponse = updated.into();
+    publish_checkin_update(&streams, &response);
+    Ok(Json(response))
+}
+
+async fn download_photo(
+    State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    tokio::task::spawn_blocking(move || -> Result<Response, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let checkin = checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_checkin(&conn, &user, &checkin)?;
+        let (Some(path), Some(mime)) = (&checkin.photo_attachment_path, &checkin.photo_mime_type)
+        else {
+            return Err(NOT_FOUND);
+        };
+        let bytes = crate::storage::read(&blob_dir, path).map_err(|_| INTERNAL_ERROR)?;
+        Ok(([(header::CONTENT_TYPE, mime.clone())], bytes).into_response())
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+async fn delete_photo(
+    State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let updated = tokio::task::spawn_blocking(move || -> Result<checkins::Checkin, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let checkin = checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_checkin(&conn, &user, &checkin)?;
+        checkins::clear_photo(&conn, &id).map_err(|_| INTERNAL_ERROR)?;
+        checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    publish_checkin_update(&streams, &updated.into());
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /checkins/{id}/audio` — mirrors `upload_photo` exactly, for the
+/// independent voice-memo attachment slot.
+async fn upload_audio(
+    State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
+    State(streams): State<PlaySessionStreams>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<CheckinResponse>, ApiError> {
+    let mut audio: Option<(String, Vec<u8>)> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|_| BAD_AUDIO)? {
+        if field.name() != Some("audio") {
+            let _ = field.bytes().await;
+            continue;
+        }
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = field.bytes().await.map_err(|_| BAD_AUDIO)?.to_vec();
+        audio = Some((content_type, bytes));
+    }
+    let (content_type, bytes) = audio.ok_or(BAD_AUDIO)?;
+    if !valid_audio_content_type(&content_type) {
+        return Err(BAD_AUDIO);
+    }
+
+    let updated = tokio::task::spawn_blocking(move || -> Result<checkins::Checkin, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let checkin = checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_checkin(&conn, &user, &checkin)?;
+
+        let stored =
+            crate::storage::store(&blob_dir, &content_type, &bytes).map_err(|_| BAD_AUDIO)?;
+        checkins::set_audio(&conn, &id, &stored.storage_path, &content_type)
+            .map_err(|_| INTERNAL_ERROR)?;
+        checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    let response: CheckinResponse = updated.into();
+    publish_checkin_update(&streams, &response);
+    Ok(Json(response))
+}
+
+async fn download_audio(
+    State(pool): State<Pool>,
+    State(BlobDir(blob_dir)): State<BlobDir>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    tokio::task::spawn_blocking(move || -> Result<Response, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let checkin = checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_checkin(&conn, &user, &checkin)?;
+        let (Some(path), Some(mime)) = (&checkin.audio_attachment_path, &checkin.audio_mime_type)
+        else {
+            return Err(NOT_FOUND);
+        };
+        let bytes = crate::storage::read(&blob_dir, path).map_err(|_| INTERNAL_ERROR)?;
+        Ok(([(header::CONTENT_TYPE, mime.clone())], bytes).into_response())
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+async fn delete_audio(
+    State(pool): State<Pool>,
+    State(streams): State<PlaySessionStreams>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let updated = tokio::task::spawn_blocking(move || -> Result<checkins::Checkin, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let checkin = checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(NOT_FOUND)?;
+        require_reachable_checkin(&conn, &user, &checkin)?;
+        checkins::clear_audio(&conn, &id).map_err(|_| INTERNAL_ERROR)?;
+        checkins::get_checkin(&conn, &id)
+            .map_err(|_| INTERNAL_ERROR)?
+            .ok_or(INTERNAL_ERROR)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)??;
+
+    publish_checkin_update(&streams, &updated.into());
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub fn router() -> Router<db::AppState> {
     Router::new()
         .route(
@@ -676,4 +1020,13 @@ pub fn router() -> Router<db::AppState> {
         )
         .route("/submissive/checkins", get(list_own).post(create_own))
         .route("/checkins/{id}", patch(patch_checkin))
+        .route(
+            "/checkins/{id}/photo",
+            post(upload_photo).get(download_photo).delete(delete_photo),
+        )
+        .route(
+            "/checkins/{id}/audio",
+            post(upload_audio).get(download_audio).delete(delete_audio),
+        )
+        .layer(DefaultBodyLimit::max(MAX_CHECKIN_MEDIA_BYTES))
 }

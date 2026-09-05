@@ -995,6 +995,8 @@ mod tests {
                     related_assignment_id: None,
                     related_play_session_id: Some(&session.id),
                     created_by_user_id: &sub,
+                    has_photo: false,
+                    has_audio: false,
                 },
                 &sub,
             )

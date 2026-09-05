@@ -217,11 +217,24 @@ pub struct Checkin {
     pub created_at: i64,
     #[allow(dead_code)]
     pub updated_at: i64,
+    /// Despite the name, this slot holds either a photo *or* a video —
+    /// "photo" stays the wire/DB field_type value (no migration needed
+    /// for existing templates), the upload endpoint just accepts a wider
+    /// set of content types now and the mime type on the row disambiguates
+    /// which it actually is for rendering.
+    pub photo_attachment_path: Option<String>,
+    pub photo_mime_type: Option<String>,
+    /// A separate slot for a voice-memo-type field — independent of the
+    /// photo/video one, since a template can have both a required photo
+    /// field and a required audio field at once.
+    pub audio_attachment_path: Option<String>,
+    pub audio_mime_type: Option<String>,
 }
 
 const CHECKIN_COLUMNS: &str = "id, link_id, template_id, color, field_values, \
      related_confinement_session_id, related_assignment_id, related_play_session_id, \
-     created_by_user_id, updated_by_user_id, created_at, updated_at";
+     created_by_user_id, updated_by_user_id, created_at, updated_at, \
+     photo_attachment_path, photo_mime_type, audio_attachment_path, audio_mime_type";
 
 fn row_to_checkin(row: &rusqlite::Row) -> rusqlite::Result<Checkin> {
     Ok(Checkin {
@@ -237,7 +250,61 @@ fn row_to_checkin(row: &rusqlite::Row) -> rusqlite::Result<Checkin> {
         updated_by_user_id: row.get(9)?,
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
+        photo_attachment_path: row.get(12)?,
+        photo_mime_type: row.get(13)?,
+        audio_attachment_path: row.get(14)?,
+        audio_mime_type: row.get(15)?,
     })
+}
+
+/// `POST .../checkins/{id}/photo` — sets (or replaces) the check-in's
+/// photo/video. Returns `false` if the check-in doesn't exist.
+pub fn set_photo(
+    conn: &Connection,
+    id: &str,
+    storage_path: &str,
+    mime_type: &str,
+) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE checkins SET photo_attachment_path = ?1, photo_mime_type = ?2 WHERE id = ?3",
+        params![storage_path, mime_type, id],
+    )?;
+    Ok(affected > 0)
+}
+
+/// `DELETE .../checkins/{id}/photo` — clears it. Returns `false` if the
+/// check-in doesn't exist (not if it simply had no photo).
+pub fn clear_photo(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE checkins SET photo_attachment_path = NULL, photo_mime_type = NULL WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(affected > 0)
+}
+
+/// `POST .../checkins/{id}/audio` — sets (or replaces) the check-in's
+/// voice memo. Returns `false` if the check-in doesn't exist.
+pub fn set_audio(
+    conn: &Connection,
+    id: &str,
+    storage_path: &str,
+    mime_type: &str,
+) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE checkins SET audio_attachment_path = ?1, audio_mime_type = ?2 WHERE id = ?3",
+        params![storage_path, mime_type, id],
+    )?;
+    Ok(affected > 0)
+}
+
+/// `DELETE .../checkins/{id}/audio` — clears it. Returns `false` if the
+/// check-in doesn't exist (not if it simply had no audio).
+pub fn clear_audio(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "UPDATE checkins SET audio_attachment_path = NULL, audio_mime_type = NULL WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(affected > 0)
 }
 
 pub fn get_checkin(conn: &Connection, id: &str) -> rusqlite::Result<Option<Checkin>> {
@@ -305,18 +372,45 @@ pub struct NewCheckin<'a> {
     pub related_assignment_id: Option<&'a str>,
     pub related_play_session_id: Option<&'a str>,
     pub created_by_user_id: &'a str,
+    /// Whether a photo came along with this request — only used to
+    /// satisfy a required `photo`-type field's validation; the actual
+    /// bytes are stored by the API layer via `set_photo` after this
+    /// returns successfully, same as every other blob-storage write in
+    /// this codebase (the domain layer doesn't touch `BlobDir`).
+    pub has_photo: bool,
+    /// Same idea as `has_photo`, for a required `audio`-type field.
+    pub has_audio: bool,
 }
 
-fn missing_required_field(field_values: &str, fields: &[TemplateField]) -> bool {
+/// A required `photo`- or `audio`-type field can't be satisfied through
+/// `field_values` — the media travels as separate multipart bytes, not a
+/// JSON scalar — so their presence is checked against `has_photo`/
+/// `has_audio` instead of the parsed object every other field type is
+/// checked against.
+fn missing_required_field(
+    field_values: &str,
+    fields: &[TemplateField],
+    has_photo: bool,
+    has_audio: bool,
+) -> bool {
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(field_values) else {
         return true;
     };
     let Some(obj) = parsed.as_object() else {
         return true;
     };
-    fields
-        .iter()
-        .any(|f| f.required && !obj.get(&f.field_key).is_some_and(|v| !v.is_null()))
+    fields.iter().any(|f| {
+        if !f.required {
+            return false;
+        }
+        if f.field_type == "photo" {
+            return !has_photo;
+        }
+        if f.field_type == "audio" {
+            return !has_audio;
+        }
+        !obj.get(&f.field_key).is_some_and(|v| !v.is_null())
+    })
 }
 
 /// `POST .../checkins` — either role, for their own link
@@ -336,7 +430,7 @@ pub fn create_checkin(
         return Err(CreateCheckinError::TemplateNotFound);
     };
     let fields = list_fields(&tx, new.template_id)?;
-    if missing_required_field(new.field_values, &fields) {
+    if missing_required_field(new.field_values, &fields, new.has_photo, new.has_audio) {
         return Err(CreateCheckinError::MissingRequiredField);
     }
 
@@ -563,6 +657,8 @@ mod tests {
                 related_assignment_id: None,
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         )
@@ -613,6 +709,8 @@ mod tests {
                 related_assignment_id: None,
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         );
@@ -639,6 +737,8 @@ mod tests {
                 related_assignment_id: None,
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         )
@@ -681,6 +781,8 @@ mod tests {
                 related_assignment_id: None,
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         )
@@ -705,6 +807,8 @@ mod tests {
                 related_assignment_id: None,
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         )
@@ -779,6 +883,8 @@ mod tests {
                 related_assignment_id: Some(&assignment_id),
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         )
@@ -794,6 +900,8 @@ mod tests {
                 related_assignment_id: None,
                 related_play_session_id: None,
                 created_by_user_id: &sub,
+                has_photo: false,
+                has_audio: false,
             },
             &sub,
         )

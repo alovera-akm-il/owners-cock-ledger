@@ -123,7 +123,8 @@
 
 <script>
 
-  const FIELD_TYPES = ['scale', 'select', 'number', 'text', 'boolean'];
+  const FIELD_TYPES = ['scale', 'select', 'number', 'text', 'boolean', 'photo', 'audio'];
+  const FIELD_TYPE_LABELS = { photo: 'Photo/video', audio: 'Audio' };
 
   function fieldRow(data) {
     data = data || {};
@@ -133,7 +134,7 @@
           <input class="field-key bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" placeholder="Key (e.g. skin_status)" />
           <input class="field-label bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200" placeholder="Label (e.g. Skin status)" />
           <select class="field-type bg-slate-900 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">
-            ${FIELD_TYPES.map(t => `<option value="${t}">${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}
+            ${FIELD_TYPES.map(t => `<option value="${t}">${FIELD_TYPE_LABELS[t] || (t[0].toUpperCase() + t.slice(1))}</option>`).join('')}
           </select>
         </div>
         <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="checkbox" class="field-required"> Required</label>
@@ -175,6 +176,10 @@
       html = `<input type="text" placeholder="Unit (e.g. hours)" value="${config.unit || ''}" class="cfg-unit w-40 bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-200" />`;
     } else if (type === 'boolean') {
       html = `<p class="text-[11px] text-slate-500">Shown as a yes/no toggle.</p>`;
+    } else if (type === 'photo') {
+      html = `<p class="text-[11px] text-slate-500">A photo or video upload prompt — required means a check-in can't submit without one.</p>`;
+    } else if (type === 'audio') {
+      html = `<p class="text-[11px] text-slate-500">A voice memo upload prompt — required means a check-in can't submit without one.</p>`;
     } else {
       html = `<p class="text-[11px] text-slate-500">Free text entry.</p>`;
     }

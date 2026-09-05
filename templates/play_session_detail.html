@@ -180,6 +180,9 @@
       <span id="checkin-modal-color" class="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"></span>
     </div>
     <p id="checkin-modal-submitted" class="text-xs text-slate-500 mb-4"></p>
+    <img id="checkin-modal-photo" class="hidden max-h-56 w-full object-cover rounded-lg border border-slate-800 mb-4" />
+    <video id="checkin-modal-video" controls class="hidden max-h-56 w-full rounded-lg border border-slate-800 mb-4"></video>
+    <audio id="checkin-modal-audio" controls class="hidden w-full mb-4"></audio>
     <dl id="checkin-modal-fields" class="space-y-2.5 mb-4"></dl>
     <div class="flex items-center justify-end gap-3">
       <a id="checkin-modal-reopen-live" href="#" class="hidden text-xs font-semibold text-amber-500 hover:text-amber-400">Reopen live &rarr;</a>
@@ -255,6 +258,21 @@
     $('#checkin-modal-title').text(title);
     $('#checkin-modal-color').removeClass().addClass('text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ' + (COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800')).text(checkin.color);
     $('#checkin-modal-submitted').text('Submitted ' + new Date(checkin.created_at).toLocaleString());
+    if (checkin.photo_url && (checkin.photo_mime_type || '').startsWith('video/')) {
+      $('#checkin-modal-video').attr('src', checkin.photo_url).removeClass('hidden');
+      $('#checkin-modal-photo').addClass('hidden').removeAttr('src');
+    } else if (checkin.photo_url) {
+      $('#checkin-modal-photo').attr('src', checkin.photo_url).removeClass('hidden');
+      $('#checkin-modal-video').addClass('hidden').removeAttr('src');
+    } else {
+      $('#checkin-modal-photo').addClass('hidden').removeAttr('src');
+      $('#checkin-modal-video').addClass('hidden').removeAttr('src');
+    }
+    if (checkin.audio_url) {
+      $('#checkin-modal-audio').attr('src', checkin.audio_url).removeClass('hidden');
+    } else {
+      $('#checkin-modal-audio').addClass('hidden').removeAttr('src');
+    }
     const $fields = $('#checkin-modal-fields').empty();
     const entries = Object.entries(checkin.field_values || {});
     if (entries.length === 0) {
@@ -282,12 +300,29 @@
   // tied to a specific numbered slot -- used both for a session with no
   // check-in plan at all, and for any check-ins logged *beyond* a
   // session's planned slots (see below).
+  const CAMERA_ICON = '<svg class="inline h-3.5 w-3.5 -mt-0.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 10.07 4h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 18.07 7H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+  const MIC_ICON = '<svg class="inline h-3.5 w-3.5 -mt-0.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>';
+
+  // A fulfilled check-in's row/slot title gets a small icon per attached
+  // media slot -- both can be present at once (a template can require a
+  // photo and a voice memo together), so this concatenates rather than
+  // picking one.
+  function mediaIcons(checkin) {
+    let icons = '';
+    if (checkin.photo_url) icons += CAMERA_ICON + ' ';
+    if (checkin.audio_url) icons += MIC_ICON + ' ';
+    return icons;
+  }
+
   function appendCheckinRow($list, checkin) {
     const label = checkinTemplateTitles[checkin.template_id] || 'Check-in';
     const title = label + ' · ' + new Date(checkin.created_at).toLocaleString();
     const $wrap = $('<div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5">');
     const $row = $('<button type="button" class="w-full flex items-center justify-between text-left hover:opacity-90">');
-    $row.append($('<span class="text-sm text-slate-300">').text(title));
+    const $titleSpan = $('<span class="text-sm text-slate-300">').text(title);
+    const icons = mediaIcons(checkin);
+    if (icons) $titleSpan.prepend(icons);
+    $row.append($titleSpan);
     $row.append($('<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full">').addClass(COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800').text(checkin.color + ' ✓ — view →'));
     $row.on('click', function () { openCheckinModal(title, checkin, null); });
     $wrap.append($row);
@@ -345,7 +380,12 @@
         ? '<button type="button" class="w-full flex items-center justify-between text-left hover:opacity-90">'
         : (liveEligible ? '<a class="flex items-center justify-between hover:opacity-90">' : '<div class="flex items-center justify-between">'));
       if (!checkin && liveEligible) $row.attr('href', liveHref);
-      $row.append($('<span class="text-sm text-slate-300">').text('Slot ' + slot.sequence_number + ' · +' + Math.round(slot.planned_offset_seconds / 60) + ' min (' + label + ')'));
+      const $slotTitle = $('<span class="text-sm text-slate-300">').text('Slot ' + slot.sequence_number + ' · +' + Math.round(slot.planned_offset_seconds / 60) + ' min (' + label + ')');
+      if (checkin) {
+        const icons = mediaIcons(checkin);
+        if (icons) $slotTitle.prepend(icons);
+      }
+      $row.append($slotTitle);
       if (slot.fulfilled_checkin_id) {
         const colorCls = checkin ? (COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800') : 'text-emerald-400 bg-emerald-500/10';
         const colorText = checkin ? checkin.color : 'done';

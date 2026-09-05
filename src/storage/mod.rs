@@ -36,6 +36,8 @@ pub fn extension_for(content_type: &str) -> Option<&'static str> {
         "video/webm" => Some("webm"),
         "audio/webm" => Some("weba"),
         "audio/mp4" => Some("m4a"),
+        "audio/mpeg" | "audio/mp3" => Some("mp3"),
+        "audio/wav" | "audio/x-wav" | "audio/wave" => Some("wav"),
         _ => None,
     }
 }
@@ -142,6 +144,20 @@ mod tests {
         let stored = store(dir.path(), "video/mp4", payload).unwrap();
         let bytes = read(dir.path(), &stored.storage_path).unwrap();
         assert_eq!(bytes, payload);
+    }
+
+    #[test]
+    fn mp3_and_wav_are_accepted_and_stored_unmodified() {
+        let dir = tempfile::tempdir().unwrap();
+        let mp3 = b"pretend this is an mp3 frame";
+        let stored = store(dir.path(), "audio/mpeg", mp3).unwrap();
+        assert_eq!(read(dir.path(), &stored.storage_path).unwrap(), mp3);
+        assert!(stored.storage_path.ends_with(".mp3"));
+
+        let wav = b"pretend this is a wav riff";
+        let stored = store(dir.path(), "audio/wav", wav).unwrap();
+        assert_eq!(read(dir.path(), &stored.storage_path).unwrap(), wav);
+        assert!(stored.storage_path.ends_with(".wav"));
     }
 
     #[test]

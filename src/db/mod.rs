@@ -105,6 +105,13 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../migrations/0033_toy_photo_mime_type.sql"
         )),
+        M::up(include_str!("../../migrations/0034_checkin_photo.sql")),
+        M::up(include_str!(
+            "../../migrations/0035_checkin_field_type_photo.sql"
+        )),
+        M::up(include_str!(
+            "../../migrations/0036_checkin_audio_and_video.sql"
+        )),
     ])
 }
 

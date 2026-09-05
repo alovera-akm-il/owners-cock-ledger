@@ -144,6 +144,43 @@
     } else if (f.field_type === 'boolean') {
       $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
       $input.append($('<option value="false">').text('No'), $('<option value="true">').text('Yes'));
+    } else if (f.field_type === 'photo') {
+      // Not part of field_values — collected separately at creation time
+      // via its data-photo-field marker and sent as a multipart 'photo'
+      // part. Once the check-in already exists, picking/replacing a
+      // photo (or video) here uploads immediately instead (same as toy
+      // photos), since there's no "submit" step left to ride along with.
+      $input = $('<input type="file" accept="image/png,image/jpeg,video/mp4,video/webm" class="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700">').attr({ 'data-key': f.field_key, 'data-photo-field': '1' });
+      const $imgPreview = $('<img class="hidden mt-2 max-h-40 rounded-lg border border-slate-800">');
+      const $videoPreview = $('<video controls class="hidden mt-2 max-h-40 rounded-lg border border-slate-800">');
+      $input.on('change', function () {
+        const file = this.files[0];
+        $imgPreview.addClass('hidden');
+        $videoPreview.addClass('hidden');
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        if (file.type.startsWith('video/')) {
+          $videoPreview.attr('src', url).removeClass('hidden');
+        } else {
+          $imgPreview.attr('src', url).removeClass('hidden');
+        }
+        if (checkinId) uploadPhotoNow(file);
+      });
+      $wrap.append($input, $imgPreview, $videoPreview);
+      return $wrap;
+    } else if (f.field_type === 'audio') {
+      // Same idea as the photo/video field, but for the independent
+      // voice-memo slot — a multipart 'audio' part.
+      $input = $('<input type="file" accept="audio/webm,audio/mp4,audio/mpeg,audio/wav,.mp3,.wav" class="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700">').attr({ 'data-key': f.field_key, 'data-audio-field': '1' });
+      const $preview = $('<audio controls class="hidden mt-2 w-full">');
+      $input.on('change', function () {
+        const file = this.files[0];
+        if (!file) { $preview.addClass('hidden'); return; }
+        $preview.attr('src', URL.createObjectURL(file)).removeClass('hidden');
+        if (checkinId) uploadAudioNow(file);
+      });
+      $wrap.append($input, $preview);
+      return $wrap;
     } else {
       $input = $('<textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
     }
@@ -160,6 +197,7 @@
     const values = {};
     $('#custom-fields [data-key]').each(function () {
       const $el = $(this);
+      if ($el.data('photo-field') || $el.data('audio-field')) return;
       const key = $el.data('key');
       let val = $el.val();
       if ($el.attr('type') === 'range' || $el.attr('type') === 'number') val = val === '' ? null : parseFloat(val);
@@ -210,16 +248,73 @@
     if (checkinId) saveNow();
   });
 
+  // Uploads/replaces the photo immediately — used once the check-in
+  // already exists and someone picks/changes a photo field's file, e.g.
+  // while reopened live, same as toy photos. Creation itself sends its
+  // own photo inline (see #create-btn below), so this isn't involved
+  // in the initial "Start this check-in" moment at all.
+  function uploadPhotoNow(file) {
+    const formData = new FormData();
+    formData.append('photo', file);
+    $.ajax({
+      url: '/api/v1/checkins/' + checkinId + '/photo',
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).fail(function (xhr) {
+      showMsg(errorMessage(xhr, 'Could not upload the photo.'), false);
+    });
+  }
+
+  // Mirrors `uploadPhotoNow` for the independent voice-memo slot.
+  function uploadAudioNow(file) {
+    const formData = new FormData();
+    formData.append('audio', file);
+    $.ajax({
+      url: '/api/v1/checkins/' + checkinId + '/audio',
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+    }).fail(function (xhr) {
+      showMsg(errorMessage(xhr, 'Could not upload the voice memo.'), false);
+    });
+  }
+
   $('#create-btn').on('click', function () {
     if (!currentColor) { showMsg('Pick a color first.', false); return; }
+    const photoFile = $('#custom-fields [data-photo-field]')[0]?.files[0] || null;
+    const requiredPhoto = template.fields.find(f => f.field_type === 'photo' && f.required);
+    if (requiredPhoto && !photoFile) {
+      showMsg('This check-in requires a photo — ' + requiredPhoto.label + '.', false);
+      return;
+    }
+    const audioFile = $('#custom-fields [data-audio-field]')[0]?.files[0] || null;
+    const requiredAudio = template.fields.find(f => f.field_type === 'audio' && f.required);
+    if (requiredAudio && !audioFile) {
+      showMsg('This check-in requires a voice memo — ' + requiredAudio.label + '.', false);
+      return;
+    }
     const createPath = IS_KEYHOLDER
       ? '/api/v1/keyholder/submissives/' + window.__submissiveId + '/checkins'
       : '/api/v1/submissive/checkins';
-    apiCall('POST', createPath, {
-      template_id: CHECKIN_TEMPLATE_ID,
-      color: currentColor,
-      field_values: fieldValuesFromForm(),
-      related_play_session_id: SESSION_ID,
+    const formData = new FormData();
+    formData.append('template_id', CHECKIN_TEMPLATE_ID);
+    formData.append('color', currentColor);
+    formData.append('field_values', JSON.stringify(fieldValuesFromForm()));
+    formData.append('related_play_session_id', SESSION_ID);
+    if (photoFile) formData.append('photo', photoFile);
+    if (audioFile) formData.append('audio', audioFile);
+    $.ajax({
+      url: createPath,
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
     }).done(function (checkin) {
       checkinId = checkin.id;
       $('#create-btn').addClass('hidden');
@@ -250,7 +345,28 @@
         if ($el.attr('type') === 'range') $el.trigger('input');
       }
     });
+    applyExistingMedia(checkin, true);
     flashPanel();
+  }
+
+  // Shared by `applyRemoteUpdate` (SSE echo, cache-busted since the same
+  // URL's content just changed) and `init`'s existing-checkin load
+  // (plain, since it's the first fetch) — picks <img> vs <video> for the
+  // photo/video slot based on the mime type the server now reports.
+  function applyExistingMedia(checkin, bustCache) {
+    if (checkin.photo_url) {
+      const url = checkin.photo_url + (bustCache ? '?t=' + Date.now() : '');
+      const $photoInput = $('#custom-fields [data-photo-field]');
+      const isVideo = (checkin.photo_mime_type || '').startsWith('video/');
+      const $img = $photoInput.siblings('img').toggleClass('hidden', isVideo);
+      const $video = $photoInput.siblings('video').toggleClass('hidden', !isVideo);
+      if (isVideo) { $video.attr('src', url); $img.removeAttr('src'); }
+      else { $img.attr('src', url); $video.removeAttr('src'); }
+    }
+    if (checkin.audio_url) {
+      const url = checkin.audio_url + (bustCache ? '?t=' + Date.now() : '');
+      $('#custom-fields [data-audio-field]').siblings('audio').attr('src', url).removeClass('hidden');
+    }
   }
 
   function connectStream() {
@@ -311,6 +427,7 @@
             Object.entries(existing.field_values || {}).forEach(function ([key, val]) {
               $('#custom-fields [data-key="' + key + '"]').val(val).trigger('input');
             });
+            applyExistingMedia(existing, false);
           }
           if (!ended) connectStream();
         });

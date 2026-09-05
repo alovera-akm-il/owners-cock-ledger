@@ -139,6 +139,42 @@
     } else if (f.field_type === 'boolean') {
       $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
       $input.append($('<option value="false">').text('No'), $('<option value="true">').text('Yes'));
+    } else if (f.field_type === 'photo') {
+      // Not part of field_values (a file can't be a JSON scalar) — the
+      // submit handler pulls this element's .files[0] out separately by
+      // its data-photo-field marker and sends it as a multipart 'photo'
+      // part alongside the rest of the request. Accepts a video too —
+      // the preview swaps between <img> and <video> based on the picked
+      // file's actual type.
+      $input = $('<input type="file" accept="image/png,image/jpeg,video/mp4,video/webm" class="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700">').attr({ 'data-key': f.field_key, 'data-photo-field': '1' });
+      const $imgPreview = $('<img class="hidden mt-2 max-h-40 rounded-lg border border-slate-800">');
+      const $videoPreview = $('<video controls class="hidden mt-2 max-h-40 rounded-lg border border-slate-800">');
+      $input.on('change', function () {
+        const file = this.files[0];
+        $imgPreview.addClass('hidden');
+        $videoPreview.addClass('hidden');
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        if (file.type.startsWith('video/')) {
+          $videoPreview.attr('src', url).removeClass('hidden');
+        } else {
+          $imgPreview.attr('src', url).removeClass('hidden');
+        }
+      });
+      $wrap.append($input, $imgPreview, $videoPreview);
+      return $wrap;
+    } else if (f.field_type === 'audio') {
+      // Same idea as the photo/video field, but for the independent
+      // voice-memo slot — a multipart 'audio' part.
+      $input = $('<input type="file" accept="audio/webm,audio/mp4,audio/mpeg,audio/wav,.mp3,.wav" class="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700">').attr({ 'data-key': f.field_key, 'data-audio-field': '1' });
+      const $preview = $('<audio controls class="hidden mt-2 w-full">');
+      $input.on('change', function () {
+        const file = this.files[0];
+        if (!file) { $preview.addClass('hidden'); return; }
+        $preview.attr('src', URL.createObjectURL(file)).removeClass('hidden');
+      });
+      $wrap.append($input, $preview);
+      return $wrap;
     } else {
       $input = $('<textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
     }
@@ -209,19 +245,53 @@
     }
     const templateId = $('#template-select').val();
     const fieldValues = {};
+    let photoFile = null;
+    let audioFile = null;
     $('#custom-fields [data-key]').each(function () {
       const $el = $(this);
+      if ($el.data('photo-field')) { photoFile = this.files[0] || null; return; }
+      if ($el.data('audio-field')) { audioFile = this.files[0] || null; return; }
       const key = $el.data('key');
       let val = $el.val();
       if ($el.attr('type') === 'range' || $el.attr('type') === 'number') val = val === '' ? null : parseFloat(val);
       if ($el.is('select') && (val === 'true' || val === 'false')) val = val === 'true';
       fieldValues[key] = val;
     });
-    apiCall('POST', createPath, {
-      template_id: templateId,
-      color: selectedColor,
-      field_values: fieldValues,
-      related_play_session_id: playSessionId,
+
+    // A friendlier message than the server's generic "malformed request"
+    // for the required-field cases a client-side check is cheap for.
+    const template = templates.find(t => t.id === templateId);
+    const requiredPhoto = template && template.fields.find(f => f.field_type === 'photo' && f.required);
+    if (requiredPhoto && !photoFile) {
+      showMsg('This check-in requires a photo — ' + requiredPhoto.label + '.', false);
+      return;
+    }
+    const requiredAudio = template && template.fields.find(f => f.field_type === 'audio' && f.required);
+    if (requiredAudio && !audioFile) {
+      showMsg('This check-in requires a voice memo — ' + requiredAudio.label + '.', false);
+      return;
+    }
+
+    // The create endpoint takes multipart, not JSON, since it needs to
+    // accept optional 'photo'/'audio' parts alongside the rest of the
+    // fields (required for a required photo/audio-type field to be
+    // enforced at all, rather than left to a separate follow-up call
+    // that could just never happen).
+    const formData = new FormData();
+    formData.append('template_id', templateId);
+    formData.append('color', selectedColor);
+    formData.append('field_values', JSON.stringify(fieldValues));
+    if (playSessionId) formData.append('related_play_session_id', playSessionId);
+    if (photoFile) formData.append('photo', photoFile);
+    if (audioFile) formData.append('audio', audioFile);
+
+    $.ajax({
+      url: createPath,
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
     }).done(function () {
       $('#submit-checkin-btn').prop('disabled', true).text('Submitted ✓');
       if (playSessionId) {

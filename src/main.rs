@@ -129,7 +129,23 @@ fn build_router(state: db::AppState) -> Router {
                 .merge(api::stats::router()),
         )
         .merge(web::router())
-        .nest_service("/static", tower_http::services::ServeDir::new("static"))
+        .nest_service(
+            "/static",
+            // No Cache-Control means the browser is free to reuse a stale
+            // copy of app.css (or any static asset) for a heuristic
+            // freshness window after a template/CSS edit, showing
+            // unstyled/misrendered UI until the user happens to
+            // hard-refresh. `no-cache` forces a cheap conditional
+            // revalidation (If-Modified-Since -> 304 when unchanged) on
+            // every request instead, so a rebuilt asset is picked up on
+            // the very next load rather than "whenever the cache expires."
+            tower::ServiceBuilder::new()
+                .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-cache"),
+                ))
+                .service(tower_http::services::ServeDir::new("static")),
+        )
         .layer(axum::middleware::from_fn(auth::csrf::csrf_protect))
         .with_state(state)
 }
@@ -4490,6 +4506,405 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
+    /// Same optional-photo shape as toys (see the lifecycle test above),
+    /// but set independently of check-in creation/`PATCH` rather than
+    /// inline — a check-in's color/fields stay plain JSON either way.
+    #[tokio::test]
+    async fn checkin_photo_upload_download_and_delete_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-checkinphoto@example.test",
+            "sub-checkinphoto@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Morning cage check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": []
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        let (_, checkin) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[],
+            )
+            .await;
+        let checkin_id = checkin["id"].as_str().unwrap().to_string();
+        assert!(checkin["photo_url"].is_null());
+
+        // A non-image content type is rejected.
+        let (status, _) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/photo"),
+                &[],
+                &[("photo", "notes.txt", "text/plain", b"not an image")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Upload a real photo.
+        let (status, uploaded) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/photo"),
+                &[],
+                &[("photo", "checkin.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let photo_url = uploaded["photo_url"].as_str().unwrap().to_string();
+        assert_eq!(photo_url, format!("/api/v1/checkins/{checkin_id}/photo"));
+
+        // Both the submissive and their Keyholder can fetch it back.
+        let (status, _) = submissive.get(&photo_url).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = keyholder.get(&photo_url).await;
+        assert_eq!(status, StatusCode::OK);
+
+        // Re-uploading replaces it (still exactly one photo per check-in).
+        let (status, replaced) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/photo"),
+                &[],
+                &[("photo", "checkin2.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(replaced["photo_url"], photo_url);
+
+        // Deleting clears it.
+        let (status, _) = submissive.delete(&photo_url).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = submissive.get(&photo_url).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // An unrelated Keyholder can't reach this submissive's check-in photo.
+        seed_keyholder(
+            &pool,
+            "kh-checkinphoto-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-checkinphoto-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_kh
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/photo"),
+                &[],
+                &[("photo", "checkin.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// `photo` as a template field type — a required one has to be
+    /// enforced at creation time (unlike a purely-optional attachment),
+    /// which only works because create now accepts multipart with an
+    /// inline `photo` part rather than plain JSON.
+    #[tokio::test]
+    async fn checkin_required_photo_field_is_enforced_at_creation() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-requiredphoto@example.test",
+            "sub-requiredphoto@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Proof-required check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": [
+                        {"field_key": "proof", "label": "Proof photo", "field_type": "photo", "config": {}, "required": true}
+                    ]
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        // No photo attached — the required field is missing.
+        let (status, _) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[],
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // With a photo attached in the same request, it's accepted and
+        // the photo is already live on the response, no follow-up upload needed.
+        let (status, checkin) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[("photo", "proof.png", "image/png", TINY_PNG)],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let checkin_id = checkin["id"].as_str().unwrap().to_string();
+        let photo_url = checkin["photo_url"].as_str().unwrap().to_string();
+        assert_eq!(photo_url, format!("/api/v1/checkins/{checkin_id}/photo"));
+        let (status, _) = submissive.get(&photo_url).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    /// The `photo` field type now also accepts a video — same slot,
+    /// content-type just disambiguates what got stored (13-checkins.md,
+    /// "photo/video" combined field type).
+    #[tokio::test]
+    async fn checkin_photo_field_accepts_a_video_file() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-checkinvideo@example.test",
+            "sub-checkinvideo@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Video check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": []
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        let (status, checkin) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[("photo", "clip.mp4", "video/mp4", b"pretend this is an mp4 container")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let photo_url = checkin["photo_url"].as_str().unwrap().to_string();
+        let (status, _) = submissive.get(&photo_url).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    /// The `audio` field also accepts mp3 and wav, not just webm/mp4.
+    #[tokio::test]
+    async fn checkin_audio_field_accepts_mp3_and_wav() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-checkinmp3@example.test",
+            "sub-checkinmp3@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "MP3/WAV check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": []
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        let (status, checkin) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[("audio", "voice.mp3", "audio/mpeg", b"pretend this is an mp3 frame")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let audio_url = checkin["audio_url"].as_str().unwrap().to_string();
+        let (status, _) = submissive.get(&audio_url).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, replaced) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{}/audio", checkin["id"].as_str().unwrap()),
+                &[],
+                &[("audio", "voice.wav", "audio/wav", b"pretend this is a wav riff")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(replaced["audio_url"], audio_url);
+    }
+
+    /// Same optional-attachment shape as the photo lifecycle test, for the
+    /// independent `audio` slot (voice memos).
+    #[tokio::test]
+    async fn checkin_audio_upload_download_and_delete_lifecycle() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-checkinaudio@example.test",
+            "sub-checkinaudio@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Voice check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": []
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        let (_, checkin) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[],
+            )
+            .await;
+        let checkin_id = checkin["id"].as_str().unwrap().to_string();
+        assert!(checkin["audio_url"].is_null());
+
+        // A non-audio content type is rejected.
+        let (status, _) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/audio"),
+                &[],
+                &[("audio", "notes.txt", "text/plain", b"not audio")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Upload a voice memo.
+        let (status, uploaded) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/audio"),
+                &[],
+                &[("audio", "memo.weba", "audio/webm", b"pretend this is webm audio")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let audio_url = uploaded["audio_url"].as_str().unwrap().to_string();
+        assert_eq!(audio_url, format!("/api/v1/checkins/{checkin_id}/audio"));
+
+        // Both the submissive and their Keyholder can fetch it back.
+        let (status, _) = submissive.get(&audio_url).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = keyholder.get(&audio_url).await;
+        assert_eq!(status, StatusCode::OK);
+
+        // Re-uploading replaces it (still exactly one voice memo per check-in).
+        let (status, replaced) = submissive
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/audio"),
+                &[],
+                &[("audio", "memo2.m4a", "audio/mp4", b"pretend this is m4a audio")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(replaced["audio_url"], audio_url);
+
+        // Deleting clears it.
+        let (status, _) = submissive.delete(&audio_url).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = submissive.get(&audio_url).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // An unrelated Keyholder can't reach this submissive's check-in audio.
+        seed_keyholder(
+            &pool,
+            "kh-checkinaudio-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-checkinaudio-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (status, _) = other_kh
+            .post_multipart(
+                &format!("/api/v1/checkins/{checkin_id}/audio"),
+                &[],
+                &[("audio", "memo.weba", "audio/webm", b"pretend this is webm audio")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// `audio` as a template field type — mirrors the required-photo
+    /// enforcement test, for the independent voice-memo slot.
+    #[tokio::test]
+    async fn checkin_required_audio_field_is_enforced_at_creation() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-requiredaudio@example.test",
+            "sub-requiredaudio@example.test",
+        )
+        .await;
+
+        let (_, template) = keyholder
+            .post(
+                "/api/v1/keyholder/checkin-templates",
+                serde_json::json!({
+                    "title": "Voice-required check-in",
+                    "auto_escalate_on_red": false,
+                    "fields": [
+                        {"field_key": "voice", "label": "Voice memo", "field_type": "audio", "config": {}, "required": true}
+                    ]
+                }),
+            )
+            .await;
+        let template_id = template["id"].as_str().unwrap().to_string();
+
+        // No audio attached — the required field is missing.
+        let (status, _) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[],
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // With audio attached in the same request, it's accepted and
+        // already live on the response, no follow-up upload needed.
+        let (status, checkin) = submissive
+            .post_multipart(
+                "/api/v1/submissive/checkins",
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[("audio", "voice.weba", "audio/webm", b"pretend this is webm audio")],
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+        let checkin_id = checkin["id"].as_str().unwrap().to_string();
+        let audio_url = checkin["audio_url"].as_str().unwrap().to_string();
+        assert_eq!(audio_url, format!("/api/v1/checkins/{checkin_id}/audio"));
+        let (status, _) = submissive.get(&audio_url).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
     #[tokio::test]
     async fn points_earn_manual_adjust_and_redeem_lifecycle() {
         let (_dir, pool) = temp_pool();
@@ -4696,18 +5111,24 @@ mod tests {
 
         // Missing the required field is rejected.
         let (status, _) = submissive
-            .post(
+            .post_multipart(
                 "/api/v1/submissive/checkins",
-                serde_json::json!({"template_id": template_id, "color": "green", "field_values": {}}),
+                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[],
             )
             .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
 
         // A normal green check-in submits fine and notifies the keyholder, feed-only.
         let (status, checkin) = submissive
-            .post(
+            .post_multipart(
                 "/api/v1/submissive/checkins",
-                serde_json::json!({"template_id": template_id, "color": "green", "field_values": {"skin_status": "normal"}}),
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", r#"{"skin_status": "normal"}"#),
+                ],
+                &[],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -4775,9 +5196,14 @@ mod tests {
         let template_id = template["id"].as_str().unwrap().to_string();
 
         let (status, _) = submissive
-            .post(
+            .post_multipart(
                 "/api/v1/submissive/checkins",
-                serde_json::json!({"template_id": template_id, "color": "red", "field_values": {"arousal": 8}}),
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "red"),
+                    ("field_values", r#"{"arousal": 8}"#),
+                ],
+                &[],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -5093,14 +5519,15 @@ mod tests {
         assert!(schedule.iter().all(|s| s["fulfilled_checkin_id"].is_null()));
 
         let (status, _) = submissive
-            .post(
+            .post_multipart(
                 "/api/v1/submissive/checkins",
-                serde_json::json!({
-                    "template_id": checkin_template_id,
-                    "color": "green",
-                    "field_values": {},
-                    "related_play_session_id": session_id
-                }),
+                &[
+                    ("template_id", checkin_template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                    ("related_play_session_id", session_id.as_str()),
+                ],
+                &[],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -5252,14 +5679,15 @@ mod tests {
         // client has.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let (status, _) = submissive
-            .post(
+            .post_multipart(
                 "/api/v1/submissive/checkins",
-                serde_json::json!({
-                    "template_id": checkin_template_id,
-                    "color": "green",
-                    "field_values": {},
-                    "related_play_session_id": session_id
-                }),
+                &[
+                    ("template_id", checkin_template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                    ("related_play_session_id", session_id.as_str()),
+                ],
+                &[],
             )
             .await;
         assert_eq!(status, StatusCode::OK);

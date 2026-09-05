@@ -402,10 +402,12 @@ def seed(base_url: str, kh_password: str):
     step("Recurring task rule created (Riley)")
 
     # ---------- Check-ins ----------
+    # The create endpoint takes multipart, not JSON, so an optional photo
+    # field can travel inline with the rest of the fields.
     for name in ("Riley", "Jordan"):
-        subs[name].post("/api/v1/submissive/checkins", json_body={
+        subs[name].post_multipart("/api/v1/submissive/checkins", fields={
             "template_id": checkin_template, "color": "green",
-            "field_values": {"skin_status": "normal", "comfort": 8, "notes": "all fine"},
+            "field_values": json.dumps({"skin_status": "normal", "comfort": 8, "notes": "all fine"}),
         })
     step("Check-ins submitted")
 
