@@ -1272,6 +1272,9 @@ struct SubmitCheckinTemplate {
     display_name: String,
     initial: String,
     is_keyholder: bool,
+    back_href: String,
+    back_label: &'static str,
+    nav_variant: &'static str,
     submissive_id: Option<String>,
     play_session_id: Option<String>,
 }
@@ -1295,6 +1298,9 @@ async fn submit_checkin_page(
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
         is_keyholder,
+        back_href: if is_keyholder { "/dashboard" } else { "/submissive" }.to_string(),
+        back_label: "Back",
+        nav_variant: "full",
         submissive_id: if is_keyholder {
             query.get("submissive_id").cloned()
         } else {
@@ -1672,6 +1678,9 @@ struct PlaySessionDetailTemplate {
     is_keyholder: bool,
     display_name: String,
     initial: String,
+    back_href: String,
+    back_label: &'static str,
+    nav_variant: &'static str,
 }
 
 /// `/keyholder/play-sessions/{id}` and `/submissive/play-sessions/{id}`
@@ -1687,11 +1696,20 @@ async fn play_session_detail_page(
         return Redirect::to("/login").into_response();
     };
 
+    let is_keyholder = user.role == Role::Keyholder;
     render(PlaySessionDetailTemplate {
         session_id,
-        is_keyholder: user.role == Role::Keyholder,
+        is_keyholder,
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
+        back_href: if is_keyholder {
+            "/keyholder/play-session-templates"
+        } else {
+            "/submissive/play-sessions"
+        }
+        .to_string(),
+        back_label: "Play Sessions",
+        nav_variant: "full",
     })
 }
 
@@ -1704,6 +1722,9 @@ struct CheckinLiveTemplate {
     is_keyholder: bool,
     display_name: String,
     initial: String,
+    back_href: String,
+    back_label: &'static str,
+    nav_variant: &'static str,
 }
 
 /// `/play-sessions/{id}/checkin-live` (13-checkins.md §5) — the live,
@@ -1723,14 +1744,21 @@ async fn checkin_live_page(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let sequence_number = query.get("slot").cloned().unwrap_or_default();
+    let is_keyholder = user.role == Role::Keyholder;
 
     render(CheckinLiveTemplate {
+        back_href: format!(
+            "/{}/play-sessions/{session_id}",
+            if is_keyholder { "keyholder" } else { "submissive" }
+        ),
         session_id,
         checkin_template_id,
         sequence_number,
-        is_keyholder: user.role == Role::Keyholder,
+        is_keyholder,
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
+        back_label: "Back to play session",
+        nav_variant: "live",
     })
 }
 

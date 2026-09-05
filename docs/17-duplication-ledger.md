@@ -24,7 +24,7 @@ itself.
 |---|---|---|---|---|
 | 1 | Nearly the entire file is byte-identical between the two roles' statistics pages — same inline script verbatim, only the endpoint and one label word differ | `keyholder_submissive_statistics.html`, `submissive_statistics.html` | Large | **Fixed** |
 | 2 | Same toy-inventory feature, ~80% overlapping markup and JS (form fields, card-rendering function, device-list fetch/edit flow) | `toy_catalog.html`, `submissive_toys.html` | Large | **Fixed** |
-| 3 | Three drill-down pages each hand-roll their own ~30-line nav bar (logo, bell, role badge, avatar, logout) instead of using the shared nav partial | `play_session_detail.html`, `checkin_live.html`, `submit_checkin.html` | Medium | Open |
+| 3 | Three drill-down pages each hand-roll their own ~30-line nav bar (logo, bell, role badge, avatar, logout) instead of using the shared nav partial | `play_session_detail.html`, `checkin_live.html`, `submit_checkin.html` | Medium | **Fixed** |
 | 4 | Confinement lock/unlock widget rendered by both roles for the same session, same "owner reads/writes, other party reads a mirror" shape as the limits merge | `submissive_dashboard.html`, `submissive_detail.html` | Medium | Open |
 
 ## 2. Statistics pages (largest overlap, fixed)
@@ -93,7 +93,7 @@ cross-check) branches on an `IS_KEYHOLDER` flag and a couple of
 optional endpoint data-attributes read once at the top of the file,
 rather than existing as two parallel copies of the same functions.
 
-## 4. Duplicated hand-rolled mini-nav
+## 4. Duplicated hand-rolled mini-nav (fixed)
 
 `play_session_detail.html`, `checkin_live.html`, and
 `submit_checkin.html` are drill-down pages reached by clicking in
@@ -108,6 +108,21 @@ catch, since these three pages opted out of the full nav rather than
 using a trimmed variant of it. A small "minimal/back-link nav" partial
 (logo + back-link + the same account/notification cluster, no primary
 link set) would collapse this to one implementation.
+
+**Fixed** as `templates/partials/minimal_nav.html`, taking `back_href`/
+`back_label` (page-specific) and `nav_variant` ("full" — bell, role
+badge, logout, used by `submit_checkin.html` and
+`play_session_detail.html`; or "live" — a Live badge instead, no bell/
+badge/logout, used only by `checkin_live.html`'s reduced chrome, which
+turned out to genuinely be a smaller shape than the other two rather
+than a plain copy). Caught along the way: all three hand-rolled navs
+predated the primary-nav redesign that turned the profile corner into
+a dropdown — they'd fallen out of sync with `partials/nav.html`'s
+current shape (still separate always-visible name/avatar/logout
+elements instead of one dropdown trigger). Left that divergence alone
+for this pass rather than bundling an unrelated visual change into a
+duplication fix; worth a follow-up if these three should adopt the
+dropdown too.
 
 ## 5. Confinement-status widget
 
