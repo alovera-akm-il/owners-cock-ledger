@@ -65,6 +65,111 @@ const CHECKIN_COLORS = {
   },
 };
 
+// Renders one custom check-in field's input, shared between
+// submit_checkin.html (the non-live free-choice form) and
+// checkin_live.html (the live-synced form) — the two call sites differ
+// in exactly two ways, both passed in via `opts` rather than a free
+// variable this function would otherwise have to assume:
+//   - `opts.devicesPath`: a `select`-type field backed by
+//     `config.source === 'devices'` needs to know where to fetch the
+//     submissive's device list from. submit_checkin.html always has the
+//     submissive id up front (from the page's own data attribute or the
+//     logged-in submissive); checkin_live.html only learns it once the
+//     play session's own API response comes back, so it can't be a
+//     plain top-level constant there.
+//   - `opts.onPhotoPicked`/`opts.onAudioPicked`: once a check-in already
+//     exists, checkin_live.html uploads a newly-picked photo/audio file
+//     immediately (there's no separate "submit" step left to ride along
+//     with); submit_checkin.html has no live check-in to upload to yet,
+//     so it just omits these and the file rides along with the eventual
+//     multipart create request instead.
+function fieldInput(f, opts) {
+  opts = opts || {};
+  const $wrap = $('<div>');
+  $wrap.append($('<label class="block text-xs font-medium text-slate-400 mb-1">').text(f.label));
+  if (f.description) $wrap.append($('<p class="text-[11px] text-slate-500 mb-1.5">').text(f.description));
+
+  let $input;
+  if (f.field_type === 'select') {
+    $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+    if (f.config && f.config.source === 'devices') {
+      apiCall('GET', opts.devicesPath).done(function (devices) {
+        devices.filter(d => !d.retired_at).forEach(function (d) {
+          $input.append($('<option>').val(d.name).text(d.name));
+        });
+      });
+    } else {
+      (f.config && f.config.options || []).forEach(function (opt) {
+        $input.append($('<option>').val(opt).text(opt));
+      });
+    }
+  } else if (f.field_type === 'scale') {
+    const min = (f.config && f.config.min) ?? 1;
+    const max = (f.config && f.config.max) ?? 5;
+    const mid = Math.round((min + max) / 2);
+    $input = $('<input type="range" class="w-full accent-amber-500">').attr({ 'data-key': f.field_key, min: min, max: max, value: mid });
+    const $out = $('<span class="text-sm font-mono text-amber-400">').text(mid);
+    const $labelRow = $('<div class="flex items-center justify-between mb-1">');
+    $wrap.find('label').detach().appendTo($labelRow);
+    $labelRow.append($out);
+    $wrap.prepend($labelRow);
+    $input.on('input', function () { $out.text($(this).val()); });
+    const $minMax = $('<div class="flex justify-between text-[10px] text-slate-600 mt-0.5">')
+      .append($('<span>').text((f.config && f.config.min_label) || min))
+      .append($('<span>').text((f.config && f.config.max_label) || max));
+    $wrap.append($input, $minMax);
+    return $wrap;
+  } else if (f.field_type === 'number') {
+    $input = $('<input type="number" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+    if (f.config && f.config.unit) $wrap.find('label').append($('<span class="text-slate-600 font-normal">').text(' (' + f.config.unit + ')'));
+  } else if (f.field_type === 'boolean') {
+    $input = $('<select class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+    $input.append($('<option value="false">').text('No'), $('<option value="true">').text('Yes'));
+  } else if (f.field_type === 'photo') {
+    // Not part of field_values (a file can't be a JSON scalar) — the
+    // submit handler pulls this element's .files[0] out separately by
+    // its data-photo-field marker and sends it as a multipart 'photo'
+    // part alongside the rest of the request. Accepts a video too — the
+    // preview swaps between <img> and <video> based on the picked
+    // file's actual type.
+    $input = $('<input type="file" accept="image/png,image/jpeg,video/mp4,video/webm" class="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700">').attr({ 'data-key': f.field_key, 'data-photo-field': '1' });
+    const $imgPreview = $('<img class="hidden mt-2 max-h-40 rounded-lg border border-slate-800">');
+    const $videoPreview = $('<video controls class="hidden mt-2 max-h-40 rounded-lg border border-slate-800">');
+    $input.on('change', function () {
+      const file = this.files[0];
+      $imgPreview.addClass('hidden');
+      $videoPreview.addClass('hidden');
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('video/')) {
+        $videoPreview.attr('src', url).removeClass('hidden');
+      } else {
+        $imgPreview.attr('src', url).removeClass('hidden');
+      }
+      if (opts.onPhotoPicked) opts.onPhotoPicked(file);
+    });
+    $wrap.append($input, $imgPreview, $videoPreview);
+    return $wrap;
+  } else if (f.field_type === 'audio') {
+    // Same idea as the photo/video field, but for the independent
+    // voice-memo slot — a multipart 'audio' part.
+    $input = $('<input type="file" accept="audio/webm,audio/mp4,audio/mpeg,audio/wav,.mp3,.wav" class="block w-full text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-200 hover:file:bg-slate-700">').attr({ 'data-key': f.field_key, 'data-audio-field': '1' });
+    const $preview = $('<audio controls class="hidden mt-2 w-full">');
+    $input.on('change', function () {
+      const file = this.files[0];
+      if (!file) { $preview.addClass('hidden'); return; }
+      $preview.attr('src', URL.createObjectURL(file)).removeClass('hidden');
+      if (opts.onAudioPicked) opts.onAudioPicked(file);
+    });
+    $wrap.append($input, $preview);
+    return $wrap;
+  } else {
+    $input = $('<textarea rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg text-sm p-2 text-slate-200">').attr('data-key', f.field_key);
+  }
+  $wrap.append($input);
+  return $wrap;
+}
+
 // Every modal in the app is a `#{prefix}-modal-backdrop` div (see
 // .modal-backdrop/.modal-card in tailwind/input.css) — this wires the one
 // behavior they all share (click outside the card closes it) and hands
