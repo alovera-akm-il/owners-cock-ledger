@@ -572,11 +572,7 @@ mod tests {
         assert!(!clear_keyholder_rating(&conn, &kh, "seed-impact-paddle").unwrap());
         set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "hard", None).unwrap();
         assert!(clear_keyholder_rating(&conn, &kh, "seed-impact-paddle").unwrap());
-        assert!(
-            list_ratings_for_keyholder(&conn, &kh)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(list_ratings_for_keyholder(&conn, &kh).unwrap().is_empty());
     }
 
     #[test]

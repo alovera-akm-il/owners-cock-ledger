@@ -702,7 +702,9 @@ async fn submissive_detail_page(
             .sum();
         let unreviewed_adjustments = adjustments
             .iter()
-            .filter(|a| a.reason == "punishment_time_extension" && a.keyholder_reviewed_at.is_none())
+            .filter(|a| {
+                a.reason == "punishment_time_extension" && a.keyholder_reviewed_at.is_none()
+            })
             .map(|a| UnreviewedAdjustmentRow {
                 id: a.id.clone(),
                 delta_text: fmt_duration(a.delta_seconds),
@@ -839,11 +841,7 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
 /// `Some` for one submissive's own review page (active-or-paused,
 /// since that page should stay reachable through an oversight pause
 /// even though the aggregate queue excludes paused links).
-async fn review_queue_page_core(
-    pool: Pool,
-    jar: CookieJar,
-    target_id: Option<String>,
-) -> Response {
+async fn review_queue_page_core(pool: Pool, jar: CookieJar, target_id: Option<String>) -> Response {
     let Some(user) = resolve_current_user(&pool, &jar).await else {
         return Redirect::to("/login").into_response();
     };

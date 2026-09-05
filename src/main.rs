@@ -4535,7 +4535,11 @@ mod tests {
         let (_, checkin) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
                 &[],
             )
             .await;
@@ -4643,7 +4647,11 @@ mod tests {
         let (status, _) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
                 &[],
             )
             .await;
@@ -4654,7 +4662,11 @@ mod tests {
         let (status, checkin) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
                 &[("photo", "proof.png", "image/png", TINY_PNG)],
             )
             .await;
@@ -4694,8 +4706,17 @@ mod tests {
         let (status, checkin) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
-                &[("photo", "clip.mp4", "video/mp4", b"pretend this is an mp4 container")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
+                &[(
+                    "photo",
+                    "clip.mp4",
+                    "video/mp4",
+                    b"pretend this is an mp4 container",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -4730,8 +4751,17 @@ mod tests {
         let (status, checkin) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
-                &[("audio", "voice.mp3", "audio/mpeg", b"pretend this is an mp3 frame")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
+                &[(
+                    "audio",
+                    "voice.mp3",
+                    "audio/mpeg",
+                    b"pretend this is an mp3 frame",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -4743,7 +4773,12 @@ mod tests {
             .post_multipart(
                 &format!("/api/v1/checkins/{}/audio", checkin["id"].as_str().unwrap()),
                 &[],
-                &[("audio", "voice.wav", "audio/wav", b"pretend this is a wav riff")],
+                &[(
+                    "audio",
+                    "voice.wav",
+                    "audio/wav",
+                    b"pretend this is a wav riff",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -4777,7 +4812,11 @@ mod tests {
         let (_, checkin) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
                 &[],
             )
             .await;
@@ -4799,7 +4838,12 @@ mod tests {
             .post_multipart(
                 &format!("/api/v1/checkins/{checkin_id}/audio"),
                 &[],
-                &[("audio", "memo.weba", "audio/webm", b"pretend this is webm audio")],
+                &[(
+                    "audio",
+                    "memo.weba",
+                    "audio/webm",
+                    b"pretend this is webm audio",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -4817,7 +4861,12 @@ mod tests {
             .post_multipart(
                 &format!("/api/v1/checkins/{checkin_id}/audio"),
                 &[],
-                &[("audio", "memo2.m4a", "audio/mp4", b"pretend this is m4a audio")],
+                &[(
+                    "audio",
+                    "memo2.m4a",
+                    "audio/mp4",
+                    b"pretend this is m4a audio",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -4847,7 +4896,12 @@ mod tests {
             .post_multipart(
                 &format!("/api/v1/checkins/{checkin_id}/audio"),
                 &[],
-                &[("audio", "memo.weba", "audio/webm", b"pretend this is webm audio")],
+                &[(
+                    "audio",
+                    "memo.weba",
+                    "audio/webm",
+                    b"pretend this is webm audio",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -4883,7 +4937,11 @@ mod tests {
         let (status, _) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
                 &[],
             )
             .await;
@@ -4894,8 +4952,17 @@ mod tests {
         let (status, checkin) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
-                &[("audio", "voice.weba", "audio/webm", b"pretend this is webm audio")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
+                &[(
+                    "audio",
+                    "voice.weba",
+                    "audio/webm",
+                    b"pretend this is webm audio",
+                )],
             )
             .await;
         assert_eq!(status, StatusCode::OK);
@@ -5114,7 +5181,11 @@ mod tests {
         let (status, _) = submissive
             .post_multipart(
                 "/api/v1/submissive/checkins",
-                &[("template_id", template_id.as_str()), ("color", "green"), ("field_values", "{}")],
+                &[
+                    ("template_id", template_id.as_str()),
+                    ("color", "green"),
+                    ("field_values", "{}"),
+                ],
                 &[],
             )
             .await;

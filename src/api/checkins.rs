@@ -37,7 +37,13 @@ fn valid_photo_content_type(t: &str) -> bool {
 fn valid_audio_content_type(t: &str) -> bool {
     matches!(
         t,
-        "audio/webm" | "audio/mp4" | "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav" | "audio/wave"
+        "audio/webm"
+            | "audio/mp4"
+            | "audio/mpeg"
+            | "audio/mp3"
+            | "audio/wav"
+            | "audio/x-wav"
+            | "audio/wave"
     )
 }
 
@@ -346,7 +352,9 @@ struct ParsedCheckinCreate {
     audio: Option<(String, Vec<u8>)>,
 }
 
-async fn parse_checkin_multipart(mut multipart: Multipart) -> Result<ParsedCheckinCreate, ApiError> {
+async fn parse_checkin_multipart(
+    mut multipart: Multipart,
+) -> Result<ParsedCheckinCreate, ApiError> {
     let mut template_id = None;
     let mut color = None;
     let mut field_values = None;
@@ -447,7 +455,9 @@ async fn create_for_keyholder(
                     template_id: &parsed.template_id,
                     color: &parsed.color,
                     field_values: &parsed.field_values,
-                    related_confinement_session_id: parsed.related_confinement_session_id.as_deref(),
+                    related_confinement_session_id: parsed
+                        .related_confinement_session_id
+                        .as_deref(),
                     related_assignment_id: parsed.related_assignment_id.as_deref(),
                     related_play_session_id: parsed.related_play_session_id.as_deref(),
                     created_by_user_id: &user.user_id,
@@ -462,14 +472,14 @@ async fn create_for_keyholder(
                 checkins::CreateCheckinError::Db(_) => INTERNAL_ERROR,
             })?;
             if let Some((content_type, bytes)) = &parsed.photo {
-                let stored = crate::storage::store(&blob_dir, content_type, bytes)
-                    .map_err(|_| BAD_PHOTO)?;
+                let stored =
+                    crate::storage::store(&blob_dir, content_type, bytes).map_err(|_| BAD_PHOTO)?;
                 checkins::set_photo(&conn, &id, &stored.storage_path, content_type)
                     .map_err(|_| INTERNAL_ERROR)?;
             }
             if let Some((content_type, bytes)) = &parsed.audio {
-                let stored = crate::storage::store(&blob_dir, content_type, bytes)
-                    .map_err(|_| BAD_AUDIO)?;
+                let stored =
+                    crate::storage::store(&blob_dir, content_type, bytes).map_err(|_| BAD_AUDIO)?;
                 checkins::set_audio(&conn, &id, &stored.storage_path, content_type)
                     .map_err(|_| INTERNAL_ERROR)?;
             }
@@ -518,7 +528,9 @@ async fn create_own(
                     template_id: &parsed.template_id,
                     color: &parsed.color,
                     field_values: &parsed.field_values,
-                    related_confinement_session_id: parsed.related_confinement_session_id.as_deref(),
+                    related_confinement_session_id: parsed
+                        .related_confinement_session_id
+                        .as_deref(),
                     related_assignment_id: parsed.related_assignment_id.as_deref(),
                     related_play_session_id: parsed.related_play_session_id.as_deref(),
                     created_by_user_id: &user.user_id,
@@ -533,14 +545,14 @@ async fn create_own(
                 checkins::CreateCheckinError::Db(_) => INTERNAL_ERROR,
             })?;
             if let Some((content_type, bytes)) = &parsed.photo {
-                let stored = crate::storage::store(&blob_dir, content_type, bytes)
-                    .map_err(|_| BAD_PHOTO)?;
+                let stored =
+                    crate::storage::store(&blob_dir, content_type, bytes).map_err(|_| BAD_PHOTO)?;
                 checkins::set_photo(&conn, &id, &stored.storage_path, content_type)
                     .map_err(|_| INTERNAL_ERROR)?;
             }
             if let Some((content_type, bytes)) = &parsed.audio {
-                let stored = crate::storage::store(&blob_dir, content_type, bytes)
-                    .map_err(|_| BAD_AUDIO)?;
+                let stored =
+                    crate::storage::store(&blob_dir, content_type, bytes).map_err(|_| BAD_AUDIO)?;
                 checkins::set_audio(&conn, &id, &stored.storage_path, content_type)
                     .map_err(|_| INTERNAL_ERROR)?;
             }
