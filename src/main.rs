@@ -109,6 +109,7 @@ fn build_router(state: db::AppState) -> Router {
         .nest(
             "/api/v1",
             api::auth::router()
+                .merge(api::audit::router())
                 .merge(api::invites::router())
                 .merge(api::roster::router())
                 .merge(api::safety::router())
@@ -3672,6 +3673,125 @@ mod tests {
         let (status, location, _) = submissive.get_page("/keyholder/safety-alerts").await;
         assert!(status.is_redirection());
         assert_eq!(location.as_deref(), Some("/submissive"));
+    }
+
+    /// docs/16-mockup-implementation-gaps.md item 13: a real Keyholder-
+    /// facing view over the (previously write-only) audit_log table.
+    #[tokio::test]
+    async fn audit_log_page_renders_for_keyholder_and_redirects_submissive() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-auditpage@example.test",
+            "sub-auditpage@example.test",
+        )
+        .await;
+
+        let (status, _, body) = keyholder.get_page("/keyholder/audit-log").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("Audit Log"));
+
+        let (status, location, _) = submissive.get_page("/keyholder/audit-log").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/submissive"));
+    }
+
+    #[tokio::test]
+    async fn audit_log_api_is_scoped_to_the_requesting_keyholder_and_forbidden_to_submissives() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-auditapi@example.test",
+            "sub-auditapi@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, toy) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/toys"),
+                serde_json::json!({"name": "steel cage"}),
+            )
+            .await;
+        let toy_id = toy["id"].as_str().unwrap().to_string();
+        keyholder
+            .post(
+                &format!("/api/v1/keyholder/toys/{toy_id}/retire"),
+                serde_json::json!({}),
+            )
+            .await;
+
+        let (status, log) = keyholder.get("/api/v1/keyholder/audit-log").await;
+        assert_eq!(status, StatusCode::OK);
+        let log = log.as_array().unwrap();
+        let row = log.iter().find(|r| r["action"] == "toy.retired").unwrap();
+        assert_eq!(row["action_title"], "Retired toy");
+        assert_eq!(row["actor_kind"], "you");
+        assert_eq!(row["actor_display_name"], "You");
+        assert_eq!(row["submissive_id"], sub_id);
+        assert_eq!(row["submissive_display_name"], "Sub");
+
+        // A submissive can never reach this endpoint at all.
+        let (status, _) = submissive.get("/api/v1/keyholder/audit-log").await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // A different, unrelated Keyholder's own audit view never sees
+        // this row.
+        seed_keyholder(
+            &pool,
+            "kh-auditapi-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-auditapi-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        let (_, other_log) = other_kh.get("/api/v1/keyholder/audit-log").await;
+        assert!(other_log.as_array().unwrap().is_empty());
+    }
+
+    /// `link.oversight_resumed` is the one action whose `detail` is a
+    /// real payload rather than just an actor-type tag — confirms the
+    /// audit-log API actually renders it as readable text, not raw JSON.
+    #[tokio::test]
+    async fn audit_log_renders_oversight_resume_detail_as_readable_text() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, _submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-auditoversight@example.test",
+            "sub-auditoversight@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-pause"),
+                serde_json::json!({}),
+            )
+            .await;
+        let (status, _) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/oversight-resume"),
+                serde_json::json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (_, log) = keyholder.get("/api/v1/keyholder/audit-log").await;
+        let row = log
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["action"] == "link.oversight_resumed")
+            .unwrap();
+        let detail = row["detail_text"].as_str().unwrap();
+        assert!(detail.contains("Paused"));
+        assert!(detail.contains("deadline(s) shifted"));
     }
 
     /// docs/16-mockup-implementation-gaps.md item 5: the per-submissive

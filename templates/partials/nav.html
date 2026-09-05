@@ -40,6 +40,15 @@
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.25"/><path stroke-linecap="round" d="M5.5 20c0-3.87 2.91-7 6.5-7s6.5 3.13 6.5 7"/></svg>
           Submissives
         </a>
+        <!-- Standalone, not folded into either dropdown below: it's
+             passive cross-roster history, not a template to manage
+             (Templates group) or an item awaiting a response (Needs
+             attention group) — neither fits, and the mockup itself
+             treats it as its own top-level item. -->
+        <a href="/keyholder/audit-log" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg {% if active_nav == "audit_log" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M7 9h10M7 13h10M7 17h6"/></svg>
+          Audit Log
+        </a>
         <div class="relative">
           <button type="button" id="nav-templates-btn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg {% if active_nav == "catalog" || active_nav == "checkins" || active_nav == "play_sessions" || active_nav == "limits" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="4" width="14" height="17" rx="2"/><path stroke-linecap="round" d="M9 9.5h6M9 13h6M9 16.5h4"/></svg>
@@ -149,6 +158,7 @@
   {% if is_keyholder %}
   <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
     <a href="/dashboard" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "dashboard" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Submissives</a>
+    <a href="/keyholder/audit-log" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "audit_log" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Audit Log</a>
     <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Templates</p>
     <a href="/keyholder/catalog" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "catalog" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Catalog</a>
     <a href="/keyholder/checkin-templates" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "checkins" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Check-ins</a>

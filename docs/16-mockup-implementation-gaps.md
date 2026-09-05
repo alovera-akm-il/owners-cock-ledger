@@ -75,7 +75,7 @@ by actually driving the page through that specific state.
 | 10 | No mobile nav on any page (19 pages) | All | **Fixed** |
 | 11 | Toy `compatible_device_id` and `acquired_at`: API/DB support them, no UI anywhere (mockup never designed for them either) | Toy catalog | `compatible_device_id` fixed; `acquired_at` was not actually wired up despite being marked Fixed here earlier — see item 23 |
 | 12 | Device `description` field: API accepts it, no UI input (mockup never had one either) | Submissive detail (devices) | **Fixed** |
-| 13 | No Audit Log UI (backend writes the log; nothing reads it back) | — (page doesn't exist) | Deferred (scoped out earlier) |
+| 13 | No Audit Log UI (backend writes the log; nothing reads it back) | `audit_log.html` (`/keyholder/audit-log`) | **Fixed** — see note below the table |
 | 14 | No submissive History page | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 15 | No keyholder-wide cross-submissive Toy catalog view | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 16 | A submissive cannot see their Keyholder's stated boundaries anywhere (mockup's `submissive-profile.html` "Your Keyholder's boundaries" read-only panel has no real counterpart) | `submissive-profile.html` | **Fixed** |
@@ -91,7 +91,28 @@ Items 13–15 were already surfaced and explicitly deferred by the
 user's own scoping decision in this session ("bugs + timer + mobile
 menu only... leaves Audit Log, History, and cross-submissive Toys as
 separate future work"). They're listed here again only so this
-document is a complete inventory, not because they're new.
+document is a complete inventory, not because they're new. All three
+were later picked up and fixed in a later session — see below for
+item 13's scope note, and `docs/17-duplication-ledger.md`'s intro for
+item 15's shape (folded into the existing per-submissive Toy catalog
+rather than a separate global page).
+
+**Item 13's real scope, found before building it**: an audit of every
+`audit::record(...)` call site (there are 15, not the "everywhere"
+the mockup's example rows imply) found the write side is nowhere near
+comprehensive — timer pause/resume/adjust, proof-review outcomes,
+task completion, points/redemptions, and API token creation write
+*no* audit row today. Confirmed with the user before building rather
+than silently deciding: ship the page against the real, narrower
+13 action types that actually exist (`audit_log.html`,
+`domain::audit::list_for_keyholder`), not expand write-side coverage
+first. The page is real and correctly scoped to what's actually
+logged; it's just a sparser table than the mockup's examples suggest,
+by design. Also fixed along the way: `assignments::run_deadline_sweep_tick`'s
+`"assignment.auto_failed"` row never set `link_id` even though the
+assignment's link was resolved a few lines later in the same
+function — reordered so it does, since an audit row a Keyholder can't
+filter by submissive defeats half the point of the page.
 
 Items 5 and 6 were resolved by direct consultation rather than
 unilateral judgment, per explicit instruction after the first research

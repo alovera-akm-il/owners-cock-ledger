@@ -975,6 +975,35 @@ async fn safety_alerts_page(State(pool): State<Pool>, jar: CookieJar) -> Respons
 }
 
 #[derive(Template)]
+#[template(path = "audit_log.html")]
+struct AuditLogTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
+    display_name: String,
+    initial: String,
+}
+
+/// `/keyholder/audit-log` (`docs/16-mockup-implementation-gaps.md` item
+/// 13) — everything fetched client-side from `GET
+/// /api/v1/keyholder/audit-log`, same shell pattern as
+/// `safety_alerts_page`.
+async fn audit_log_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Keyholder {
+        return Redirect::to("/submissive").into_response();
+    }
+
+    render(AuditLogTemplate {
+        is_keyholder: true,
+        active_nav: "audit_log",
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
+#[derive(Template)]
 #[template(path = "redemption_requests.html")]
 struct RedemptionRequestsTemplate {
     is_keyholder: bool,
@@ -1797,6 +1826,7 @@ pub fn router() -> axum::Router<db::AppState> {
             get(submissive_review_page),
         )
         .route("/keyholder/safety-alerts", get(safety_alerts_page))
+        .route("/keyholder/audit-log", get(audit_log_page))
         .route(
             "/keyholder/redemption-requests",
             get(redemption_requests_page),

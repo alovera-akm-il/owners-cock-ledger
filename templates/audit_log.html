@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — Audit Log</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/app-shell.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+{% include "partials/nav.html" %}
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-semibold tracking-tight">Audit Log</h1>
+    <p class="text-sm text-slate-400 mt-1">Every state change across your roster — who did it, and how</p>
+  </div>
+
+  <div class="flex flex-wrap items-center gap-2 mb-5 text-sm">
+    <select id="filter-submissive" class="bg-slate-900 border border-slate-800 rounded-lg text-xs px-3 py-2 text-slate-200">
+      <option value="all">All submissives</option>
+    </select>
+    <select id="filter-action" class="bg-slate-900 border border-slate-800 rounded-lg text-xs px-3 py-2 text-slate-200">
+      <option value="all">All actions</option>
+    </select>
+    <div class="flex items-center gap-1 ml-auto">
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800" data-days="3">3d</button>
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800" data-days="7">7d</button>
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800" data-days="30">30d</button>
+      <button class="days-filter rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-950 bg-amber-600" data-days="all">All</button>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-800 bg-slate-900 overflow-hidden overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
+          <th class="px-5 py-3 font-medium whitespace-nowrap">When</th>
+          <th class="px-5 py-3 font-medium whitespace-nowrap">Submissive</th>
+          <th class="px-5 py-3 font-medium whitespace-nowrap">Actor</th>
+          <th class="px-5 py-3 font-medium whitespace-nowrap">Action</th>
+          <th class="px-5 py-3 font-medium">Detail</th>
+        </tr>
+      </thead>
+      <tbody id="log-body" class="divide-y divide-slate-800">
+        <tr><td class="px-5 py-4 text-sm text-slate-500" colspan="5">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4 rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 text-xs text-slate-500">
+    <span class="text-slate-400 font-medium">Reading the "Actor" column:</span>
+    "You" means you did it yourself; a submissive's name means they did; <span class="text-slate-300">System</span> means nothing was clicked at all — the deadline sweeper or an escalation did it on its own; <span class="text-slate-300">Admin (CLI)</span> means it was done via the server-side admin CLI, not through the app.
+  </div>
+
+</main>
+
+<script>
+
+  const ACTOR_LABEL_CLASS = {
+    you: 'text-slate-200',
+    submissive: 'text-slate-200',
+    system: 'text-slate-400',
+    admin_cli: 'text-slate-400',
+  };
+
+  let allRows = [];
+
+  function timeAgo(iso) {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + ' min ago';
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    const days = Math.round(hours / 24);
+    if (days < 2) return 'yesterday';
+    if (days < 14) return days + ' days ago';
+    return new Date(iso).toLocaleDateString();
+  }
+
+  function rowHtml(r) {
+    const $tr = $('<tr class="hover:bg-slate-800/30">');
+    $tr.append($('<td class="px-5 py-3.5 text-xs text-slate-500 whitespace-nowrap align-top">').text(timeAgo(r.occurred_at)));
+    $tr.append($('<td class="px-5 py-3.5 align-top">').text(r.submissive_display_name || '—'));
+    $tr.append($('<td class="px-5 py-3.5 align-top">').addClass(ACTOR_LABEL_CLASS[r.actor_kind] || 'text-slate-300').text(r.actor_display_name || '—'));
+    $tr.append($('<td class="px-5 py-3.5 align-top font-medium text-slate-200">').text(r.action_title));
+    $tr.append($('<td class="px-5 py-3.5 align-top text-slate-400 text-xs">').text(r.detail_text || '—'));
+    return $tr;
+  }
+
+  let activeDays = 'all';
+
+  function applyFilters() {
+    const submissiveId = $('#filter-submissive').val();
+    const action = $('#filter-action').val();
+    const cutoff = activeDays === 'all' ? null : Date.now() - activeDays * 86400000;
+    const filtered = allRows.filter(function (r) {
+      if (submissiveId !== 'all' && r.submissive_id !== submissiveId) return false;
+      if (action !== 'all' && r.action !== action) return false;
+      if (cutoff !== null && new Date(r.occurred_at).getTime() < cutoff) return false;
+      return true;
+    });
+    const $body = $('#log-body').empty();
+    if (filtered.length === 0) {
+      $body.append('<tr><td class="px-5 py-6 text-sm text-slate-500 text-center" colspan="5">Nothing matches these filters.</td></tr>');
+      return;
+    }
+    filtered.forEach(function (r) { $body.append(rowHtml(r)); });
+  }
+
+  function populateFilterOptions() {
+    const submissives = [];
+    const seenSubs = {};
+    const actions = [];
+    const seenActions = {};
+    allRows.forEach(function (r) {
+      if (r.submissive_id && !seenSubs[r.submissive_id]) {
+        seenSubs[r.submissive_id] = true;
+        submissives.push({ id: r.submissive_id, name: r.submissive_display_name });
+      }
+      if (!seenActions[r.action]) {
+        seenActions[r.action] = true;
+        actions.push({ action: r.action, title: r.action_title });
+      }
+    });
+    const $subSelect = $('#filter-submissive');
+    submissives.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    submissives.forEach(function (s) { $subSelect.append($('<option>').val(s.id).text(s.name)); });
+    const $actionSelect = $('#filter-action');
+    actions.sort(function (a, b) { return a.title.localeCompare(b.title); });
+    actions.forEach(function (a) { $actionSelect.append($('<option>').val(a.action).text(a.title)); });
+  }
+
+  function loadLog() {
+    apiCall('GET', '/api/v1/keyholder/audit-log').done(function (rows) {
+      allRows = rows;
+      populateFilterOptions();
+      applyFilters();
+    }).fail(function () {
+      $('#log-body').empty().append('<tr><td class="px-5 py-4 text-sm text-red-400" colspan="5">Could not load the audit log.</td></tr>');
+    });
+  }
+  loadLog();
+
+  $('#filter-submissive, #filter-action').on('change', applyFilters);
+  $('.days-filter').on('click', function () {
+    $('.days-filter').removeClass('bg-amber-600 text-slate-950').addClass('text-slate-400');
+    $(this).addClass('bg-amber-600 text-slate-950').removeClass('text-slate-400');
+    activeDays = $(this).data('days');
+    applyFilters();
+  });
+</script>
+</body>
+</html>

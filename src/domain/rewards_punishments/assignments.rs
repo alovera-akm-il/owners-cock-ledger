@@ -901,22 +901,22 @@ pub fn run_deadline_sweep_tick(conn: &mut Connection) -> rusqlite::Result<SweepO
             tx.commit()?;
             continue;
         }
+
+        let Some(assignment) = get(&tx, &assignment_id)? else {
+            tx.commit()?;
+            continue;
+        };
         audit::record(
             &tx,
             audit::Entry {
                 actor: audit::Actor::System,
-                link_id: None,
+                link_id: Some(&assignment.link_id),
                 action: "assignment.auto_failed",
                 entity_type: "assignments",
                 entity_id: &assignment_id,
                 detail: None,
             },
         )?;
-
-        let Some(assignment) = get(&tx, &assignment_id)? else {
-            tx.commit()?;
-            continue;
-        };
         if let Some(delta) = assignment.points_delta {
             points::award_if_enabled(
                 &tx,

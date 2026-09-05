@@ -4,6 +4,7 @@
 
 pub mod api_tokens;
 pub mod assignments;
+pub mod audit;
 pub mod auth;
 pub mod chastity;
 pub mod checkins;
