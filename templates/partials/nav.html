@@ -11,30 +11,90 @@
      non-clickable span — used only by account_settings.html, the one
      page where clicking it would just reload the page you're already on. -->
 <nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
-  <div class="{% if is_keyholder %}max-w-7xl{% else %}max-w-5xl{% endif %} mx-auto px-6 h-14 flex items-center justify-between">
+  <!-- max-w-6xl (not -5xl) for the submissive side: with icon+label nav
+       links, the logo+links group and the notif/profile group add up to
+       exactly the -5xl cap's inner width (976px) with zero room to
+       spare — justify-between then has nowhere to put the gap between
+       them, so the two groups visually collide instead of just running
+       out of space cleanly. This is independent of each submissive
+       page's own <main> width (already varies per page: -3xl/-4xl/-5xl/
+       -lg), so widening just the nav doesn't create a new mismatch. -->
+  <div class="{% if is_keyholder %}max-w-7xl{% else %}max-w-6xl{% endif %} mx-auto px-6 h-14 flex items-center justify-between">
     <div class="flex items-center gap-8">
-      <a class="flex items-center gap-2 font-semibold tracking-tight" href="{% if is_keyholder %}/dashboard{% else %}/submissive{% endif %}">
+      <a class="flex items-center gap-2 font-semibold tracking-tight shrink-0" href="{% if is_keyholder %}/dashboard{% else %}/submissive{% endif %}">
         <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
-        <span class="hidden sm:inline">Owner's Cock Ledger</span>
+        <span class="hidden sm:inline whitespace-nowrap">Owner's Cock Ledger</span>
       </a>
       {% if is_keyholder %}
-      <div class="hidden {% if is_keyholder %}lg:flex{% else %}sm:flex{% endif %} items-center gap-6 text-sm">
-        <a href="/dashboard" class="{% if active_nav == "dashboard" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Submissives</a>
-        <a href="/keyholder/catalog" class="{% if active_nav == "catalog" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Catalog</a>
-        <a href="/keyholder/review" class="{% if active_nav == "review" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Review queue</a>
-        <a href="/keyholder/checkin-templates" class="{% if active_nav == "checkins" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Check-ins</a>
-        <a href="/keyholder/play-session-templates" class="{% if active_nav == "play_sessions" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Play Sessions</a>
-        <a href="/keyholder/limit-items" class="{% if active_nav == "limits" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Limits</a>
-        <a href="/keyholder/safety-alerts" class="{% if active_nav == "safety_alerts" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Safety Alerts</a>
-        <a href="/keyholder/redemption-requests" class="{% if active_nav == "redemptions" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Redemptions</a>
+      <!-- 8 flat links used to overflow/wrap at anything less than a
+           very wide viewport (visual bug report: "Check-ins" splitting
+           mid-word). Regrouped by what the page actually is rather than
+           feature build order: Submissives stays standalone (it's the
+           roster/home), Catalog/Check-ins/Play Sessions/Limits are all
+           "manage a set of templates" so they're one Templates dropdown,
+           and Review queue/Safety Alerts/Redemptions are all "incoming
+           items awaiting your response" so they're one Needs attention
+           dropdown — 3 top-level items instead of 8, each icon+label. -->
+      <div class="hidden lg:flex items-center gap-1 text-sm whitespace-nowrap">
+        <a href="/dashboard" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg {% if active_nav == "dashboard" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.25"/><path stroke-linecap="round" d="M5.5 20c0-3.87 2.91-7 6.5-7s6.5 3.13 6.5 7"/></svg>
+          Submissives
+        </a>
+        <div class="relative">
+          <button type="button" id="nav-templates-btn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg {% if active_nav == "catalog" || active_nav == "checkins" || active_nav == "play_sessions" || active_nav == "limits" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="4" width="14" height="17" rx="2"/><path stroke-linecap="round" d="M9 9.5h6M9 13h6M9 16.5h4"/></svg>
+            Templates
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div id="nav-templates-panel" class="hidden absolute left-0 mt-1 w-48 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20 py-1">
+            <a href="/keyholder/catalog" class="block px-3 py-2 {% if active_nav == "catalog" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Catalog</a>
+            <a href="/keyholder/checkin-templates" class="block px-3 py-2 {% if active_nav == "checkins" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Check-ins</a>
+            <a href="/keyholder/play-session-templates" class="block px-3 py-2 {% if active_nav == "play_sessions" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Play Sessions</a>
+            <a href="/keyholder/limit-items" class="block px-3 py-2 {% if active_nav == "limits" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Limits</a>
+          </div>
+        </div>
+        <div class="relative">
+          <button type="button" id="nav-attention-btn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg {% if active_nav == "review" || active_nav == "safety_alerts" || active_nav == "redemptions" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linejoin="round" d="M12 4 3 20h18L12 4Z"/><path stroke-linecap="round" d="M12 10.5v3.5"/><circle cx="12" cy="16.75" r="0.75" fill="currentColor" stroke="none"/></svg>
+            Needs attention
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div id="nav-attention-panel" class="hidden absolute left-0 mt-1 w-48 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20 py-1">
+            <a href="/keyholder/review" class="block px-3 py-2 {% if active_nav == "review" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Review queue</a>
+            <a href="/keyholder/safety-alerts" class="block px-3 py-2 {% if active_nav == "safety_alerts" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Safety Alerts</a>
+            <a href="/keyholder/redemption-requests" class="block px-3 py-2 {% if active_nav == "redemptions" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Redemptions</a>
+          </div>
+        </div>
       </div>
       {% else %}
-      <div class="hidden {% if is_keyholder %}lg:flex{% else %}sm:flex{% endif %} items-center gap-6 text-sm">
-        <a href="/submissive" class="{% if active_nav == "status" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">My Status</a>
-        <a href="/submissive/submit-proof" class="{% if active_nav == "submit_proof" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Submit proof</a>
-        <a href="/submissive/toys" class="{% if active_nav == "toys" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">My Toys</a>
-        <a href="/submissive/play-sessions" class="{% if active_nav == "play_sessions" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Play Sessions</a>
-        <a href="/submissive/statistics" class="{% if active_nav == "statistics" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">Statistics</a>
+      <!-- Icon+label, matching the keyholder side visually. Not grouped
+           into dropdowns like that side, though: 5 items never had a
+           crowding problem to justify it, and unlike Catalog/Check-ins/
+           Play Sessions/Limits (all "manage a set of templates") or
+           Review queue/Safety Alerts/Redemptions (all "awaiting your
+           response"), these 5 don't share an obvious category — forcing
+           a grouping here would cost a click without solving anything. -->
+      <div class="hidden xl:flex items-center gap-4 text-sm whitespace-nowrap">
+        <a href="/submissive" class="flex items-center gap-1.5 {% if active_nav == "status" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 11.5 12 4l9 7.5M5.5 10v9a1 1 0 0 0 1 1h4v-6h3v6h4a1 1 0 0 0 1-1v-9"/></svg>
+          My Status
+        </a>
+        <a href="/submissive/submit-proof" class="flex items-center gap-1.5 {% if active_nav == "submit_proof" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 10.07 4h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 18.07 7H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          Submit proof
+        </a>
+        <a href="/submissive/toys" class="flex items-center gap-1.5 {% if active_nav == "toys" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5 12 12m0 0L3.75 7.5M12 12v9m8.25-4.5V7.5a1.5 1.5 0 0 0-.75-1.3l-6.75-3.9a1.5 1.5 0 0 0-1.5 0l-6.75 3.9a1.5 1.5 0 0 0-.75 1.3v9a1.5 1.5 0 0 0 .75 1.3l6.75 3.9a1.5 1.5 0 0 0 1.5 0l6.75-3.9a1.5 1.5 0 0 0 .75-1.3Z"/></svg>
+          My Toys
+        </a>
+        <a href="/submissive/play-sessions" class="flex items-center gap-1.5 {% if active_nav == "play_sessions" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M10 9.5v5l4.5-2.5-4.5-2.5Z"/></svg>
+          Play Sessions
+        </a>
+        <a href="/submissive/statistics" class="flex items-center gap-1.5 {% if active_nav == "statistics" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 20h18M6 20v-6M12 20V8M18 20v-10"/></svg>
+          Statistics
+        </a>
       </div>
       {% endif %}
     </div>
@@ -58,33 +118,49 @@
       {% else %}
       <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 font-medium">Submissive</span>
       {% endif %}
-      {% if active_nav == "account" %}
-      <span title="Profile & security" class="hidden sm:inline text-sm text-slate-300">{{ display_name }}</span>
-      <span title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">{{ initial }}</span>
-      {% else %}
-      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
-      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
-      {% endif %}
-      <button id="mobile-menu-btn" class="{% if is_keyholder %}lg:hidden{% else %}sm:hidden{% endif %} h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
+      <!-- Profile dropdown (name/avatar + Log out used to be three
+           separate always-visible elements; now one trigger, same
+           pattern as Templates/Needs attention above). The old
+           active_nav == "account" special case (degrading this to a
+           non-clickable span on account_settings.html itself, since
+           clicking would just reload the page you're on) is gone —
+           clicking the avatar now always just opens the menu rather
+           than navigating directly, so it's never a pointless self-link
+           regardless of which page you're on; "Account settings"
+           inside the panel gets the same active-highlight treatment
+           as any other current-page entry instead. -->
+      <div class="relative">
+        <button type="button" id="nav-profile-btn" class="flex items-center gap-1.5 rounded-lg py-1 pl-1.5 pr-2 hover:bg-slate-800">
+          <span class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold">{{ initial }}</span>
+          <span class="hidden sm:inline text-sm text-slate-300">{{ display_name }}</span>
+          <svg class="h-3 w-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="nav-profile-panel" class="hidden absolute right-0 mt-1 w-44 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20 py-1">
+          <a href="/account" class="block px-3 py-2 {% if active_nav == "account" %}text-slate-100 font-medium bg-slate-800{% else %}text-slate-400 hover:text-slate-200 hover:bg-slate-800{% endif %}">Account settings</a>
+          <button type="button" id="logout-btn" class="block w-full text-left px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">Log out</button>
+        </div>
+      </div>
+      <button id="mobile-menu-btn" class="{% if is_keyholder %}lg:hidden{% else %}xl:hidden{% endif %} h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
         <svg id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         <svg id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
       </button>
-      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
     </div>
   </div>
   {% if is_keyholder %}
   <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
     <a href="/dashboard" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "dashboard" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Submissives</a>
+    <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Templates</p>
     <a href="/keyholder/catalog" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "catalog" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Catalog</a>
-    <a href="/keyholder/review" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "review" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Review queue</a>
     <a href="/keyholder/checkin-templates" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "checkins" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Check-ins</a>
     <a href="/keyholder/play-session-templates" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "play_sessions" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Play Sessions</a>
     <a href="/keyholder/limit-items" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "limits" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Limits</a>
+    <p class="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Needs attention</p>
+    <a href="/keyholder/review" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "review" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Review queue</a>
     <a href="/keyholder/safety-alerts" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "safety_alerts" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Safety Alerts</a>
     <a href="/keyholder/redemption-requests" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "redemptions" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Redemptions</a>
   </div>
   {% else %}
-  <div id="mobile-menu" class="hidden sm:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
+  <div id="mobile-menu" class="hidden xl:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
     <a href="/submissive" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "status" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">My Status</a>
     <a href="/submissive/submit-proof" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "submit_proof" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Submit proof</a>
     <a href="/submissive/toys" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "toys" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">My Toys</a>
@@ -93,3 +169,11 @@
   </div>
   {% endif %}
 </nav>
+
+<script>
+  initDropdown('#nav-profile-btn', '#nav-profile-panel');
+  {% if is_keyholder %}
+  initDropdown('#nav-templates-btn', '#nav-templates-panel');
+  initDropdown('#nav-attention-btn', '#nav-attention-panel');
+  {% endif %}
+</script>

@@ -13,7 +13,9 @@
    - .panel-fade: swapping which panel/card is visible reads as a
      change, not a snap-cut.
    - .slide-in: a new item entering a list arrives instead of just
-     appearing. */
+     appearing.
+   - .dropdown-in: a small anchored menu (nav dropdown, notification
+     panel) grows out of its trigger instead of snapping into view. */
 
 @keyframes flash-updated {
   0% { background-color: rgba(52, 211, 153, 0.25); }
@@ -55,8 +57,17 @@
   100% { opacity: 1; transform: translateY(0); }
 }
 
+.dropdown-in {
+  animation: dropdown-in 0.15s ease-out;
+  transform-origin: top;
+}
+@keyframes dropdown-in {
+  0% { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .flash-updated, .pulse-urgent, .pulse-live, .panel-fade, .slide-in {
+  .flash-updated, .pulse-urgent, .pulse-live, .panel-fade, .slide-in, .dropdown-in {
     animation: none;
   }
 }

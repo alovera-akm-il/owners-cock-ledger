@@ -133,16 +133,17 @@
     }
     loadNotifications();
     setInterval(loadNotifications, 30000);
-    $('#notif-bell-btn').on('click', function (e) {
-      e.stopPropagation();
-      $('#notif-panel').toggleClass('hidden');
+    $('#notif-bell-btn').on('click', function () {
+      const $panel = $('#notif-panel');
+      if ($panel.hasClass('hidden')) $panel.removeClass('hidden').addClass('dropdown-in');
+      else $panel.addClass('hidden').removeClass('dropdown-in');
     });
     $('#notif-mark-all-btn').on('click', function () {
       apiCall('PATCH', '/api/v1/notifications/read-all').done(loadNotifications);
     });
     $(document).on('click', function (e) {
       if (!$(e.target).closest('#notif-panel, #notif-bell-btn').length) {
-        $('#notif-panel').addClass('hidden');
+        $('#notif-panel').addClass('hidden').removeClass('dropdown-in');
       }
     });
   }

@@ -184,6 +184,34 @@ function initModal(prefix) {
   return { open: open, close: close };
 }
 
+// Wires a trigger button that toggles a dropdown panel open/closed —
+// click the trigger to toggle, click anywhere outside either to close.
+// Opening plays .dropdown-in (tailwind/input.css); closing is instant,
+// same fade-in-only-on-reveal tradeoff .panel-fade/initModal already
+// make elsewhere in the app. Deliberately does NOT stop propagation on
+// the trigger's own click:
+// when two dropdowns exist side by side (Templates/Needs attention),
+// stopping it there would keep the click from ever reaching the OTHER
+// dropdown's own document-level "close if outside" listener below,
+// leaving it stuck open — same failure mode as clicking any other
+// element with its own stopPropagation (e.g. the notification bell).
+// Letting it bubble is safe: this handler already skips closing its
+// own panel when the click target is its own trigger/panel, so nothing
+// double-toggles.
+function initDropdown(triggerSelector, panelSelector) {
+  const $panel = $(panelSelector);
+  function close() { $panel.addClass('hidden').removeClass('dropdown-in'); }
+  function open() { $panel.removeClass('hidden').addClass('dropdown-in'); }
+  $(triggerSelector).on('click', function () {
+    if ($panel.hasClass('hidden')) open(); else close();
+  });
+  $(document).on('click', function (e) {
+    if (!$(e.target).closest(triggerSelector + ', ' + panelSelector).length) {
+      close();
+    }
+  });
+}
+
 $(function () {
   if ($('#mobile-menu-btn').length) {
     $('#mobile-menu-btn').on('click', function (e) {

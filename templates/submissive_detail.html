@@ -501,7 +501,9 @@
 
   // ---------- Ad-hoc assignment (no catalog template) ----------
   $('#toggle-adhoc-btn').on('click', function () {
-    $('#adhoc-form').toggleClass('hidden');
+    const $form = $('#adhoc-form');
+    if ($form.hasClass('hidden')) $form.removeClass('hidden').addClass('panel-fade');
+    else $form.addClass('hidden').removeClass('panel-fade');
   });
 
   function updateAdhocFieldVisibility() {
