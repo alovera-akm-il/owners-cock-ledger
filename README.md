@@ -55,6 +55,14 @@ immediately from the Account & security page. Then start the server:
 ./target/release/owners-cock-ledger
 ```
 
+By default this only serves plain HTTP, which is fine for `127.0.0.1`
+directly on the same machine. The session cookie is `Secure`, though, so a
+browser silently won't store it over plain HTTP from anywhere else (a LAN
+IP, a tailnet hostname) — either set `INSECURE_COOKIES=1` (session cookie
+travels unencrypted) or, better, terminate real TLS in front with Tailscale
+serve or a Caddy + mkcert reverse proxy. See `docs/10-operations.md` §6 for
+both setups.
+
 ### Admin CLI
 
 Local-host-only, never HTTP-reachable — see `docs/10-operations.md` §5 for
@@ -62,7 +70,7 @@ the trust model. Each command (except `backup`) prompts for confirmation
 unless run with `--yes`.
 
 | Command | Purpose |
-|---|---|
+| --- | --- |
 | `admin create-keyholder <email>` | Bootstrap the first account on a fresh deployment |
 | `admin reset-password <email>` | Issue a one-time password-reset token |
 | `admin disable-2fa <email>` | Force-clear 2FA (lost device + exhausted recovery codes) |

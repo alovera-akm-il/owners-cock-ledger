@@ -287,6 +287,110 @@ response and timing are identical whether or not the account exists
 re-derive that guarantee, it inherits it from how the token was
 issued.
 
+## 6. Reverse-proxy TLS for LAN/tailnet access
+
+`05-security-and-privacy.md` §1 requires TLS regardless of network
+placement, and leaves the termination point (in-process `rustls`, or a
+reverse proxy in front) as a deployment decision to document "once
+built." This is that documentation, for the two access paths a
+self-hosted single-box deployment actually uses: a Tailscale tailnet,
+and a plain home LAN.
+
+**Why this can't just be skipped for a "private" network**: the
+session cookie carries `Secure` (§2 above / `05-security-and-privacy.md`
+§2), and a browser silently *refuses to store* a `Secure` cookie
+received over plain HTTP — regardless of whether the address is a LAN
+IP, `localhost`, or anything else non-`https://`. Without real TLS
+somewhere in front, login looks like it succeeds (the API returns
+`200` with the right account) but the cookie never actually persists,
+so the next request rides whatever session cookie the browser already
+had — including a stale one for a different account. `INSECURE_COOKIES=1`
+(`src/auth/mod.rs`) exists as an escape hatch that drops the `Secure`
+flag entirely, but that means the session id travels in cleartext on
+the network — an acceptable trade only if you genuinely don't want TLS
+at all, not a substitute for it.
+
+**The shape used here**: the Rust process itself never terminates TLS
+and never sees the network directly. It keeps listening on plain HTTP,
+bound to `127.0.0.1` in practice, with `INSECURE_COOKIES=1` set — safe
+specifically because loopback traffic between a reverse proxy and the
+app on the same box isn't exposed to anything else on the network. Two
+independent reverse-proxy fronts terminate *real* TLS in front of it,
+one per access path, each giving the browser a certificate it actually
+trusts:
+
+### Tailscale (tailnet devices)
+
+One command, assuming HTTPS Certificates is already enabled for the
+tailnet (a one-time, per-tailnet setting in the Tailscale admin
+console under DNS — not something the CLI can turn on; if it's off,
+`tailscale serve` fails and says so):
+
+```bash
+tailscale serve --bg 8080
+```
+
+This proxies `https://<machine>.<tailnet>.ts.net/` (a real,
+publicly-trusted Let's Encrypt certificate — Tailscale requests and
+renews it automatically) to `http://127.0.0.1:8080`. It needs no
+per-device trust setup: any device already on the tailnet gets a
+certificate its browser accepts with no warning. The config lives in
+`tailscaled`'s own state, not a script or a foreground process — it
+survives reboots on its own as long as `tailscaled` is running.
+
+- Check current config: `tailscale serve status`
+- Turn it off: `tailscale serve --https=443 off`
+
+### Caddy + mkcert (LAN devices)
+
+For devices that aren't on the tailnet, reaching the box over its bare
+LAN IP needs its own certificate — you can't get a publicly-trusted one
+for a private IP, so this uses `mkcert` (a locally-trusted CA) and
+Caddy (reverse proxy) instead. One-time setup performed on this host:
+
+```bash
+sudo apt install mkcert caddy
+mkcert -install          # adds mkcert's root CA to this machine's
+                          # system + browser trust stores
+mkcert -cert-file lan.crt -key-file lan.key 192.168.1.133
+sudo mkdir -p /etc/caddy/certs
+sudo cp lan.crt lan.key /etc/caddy/certs/
+sudo chown -R caddy:caddy /etc/caddy/certs && sudo chmod 750 /etc/caddy/certs
+sudo setcap cap_net_bind_service=+ep /usr/bin/caddy   # caddy.service
+                          # runs as the unprivileged `caddy` user, which
+                          # can't bind :443 without this
+```
+
+`/etc/caddy/Caddyfile`:
+
+```caddyfile
+192.168.1.133 {
+  bind 192.168.1.133
+  tls /etc/caddy/certs/lan.crt /etc/caddy/certs/lan.key
+  reverse_proxy 127.0.0.1:8080
+}
+```
+
+The `bind 192.168.1.133` is not optional if Tailscale serve (above) is
+also in use on the same box: `tailscaled` already holds `:443` on the
+tailnet interface, and Caddy's default wildcard `:443` listener
+conflicts with that at bind time. Scoping Caddy's listener to the LAN
+interface's specific address avoids the collision. Caddy also gets an
+automatic plain-HTTP-to-HTTPS redirect on port 80 for this site for
+free.
+
+Two caveats worth remembering, since they're easy to hit again later:
+
+- **The certificate is issued for one specific IP.** If the LAN IP
+  changes (a fresh DHCP lease after a router reboot, say), the
+  certificate stops matching and needs regenerating. Giving this host
+  a static DHCP reservation on the router avoids that entirely.
+- **`mkcert -install` only trusts the cert on the machine it's run
+  on.** Any *other* LAN device (a phone, a laptop) will show a
+  certificate warning until it separately trusts the same root CA —
+  copy `$(mkcert -CAROOT)/rootCA.pem` to it and install that (never
+  distribute `rootCA-key.pem`, the private signing key).
+
 ### Audit log: distinguishing an admin from the sweeper
 
 `01-data-model.md` §8 previously argued `audit_log.actor_user_id`
