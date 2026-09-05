@@ -536,6 +536,26 @@ async fn list_timer_adjustments_keyholder(
     .map_err(|_| INTERNAL_ERROR)?
 }
 
+/// `GET /submissive/timer-adjustments` — every adjustment across every
+/// one of the caller's own confinement sessions, not just the
+/// currently-open one; the "Lock Timer" tab of the History page
+/// (`docs/16-mockup-implementation-gaps.md` item 14).
+async fn list_all_timer_adjustments_submissive(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+) -> Result<Json<Vec<AdjustmentResponse>>, ApiError> {
+    user.require_role(&[Role::Submissive])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let list = confinement::list_adjustments_for_submissive(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(list.into_iter().map(Into::into).collect()))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
 async fn list_timer_adjustments_submissive(
     State(pool): State<Pool>,
     user: CurrentUser,
@@ -936,6 +956,10 @@ pub fn router() -> Router<db::AppState> {
         .route(
             "/submissive/confinement-sessions/{sessionId}/timer-adjustments",
             get(list_timer_adjustments_submissive),
+        )
+        .route(
+            "/submissive/timer-adjustments",
+            get(list_all_timer_adjustments_submissive),
         )
         .route(
             "/submissive/confinement-sessions",

@@ -76,7 +76,7 @@ by actually driving the page through that specific state.
 | 11 | Toy `compatible_device_id` and `acquired_at`: API/DB support them, no UI anywhere (mockup never designed for them either) | Toy catalog | `compatible_device_id` fixed; `acquired_at` was not actually wired up despite being marked Fixed here earlier — see item 23 |
 | 12 | Device `description` field: API accepts it, no UI input (mockup never had one either) | Submissive detail (devices) | **Fixed** |
 | 13 | No Audit Log UI (backend writes the log; nothing reads it back) | `audit_log.html` (`/keyholder/audit-log`) | **Fixed** — see note below the table |
-| 14 | No submissive History page | — (page doesn't exist) | Deferred (scoped out earlier) |
+| 14 | No submissive History page | `submissive_history.html` (`/submissive/history`) | **Fixed** — see note below the table |
 | 15 | No keyholder-wide cross-submissive Toy catalog view | — (page doesn't exist) | Deferred (scoped out earlier) |
 | 16 | A submissive cannot see their Keyholder's stated boundaries anywhere (mockup's `submissive-profile.html` "Your Keyholder's boundaries" read-only panel has no real counterpart) | `submissive-profile.html` | **Fixed** |
 | 17 | Mockup's `keyholder-profile.html` has a "Your submissive's boundaries" read-only mirror; real has no equivalent on the Keyholder's own profile page | `keyholder-profile.html` | Not a gap — see note below |
@@ -113,6 +113,26 @@ by design. Also fixed along the way: `assignments::run_deadline_sweep_tick`'s
 assignment's link was resolved a few lines later in the same
 function — reordered so it does, since an audit row a Keyholder can't
 filter by submissive defeats half the point of the page.
+
+**Item 14** turned out to need almost no new backend at all — the
+three data sources the mockup's tabs need already existed and already
+returned everything required: `GET /submissive/proof-submissions`
+(Verifications), `GET /submissive/assignments` (Tasks, Rewards &
+Punishments), each already unfiltered by status. The one real gap was
+timer-adjustment history: `confinement::list_adjustments` only ever
+covered a single session, so a submissive who'd been unlocked and
+relocked couldn't see adjustments from an earlier session. Added
+`confinement::list_adjustments_for_submissive` (joins across every
+session) and `GET /submissive/timer-adjustments` for it. Two mockup
+details were deliberately dropped rather than built at real cost: a
+"missed" verification-window row (there's no `proof_submissions` row
+at all when nothing was ever submitted — would need cross-referencing
+expired, unconsumed `verification_codes`, a separate feature) and the
+"↳ if missed: X" forward-looking hint on an in-progress task (needs
+resolving `on_failure_template_id` to a catalog title, not just
+another assignment already in the list). The "↳ escalated to/from" chain
+info that *is* shown is resolved client-side from the same fetched
+assignments list — no chain-walking endpoint needed for that part.
 
 Items 5 and 6 were resolved by direct consultation rather than
 unilateral judgment, per explicit instruction after the first research

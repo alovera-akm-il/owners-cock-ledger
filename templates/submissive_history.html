@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="/static/images/favicon.png" />
+<title>Owner's Cock Ledger — History</title>
+<link href="/static/css/fonts.css" rel="stylesheet">
+<link href="/static/css/app.css" rel="stylesheet">
+<script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/app-shell.js"></script>
+<script src="/static/js/notifications.js" defer></script>
+<style>body{font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="h-full bg-slate-950 text-slate-100">
+
+{% include "partials/nav.html" %}
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight mb-6">History</h1>
+
+  <div class="flex gap-2 mb-6 text-sm">
+    <button id="tab-verifications" class="hist-tab rounded-lg bg-slate-800 px-4 py-2 font-medium">Verifications</button>
+    <button id="tab-assignments" class="hist-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Tasks, Rewards &amp; Punishments</button>
+    <button id="tab-timer" class="hist-tab rounded-lg text-slate-400 px-4 py-2 font-medium">Lock Timer</button>
+  </div>
+
+  <div id="verifications-list" class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <p class="text-sm text-slate-500 px-5 py-4">Loading…</p>
+  </div>
+  <div id="assignments-list" class="hidden rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <p class="text-sm text-slate-500 px-5 py-4">Loading…</p>
+  </div>
+  <div id="timer-list" class="hidden rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+    <p class="text-sm text-slate-500 px-5 py-4">Loading…</p>
+  </div>
+</main>
+
+<script>
+
+  const histTabs = { '#tab-verifications': '#verifications-list', '#tab-assignments': '#assignments-list', '#tab-timer': '#timer-list' };
+  Object.keys(histTabs).forEach(function (tabSel) {
+    $(tabSel).on('click', function () {
+      Object.keys(histTabs).forEach(function (t) {
+        $(t).toggleClass('bg-slate-800', t === tabSel).toggleClass('text-slate-400', t !== tabSel);
+        $(histTabs[t]).toggleClass('hidden', t !== tabSel);
+      });
+    });
+  });
+
+  function fmtWhen(iso) {
+    const d = new Date(iso);
+    const diffDays = Math.floor((Date.now() - d.getTime()) / 86400000);
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (diffDays <= 0) return 'today, ' + time;
+    if (diffDays === 1) return 'yesterday, ' + time;
+    return diffDays + ' days ago, ' + time;
+  }
+
+  function fmtAgo(iso) {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const hours = Math.round(diffMs / 3600000);
+    if (hours < 1) return 'just now';
+    if (hours < 24) return hours + 'h ago';
+    const days = Math.round(hours / 24);
+    if (days < 2) return 'yesterday';
+    return days + ' days ago';
+  }
+
+  function fmtDuration(seconds) {
+    seconds = Math.abs(seconds);
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return String(days).padStart(2, '0') + ':' + String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+  }
+
+  const VERIFICATION_STATUS = {
+    pending: 'text-amber-500 bg-amber-500/10',
+    verified: 'text-emerald-400 bg-emerald-500/10',
+    redo: 'text-amber-500 bg-amber-500/10',
+    failed: 'text-red-400 bg-red-500/10',
+  };
+
+  // ---------- Verifications ----------
+  function renderVerifications(list, assignmentTitleById) {
+    const $wrap = $('#verifications-list').empty();
+    if (list.length === 0) {
+      $wrap.append('<p class="text-sm text-slate-500 px-5 py-6">Nothing submitted yet.</p>');
+      return;
+    }
+    list.forEach(function (s) {
+      const title = s.purpose === 'punishment_completion'
+        ? (assignmentTitleById[s.assignment_id] || 'Punishment/task completion proof')
+        : 'Verification code';
+      let subtitle = 'Submitted ' + fmtWhen(s.submitted_at);
+      if (s.reviewed_at) subtitle += ' · reviewed ' + fmtWhen(s.reviewed_at);
+      if (s.redo_of_submission_id) subtitle += ' · redo of a previous entry';
+      const $row = $('<div class="flex items-center justify-between px-5 py-4 gap-4">');
+      const $left = $('<div>');
+      $left.append($('<p class="text-sm font-medium">').text(title));
+      $left.append($('<p class="text-xs text-slate-500 mt-0.5">').text(subtitle));
+      if (s.status === 'failed' && s.review_notes) {
+        $left.append($('<p class="text-xs text-red-400/80 mt-0.5">').text('Note: "' + s.review_notes + '"'));
+      }
+      $row.append($left);
+      $row.append($('<span class="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">').addClass(VERIFICATION_STATUS[s.status] || 'text-slate-400 bg-slate-700/40').text(s.status));
+      $wrap.append($row);
+    });
+  }
+
+  // ---------- Tasks, Rewards & Punishments ----------
+  const ASSIGNMENT_STATUS = {
+    assigned: 'text-slate-400 bg-slate-700/40',
+    acknowledged: 'text-amber-500 bg-amber-500/10',
+    proof_submitted: 'text-amber-500 bg-amber-500/10',
+    completed: 'text-emerald-400 bg-emerald-500/10',
+    applied: 'text-emerald-400 bg-emerald-500/10',
+    failed: 'text-red-400 bg-red-500/10',
+    revoked: 'text-slate-400 bg-slate-700/40',
+  };
+  const KIND_LABEL = { task: 'Task', reward: 'Reward', punishment: 'Punishment' };
+
+  function renderAssignments(list) {
+    const $wrap = $('#assignments-list').empty();
+    if (list.length === 0) {
+      $wrap.append('<p class="text-sm text-slate-500 px-5 py-6">Nothing assigned yet.</p>');
+      return;
+    }
+    const escalatedTo = {};
+    list.forEach(function (a) {
+      if (a.escalated_from_assignment_id) escalatedTo[a.escalated_from_assignment_id] = a;
+    });
+    list.forEach(function (a) {
+      const $row = $('<div class="px-5 py-4">');
+      const $top = $('<div class="flex items-center justify-between gap-4">');
+      $top.append($('<p class="text-sm font-medium">').text((KIND_LABEL[a.kind] || a.kind) + ' · ' + a.title));
+      $top.append($('<span class="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">').addClass(ASSIGNMENT_STATUS[a.status] || 'text-slate-400 bg-slate-700/40').text(a.status.replace('_', ' ')));
+      $row.append($top);
+      $row.append($('<p class="text-xs text-slate-500 mt-1">').text('Assigned ' + fmtAgo(a.assigned_at) + (a.assigned_via === 'system' ? ' — auto-escalated' : '')));
+      const $meta = $('<div class="flex flex-wrap items-center gap-1.5 mt-1.5">');
+      if (a.completion_type) {
+        $meta.append($('<span class="text-[11px] px-2 py-0.5 rounded-full ' + (a.completion_type === 'proof_required' ? 'bg-sky-500/10 text-sky-400' : 'bg-slate-800 text-slate-300') + '">').text(a.completion_type === 'proof_required' ? 'Proof required' : 'Acknowledge only'));
+      }
+      if (a.status === 'assigned' && a.deadline_at) {
+        const msLeft = new Date(a.deadline_at).getTime() - Date.now();
+        $meta.append($('<span class="text-[11px] text-amber-400">').text(msLeft > 0 ? 'deadline in ' + Math.max(1, Math.round(msLeft / 3600000)) + 'h' : 'deadline passed'));
+      }
+      if (a.escalated_from_assignment_id) {
+        $meta.append($('<span class="text-[11px] text-red-400/80">').text('↳ escalated from an earlier item'));
+      }
+      if (escalatedTo[a.id]) {
+        $meta.append($('<span class="text-[11px] text-red-400/80">').text('↳ escalated to: ' + escalatedTo[a.id].title));
+      }
+      if ($meta.children().length) $row.append($meta);
+      $wrap.append($row);
+    });
+  }
+
+  // ---------- Lock Timer ----------
+  function renderTimer(list) {
+    const $wrap = $('#timer-list').empty();
+    if (list.length === 0) {
+      $wrap.append('<p class="text-sm text-slate-500 px-5 py-6">No timer adjustments yet.</p>');
+      return;
+    }
+    list.forEach(function (t) {
+      const added = t.delta_seconds >= 0;
+      const $row = $('<div class="flex items-center justify-between px-5 py-4 gap-4">');
+      const $left = $('<div class="flex items-center gap-3">');
+      // Literal per-state class strings, not concatenated at runtime —
+      // Tailwind's content scanner only ever sees whole tokens in the
+      // source text, never JS string-concatenation results.
+      const $chip = $('<div class="inline-flex items-center gap-1.5 rounded-lg bg-slate-950 border px-2.5 py-1.5 shrink-0">').addClass(added ? 'border-amber-700/40' : 'border-emerald-700/40');
+      $chip.append($('<span class="text-[9px] uppercase tracking-wide font-semibold">').addClass(added ? 'text-amber-500' : 'text-emerald-500').text(added ? 'added' : 'removed'));
+      $chip.append($('<div class="flex items-center gap-0.5 font-mono font-bold text-sm tabular-nums">').addClass(added ? 'text-amber-400' : 'text-emerald-400').text(fmtDuration(t.delta_seconds)));
+      $chip.append($('<span class="text-[9px] text-slate-500">').text('d:h:m'));
+      $left.append($chip);
+      let label;
+      if (t.reason === 'punishment_time_extension' && t.caused_by_title) {
+        label = 'Punishment: "' + t.caused_by_title + '" (auto-escalated from a missed deadline)';
+      } else if (t.reason === 'reward_time_reduction' && t.caused_by_title) {
+        label = 'Reward: "' + t.caused_by_title + '"';
+      } else if (t.adjusted_by_user_id) {
+        label = 'Manual adjustment by your Keyholder' + (t.notes ? ' — "' + t.notes + '"' : ' — no note given');
+      } else {
+        label = 'Timer was paused, then resumed — added back exactly how long it was paused';
+      }
+      const $labelWrap = $('<div>');
+      $labelWrap.append($('<p class="text-xs text-slate-500">').text(label));
+      if (t.reason === 'punishment_time_extension' && !t.keyholder_reviewed_at) {
+        $labelWrap.append($('<span class="text-[10px] text-amber-500/90">').text('awaiting your Keyholder\'s review — applied at the default amount'));
+      }
+      $left.append($labelWrap);
+      $row.append($left);
+      $row.append($('<span class="text-xs text-slate-500 whitespace-nowrap shrink-0">').text(fmtAgo(t.adjusted_at)));
+      $wrap.append($row);
+    });
+  }
+
+  function load() {
+    $.when(
+      apiCall('GET', '/api/v1/submissive/proof-submissions'),
+      apiCall('GET', '/api/v1/submissive/assignments'),
+      apiCall('GET', '/api/v1/submissive/timer-adjustments')
+    ).done(function (submissionsResp, assignmentsResp, timerResp) {
+      const submissions = submissionsResp[0];
+      const assignments = assignmentsResp[0];
+      const timer = timerResp[0];
+      const titleById = {};
+      assignments.forEach(function (a) { titleById[a.id] = a.title; });
+      renderVerifications(submissions, titleById);
+      renderAssignments(assignments);
+      renderTimer(timer);
+    });
+  }
+  load();
+</script>
+</body>
+</html>

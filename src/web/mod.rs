@@ -1227,6 +1227,35 @@ struct SubmissiveStatisticsTemplate {
     initial: String,
 }
 
+#[derive(Template)]
+#[template(path = "submissive_history.html")]
+struct SubmissiveHistoryTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
+    display_name: String,
+    initial: String,
+}
+
+/// `/submissive/history` (`docs/16-mockup-implementation-gaps.md` item
+/// 14) — "why did my time change," across three already-real data
+/// sources (proof submissions, assignments, timer adjustments), fetched
+/// client-side same as `submissive_statistics_page`.
+async fn submissive_history_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    let Some(user) = resolve_current_user(&pool, &jar).await else {
+        return Redirect::to("/login").into_response();
+    };
+    if user.role != Role::Submissive {
+        return Redirect::to("/dashboard").into_response();
+    }
+
+    render(SubmissiveHistoryTemplate {
+        is_keyholder: false,
+        active_nav: "history",
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
+    })
+}
+
 async fn submissive_statistics_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
     let Some(user) = resolve_current_user(&pool, &jar).await else {
         return Redirect::to("/login").into_response();
@@ -1807,6 +1836,7 @@ pub fn router() -> axum::Router<db::AppState> {
         )
         .route("/submissive/toys", get(submissive_toys_page))
         .route("/submissive/statistics", get(submissive_statistics_page))
+        .route("/submissive/history", get(submissive_history_page))
         .route("/keyholder/submissives/{id}", get(submissive_detail_page))
         .route(
             "/keyholder/submissives/{id}/toys",

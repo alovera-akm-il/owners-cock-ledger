@@ -3794,6 +3794,100 @@ mod tests {
         assert!(detail.contains("deadline(s) shifted"));
     }
 
+    /// docs/16-mockup-implementation-gaps.md item 14: "why did my time
+    /// change" — three already-real data sources (proof submissions,
+    /// assignments, timer adjustments) surfaced in one page.
+    #[tokio::test]
+    async fn submissive_history_page_renders_for_submissive_and_redirects_keyholder() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-historypage@example.test",
+            "sub-historypage@example.test",
+        )
+        .await;
+
+        let (status, _, body) = submissive.get_page("/submissive/history").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("History"));
+
+        let (status, location, _) = keyholder.get_page("/submissive/history").await;
+        assert!(status.is_redirection());
+        assert_eq!(location.as_deref(), Some("/dashboard"));
+    }
+
+    #[tokio::test]
+    async fn submissive_timer_adjustments_history_spans_multiple_confinement_sessions() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-historytimer@example.test",
+            "sub-historytimer@example.test",
+        )
+        .await;
+        let sub_id = submissive_id(&mut keyholder).await;
+
+        let (_, device) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/devices"),
+                serde_json::json!({"name": "steel #1"}),
+            )
+            .await;
+        let device_id = device["id"].as_str().unwrap().to_string();
+
+        let (_, session1) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+        let session1_id = session1["session_id"].as_str().unwrap().to_string();
+        keyholder
+            .patch(
+                &format!(
+                    "/api/v1/keyholder/submissives/{sub_id}/confinement-sessions/{session1_id}/timer"
+                ),
+                serde_json::json!({"delta_seconds": 3600}),
+            )
+            .await;
+        keyholder
+            .patch(
+                &format!(
+                    "/api/v1/keyholder/submissives/{sub_id}/confinement-sessions/{session1_id}"
+                ),
+                serde_json::json!({"ended_reason": "keyholder_decision"}),
+            )
+            .await;
+
+        let (_, session2) = keyholder
+            .post(
+                &format!("/api/v1/keyholder/submissives/{sub_id}/confinement-sessions"),
+                serde_json::json!({"device_id": device_id, "started_reason": "voluntary"}),
+            )
+            .await;
+        let session2_id = session2["session_id"].as_str().unwrap().to_string();
+        keyholder
+            .patch(
+                &format!(
+                    "/api/v1/keyholder/submissives/{sub_id}/confinement-sessions/{session2_id}/timer"
+                ),
+                serde_json::json!({"delta_seconds": -1800}),
+            )
+            .await;
+
+        let (status, history) = submissive.get("/api/v1/submissive/timer-adjustments").await;
+        assert_eq!(status, StatusCode::OK);
+        let deltas: Vec<i64> = history
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["delta_seconds"].as_i64().unwrap())
+            .collect();
+        assert_eq!(deltas.len(), 2);
+        assert!(deltas.contains(&3600));
+        assert!(deltas.contains(&-1800));
+    }
+
     /// docs/16-mockup-implementation-gaps.md item 5: the per-submissive
     /// review view, additive to the cross-submissive Review Queue —
     /// same underlying pending-proof data, scoped to one link.

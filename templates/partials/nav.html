@@ -100,6 +100,10 @@
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M10 9.5v5l4.5-2.5-4.5-2.5Z"/></svg>
           Play Sessions
         </a>
+        <a href="/submissive/history" class="flex items-center gap-1.5 {% if active_nav == "history" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3M3 12a9 9 0 1 0 3-6.7M3 5v4h4"/></svg>
+          History
+        </a>
         <a href="/submissive/statistics" class="flex items-center gap-1.5 {% if active_nav == "statistics" %}text-slate-100 font-medium{% else %}text-slate-400 hover:text-slate-200{% endif %}">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 20h18M6 20v-6M12 20V8M18 20v-10"/></svg>
           Statistics
@@ -175,6 +179,7 @@
     <a href="/submissive/submit-proof" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "submit_proof" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Submit proof</a>
     <a href="/submissive/toys" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "toys" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">My Toys</a>
     <a href="/submissive/play-sessions" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "play_sessions" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Play Sessions</a>
+    <a href="/submissive/history" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "history" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">History</a>
     <a href="/submissive/statistics" class="block px-3 py-2.5 rounded-lg text-sm {% if active_nav == "statistics" %}font-medium bg-slate-800 text-slate-100{% else %}text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">Statistics</a>
   </div>
   {% endif %}

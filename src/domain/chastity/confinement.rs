@@ -277,6 +277,37 @@ pub fn list_adjustments(conn: &Connection, session_id: &str) -> rusqlite::Result
     .collect()
 }
 
+/// Every timer adjustment across every one of a submissive's
+/// confinement sessions (not just the current one) — the "why did my
+/// time change" history view (`docs/16-mockup-implementation-gaps.md`
+/// item 14), same join `list_adjustments` uses for a single session,
+/// scoped by submissive instead.
+pub fn list_adjustments_for_submissive(
+    conn: &Connection,
+    submissive_id: &str,
+) -> rusqlite::Result<Vec<Adjustment>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.delta_seconds, a.reason, a.adjusted_by_user_id, a.adjusted_at, a.notes, a.keyholder_reviewed_at, asg.title
+         FROM confinement_adjustments a
+         JOIN confinement_sessions s ON s.id = a.session_id
+         LEFT JOIN assignments asg ON asg.id = a.caused_by_assignment_id
+         WHERE s.submissive_id = ?1 ORDER BY a.adjusted_at DESC",
+    )?;
+    stmt.query_map(params![submissive_id], |row| {
+        Ok(Adjustment {
+            id: row.get(0)?,
+            delta_seconds: row.get(1)?,
+            reason: row.get(2)?,
+            adjusted_by_user_id: row.get(3)?,
+            adjusted_at: row.get(4)?,
+            notes: row.get(5)?,
+            keyholder_reviewed_at: row.get(6)?,
+            caused_by_title: row.get(7)?,
+        })
+    })?
+    .collect()
+}
+
 pub struct UnreviewedAdjustment {
     pub submissive_id: String,
     pub delta_seconds: i64,
@@ -1037,5 +1068,55 @@ mod tests {
         assert_eq!(session.target_release_at, Some(10_000 - 1800));
         let adjustments = list_adjustments(&conn, &session.id).unwrap();
         assert!(adjustments[0].keyholder_reviewed_at.is_some());
+    }
+
+    #[test]
+    fn list_adjustments_for_submissive_spans_every_past_session_not_just_the_open_one() {
+        let (_dir, pool) = temp_pool();
+        let mut conn = pool.get().unwrap();
+        let (submissive_id, device_id) = seed(&conn);
+
+        start(
+            &conn,
+            StartSession {
+                submissive_id: &submissive_id,
+                device_id: &device_id,
+                started_reason: "voluntary",
+                target_release_at: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+        adjust_timer(&mut conn, &submissive_id, 3600, &submissive_id, None).unwrap();
+        end(
+            &conn,
+            &submissive_id,
+            "scheduled_release",
+            &submissive_id,
+            None,
+        )
+        .unwrap();
+
+        start(
+            &conn,
+            StartSession {
+                submissive_id: &submissive_id,
+                device_id: &device_id,
+                started_reason: "voluntary",
+                target_release_at: None,
+                notes: None,
+            },
+        )
+        .unwrap();
+        adjust_timer(&mut conn, &submissive_id, -1800, &submissive_id, None).unwrap();
+
+        let all = list_adjustments_for_submissive(&conn, &submissive_id).unwrap();
+        // Both sessions' adjustments show up, not just the currently
+        // open session's — same-second ordering between the two isn't
+        // asserted here (`adjusted_at` alone can tie within a test).
+        let deltas: Vec<i64> = all.iter().map(|a| a.delta_seconds).collect();
+        assert_eq!(deltas.len(), 2);
+        assert!(deltas.contains(&3600));
+        assert!(deltas.contains(&-1800));
     }
 }
