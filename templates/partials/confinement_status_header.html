@@ -1,0 +1,19 @@
+<!-- Shared "Locked · elapsed / Device: X" status header (Duplication
+     Ledger #4, docs/17-duplication-ledger.md §5) — the one part of the
+     confinement widget that's genuinely identical between
+     submissive_dashboard.html's read-only view and
+     submissive_detail.html's read-write one; the countdown, action
+     buttons, and surrounding layout differ enough between the two that
+     they stay separate rather than forced into one shared shape.
+     Needs `locked_elapsed_text: Option<String>` and
+     `device_name: Option<String>` on the including template's own
+     struct, and assumes the caller has already checked `locked` is
+     true. Normalizes a pre-existing inconsistency: the two pages used
+     to disagree on font-semibold vs. font-medium for the "Locked"
+     label; this picks font-medium, matching submissive_detail.html. -->
+<div class="flex items-center gap-2">
+  <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+  <p class="text-sm text-emerald-400 font-medium">Locked</p>
+  {% if let Some(elapsed) = locked_elapsed_text %}<span class="text-slate-500 text-sm">&middot; {{ elapsed }}</span>{% endif %}
+</div>
+{% if let Some(device) = device_name %}<p class="text-xs text-slate-500 mt-1">Device: {{ device }}</p>{% endif %}

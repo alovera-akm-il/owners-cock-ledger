@@ -25,7 +25,7 @@ itself.
 | 1 | Nearly the entire file is byte-identical between the two roles' statistics pages — same inline script verbatim, only the endpoint and one label word differ | `keyholder_submissive_statistics.html`, `submissive_statistics.html` | Large | **Fixed** |
 | 2 | Same toy-inventory feature, ~80% overlapping markup and JS (form fields, card-rendering function, device-list fetch/edit flow) | `toy_catalog.html`, `submissive_toys.html` | Large | **Fixed** |
 | 3 | Three drill-down pages each hand-roll their own ~30-line nav bar (logo, bell, role badge, avatar, logout) instead of using the shared nav partial | `play_session_detail.html`, `checkin_live.html`, `submit_checkin.html` | Medium | **Fixed** |
-| 4 | Confinement lock/unlock widget rendered by both roles for the same session, same "owner reads/writes, other party reads a mirror" shape as the limits merge | `submissive_dashboard.html`, `submissive_detail.html` | Medium | Open |
+| 4 | Confinement lock/unlock widget rendered by both roles for the same session, same "owner reads/writes, other party reads a mirror" shape as the limits merge | `submissive_dashboard.html`, `submissive_detail.html` | Medium | **Partially fixed** |
 
 ## 2. Statistics pages (largest overlap, fixed)
 
@@ -124,7 +124,7 @@ for this pass rather than bundling an unrelated visual change into a
 duplication fix; worth a follow-up if these three should adopt the
 dropdown too.
 
-## 5. Confinement-status widget
+## 5. Confinement-status widget (partially fixed)
 
 `submissive_dashboard.html` and `submissive_detail.html` both render
 the same locked/unlocked concept for the same confinement session —
@@ -138,6 +138,33 @@ view (`submissive_dashboard.html`) is read-mostly plus its own
 reads/writes, other party reads a mirror" shape as the limits merge —
 just for confinement status instead of limits, and worth the same
 treatment.
+
+**Investigated in more depth than the summary above suggests, and only
+partially fixed.** A closer read found the two widgets diverge more
+than "same shape, different permissions": the layouts differ (a
+side-by-side flex row on the dashboard vs. a stacked column on the
+detail page), the field sets differ (weekly punishment-added text and
+the unreviewed-adjustments loop are keyholder-only, with no dashboard
+equivalent), and one is read-only where the other has four action
+buttons plus a start-session control. Forcing the whole widget behind
+one shared partial would have meant either flattening those layout/
+feature differences (a real behavior change) or writing a partial
+riddled with enough conditionals to reproduce two different shapes,
+which isn't really consolidation. Raised with the user rather than
+picking unilaterally; the answer was to extract only the part that's
+genuinely identical.
+
+**Fixed**: the "🟢 Locked · 2d 4h / Device: X" header, via
+`partials/confinement_status_header.html`. Caught in the process: the
+two pages already disagreed on font-weight for the "Locked" label
+(`font-semibold` on the dashboard, `font-medium` on the detail page) —
+a pre-existing inconsistency, not something this pass introduced.
+Normalized to `font-medium` (matching the detail page) as part of
+sharing the markup, confirmed with the user first since picking one
+technically changes the other page's rendered output, however
+trivially. The countdown, action buttons, punishment-added line, and
+surrounding layout remain separate per page — genuinely different
+content, not duplication.
 
 ## 6. Verified clean — no action needed
 

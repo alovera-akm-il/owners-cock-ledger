@@ -33,16 +33,7 @@
     {% if locked %}
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
-            <p class="text-sm font-semibold text-emerald-400">Locked</p>
-            {% if let Some(elapsed) = locked_elapsed_text %}
-              <span class="text-slate-500 text-sm">&middot; {{ elapsed }}</span>
-            {% endif %}
-          </div>
-          {% if let Some(device) = device_name %}
-            <p class="text-xs text-slate-500 mt-1">Device: {{ device }}</p>
-          {% endif %}
+          {% include "partials/confinement_status_header.html" %}
         </div>
         <div class="text-left md:text-right">
           {% if let Some(remaining) = time_remaining_text %}
