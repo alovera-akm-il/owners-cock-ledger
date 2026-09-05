@@ -14,60 +14,7 @@
 </head>
 <body class="h-full bg-slate-950 text-slate-100">
 
-<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
-  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-    <div class="flex items-center gap-8">
-      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
-        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
-        <span class="hidden sm:inline">Owner's Cock Ledger</span>
-      </a>
-      <div class="hidden lg:flex items-center gap-6 text-sm">
-        <a href="/dashboard" class="text-slate-400 hover:text-slate-200">Submissives</a>
-        <a href="/keyholder/catalog" class="text-slate-400 hover:text-slate-200">Catalog</a>
-        <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
-        <a href="/keyholder/checkin-templates" class="text-slate-400 hover:text-slate-200">Check-ins</a>
-        <a href="/keyholder/play-session-templates" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
-        <a href="/keyholder/limit-items" class="text-slate-400 hover:text-slate-200">Limits</a>
-        <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
-        <a href="/keyholder/redemption-requests" class="text-slate-400 hover:text-slate-200">Redemptions</a>
-      </div>
-    </div>
-    <div class="flex items-center gap-3">
-      <div class="relative">
-        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
-          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
-        </button>
-        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
-          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
-            <span class="text-xs font-semibold">Notifications</span>
-            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
-          </div>
-          <div id="notif-panel-list"></div>
-        </div>
-      </div>
-      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
-      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
-      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ display_name }}</a>
-      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ initial }}</a>
-      <button id="mobile-menu-btn" class="lg:hidden h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
-        <svg id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-        <svg id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
-      </button>
-      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
-    </div>
-  </div>
-      <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
-        <a href="/dashboard" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Submissives</a>
-        <a href="/keyholder/catalog" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Catalog</a>
-        <a href="/keyholder/review" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Review queue</a>
-        <a href="/keyholder/checkin-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Check-ins</a>
-        <a href="/keyholder/play-session-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Play Sessions</a>
-        <a href="/keyholder/limit-items" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Limits</a>
-        <a href="/keyholder/safety-alerts" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Safety Alerts</a>
-        <a href="/keyholder/redemption-requests" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Redemptions</a>
-      </div>
-</nav>
+{% include "partials/nav.html" %}
 
 <main class="max-w-6xl mx-auto px-6 py-8" data-submissive-id="{{ submissive_id }}">
   <div>

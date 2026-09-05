@@ -128,6 +128,8 @@ struct AttentionItem {
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
     roster: Vec<RosterRow>,
@@ -416,6 +418,8 @@ async fn dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
     };
 
     render(DashboardTemplate {
+        is_keyholder: true,
+        active_nav: "dashboard",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
         active_count: roster.len(),
@@ -438,6 +442,8 @@ struct RecentSubmission {
 #[derive(Template)]
 #[template(path = "submissive_dashboard.html")]
 struct SubmissiveDashboardTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
     locked: bool,
@@ -513,6 +519,8 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
         .map(|s| fmt_duration(session::now() - s.started_at) + " so far");
 
     render(SubmissiveDashboardTemplate {
+        is_keyholder: false,
+        active_nav: "status",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
         locked: status.locked,
@@ -539,6 +547,8 @@ async fn submissive_dashboard_page(State(pool): State<Pool>, jar: CookieJar) -> 
 #[derive(Template)]
 #[template(path = "submit_proof.html")]
 struct SubmitProofTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
     current_code_id: Option<String>,
@@ -568,6 +578,8 @@ async fn submit_proof_page(State(pool): State<Pool>, jar: CookieJar) -> Response
 
     let current_code = current_code.ok().and_then(|r| r.ok()).flatten();
     render(SubmitProofTemplate {
+        is_keyholder: false,
+        active_nav: "submit_proof",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
         current_code_id: current_code.as_ref().map(|c| c.id.clone()),
@@ -587,8 +599,10 @@ struct DeviceRow {
 #[derive(Template)]
 #[template(path = "submissive_detail.html")]
 struct SubmissiveDetailTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     submissive_id: String,
-    display_name: String,
+    submissive_display_name: String,
     devices: Vec<DeviceRow>,
     locked: bool,
     session_id: Option<String>,
@@ -597,8 +611,8 @@ struct SubmissiveDetailTemplate {
     server_now_epoch: i64,
     overdue: bool,
     clock_paused: bool,
-    keyholder_display_name: String,
-    keyholder_initial: String,
+    display_name: String,
+    initial: String,
     link_id: String,
     link_status: String,
     self_report_allowed: bool,
@@ -731,8 +745,10 @@ async fn submissive_detail_page(
     };
 
     render(SubmissiveDetailTemplate {
+        is_keyholder: true,
+        active_nav: "dashboard",
         submissive_id,
-        display_name,
+        submissive_display_name: display_name,
         devices: device_list,
         locked: status.locked,
         session_id: status.session.as_ref().map(|s| s.id.clone()),
@@ -749,8 +765,8 @@ async fn submissive_detail_page(
         points_balance,
         oversight_paused,
         oversight_pause_message,
-        keyholder_initial: initial_of(&user.display_name),
-        keyholder_display_name: user.display_name,
+        initial: initial_of(&user.display_name),
+        display_name: user.display_name,
         device_name,
         locked_elapsed_text: status
             .session
@@ -779,6 +795,8 @@ struct ReviewQueueItem {
 #[derive(Template)]
 #[template(path = "proof_review.html")]
 struct ProofReviewTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     pending: Vec<ReviewQueueItem>,
     pending_is_empty: bool,
     display_name: String,
@@ -788,6 +806,8 @@ struct ProofReviewTemplate {
 #[derive(Template)]
 #[template(path = "submissive_review.html")]
 struct SubmissiveReviewTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     submissive_id: String,
     submissive_display_name: String,
     pending: Vec<ReviewQueueItem>,
@@ -857,6 +877,8 @@ async fn submissive_review_page(
     };
 
     render(SubmissiveReviewTemplate {
+        is_keyholder: true,
+        active_nav: "",
         submissive_id,
         submissive_display_name,
         pending_is_empty: pending.is_empty(),
@@ -919,6 +941,8 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
     };
 
     render(ProofReviewTemplate {
+        is_keyholder: true,
+        active_nav: "review",
         pending_is_empty: pending.is_empty(),
         pending,
         initial: initial_of(&user.display_name),
@@ -929,6 +953,8 @@ async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response
 #[derive(Template)]
 #[template(path = "safety_alerts.html")]
 struct SafetyAlertsTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -945,6 +971,8 @@ async fn safety_alerts_page(State(pool): State<Pool>, jar: CookieJar) -> Respons
     }
 
     render(SafetyAlertsTemplate {
+        is_keyholder: true,
+        active_nav: "safety_alerts",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -953,6 +981,8 @@ async fn safety_alerts_page(State(pool): State<Pool>, jar: CookieJar) -> Respons
 #[derive(Template)]
 #[template(path = "redemption_requests.html")]
 struct RedemptionRequestsTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -970,6 +1000,8 @@ async fn redemption_requests_page(State(pool): State<Pool>, jar: CookieJar) -> R
     }
 
     render(RedemptionRequestsTemplate {
+        is_keyholder: true,
+        active_nav: "redemptions",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -978,6 +1010,8 @@ async fn redemption_requests_page(State(pool): State<Pool>, jar: CookieJar) -> R
 #[derive(Template)]
 #[template(path = "toy_catalog.html")]
 struct ToyCatalogTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     submissive_id: String,
     submissive_display_name: String,
     display_name: String,
@@ -1019,6 +1053,8 @@ async fn keyholder_toy_catalog_page(
     };
 
     render(ToyCatalogTemplate {
+        is_keyholder: true,
+        active_nav: "",
         submissive_id,
         submissive_display_name,
         initial: initial_of(&user.display_name),
@@ -1029,6 +1065,8 @@ async fn keyholder_toy_catalog_page(
 #[derive(Template)]
 #[template(path = "recurring_tasks.html")]
 struct RecurringTasksTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     submissive_id: String,
     submissive_display_name: String,
     display_name: String,
@@ -1070,6 +1108,8 @@ async fn keyholder_recurring_tasks_page(
     };
 
     render(RecurringTasksTemplate {
+        is_keyholder: true,
+        active_nav: "",
         submissive_id,
         submissive_display_name,
         initial: initial_of(&user.display_name),
@@ -1080,6 +1120,8 @@ async fn keyholder_recurring_tasks_page(
 #[derive(Template)]
 #[template(path = "keyholder_submissive_statistics.html")]
 struct KeyholderSubmissiveStatisticsTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     submissive_id: String,
     submissive_display_name: String,
     display_name: String,
@@ -1121,6 +1163,8 @@ async fn keyholder_submissive_statistics_page(
     };
 
     render(KeyholderSubmissiveStatisticsTemplate {
+        is_keyholder: true,
+        active_nav: "",
         submissive_id,
         submissive_display_name,
         initial: initial_of(&user.display_name),
@@ -1131,6 +1175,8 @@ async fn keyholder_submissive_statistics_page(
 #[derive(Template)]
 #[template(path = "submissive_statistics.html")]
 struct SubmissiveStatisticsTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -1144,6 +1190,8 @@ async fn submissive_statistics_page(State(pool): State<Pool>, jar: CookieJar) ->
     }
 
     render(SubmissiveStatisticsTemplate {
+        is_keyholder: false,
+        active_nav: "statistics",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -1152,6 +1200,8 @@ async fn submissive_statistics_page(State(pool): State<Pool>, jar: CookieJar) ->
 #[derive(Template)]
 #[template(path = "submissive_toys.html")]
 struct SubmissiveToysTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -1165,6 +1215,8 @@ async fn submissive_toys_page(State(pool): State<Pool>, jar: CookieJar) -> Respo
     }
 
     render(SubmissiveToysTemplate {
+        is_keyholder: false,
+        active_nav: "toys",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -1173,6 +1225,8 @@ async fn submissive_toys_page(State(pool): State<Pool>, jar: CookieJar) -> Respo
 #[derive(Template)]
 #[template(path = "checkin_templates.html")]
 struct CheckinTemplatesTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -1188,6 +1242,8 @@ async fn checkin_templates_page(State(pool): State<Pool>, jar: CookieJar) -> Res
     }
 
     render(CheckinTemplatesTemplate {
+        is_keyholder: true,
+        active_nav: "checkins",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -1366,6 +1422,8 @@ fn template_badges(
 #[derive(Template)]
 #[template(path = "catalog.html")]
 struct CatalogTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     kinds: Vec<KindGroup>,
     display_name: String,
     initial: String,
@@ -1416,6 +1474,8 @@ async fn catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
     }
 
     render(CatalogTemplate {
+        is_keyholder: true,
+        active_nav: "catalog",
         kinds,
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
@@ -1428,6 +1488,7 @@ struct AccountSettingsTemplate {
     display_name: String,
     initial: String,
     is_keyholder: bool,
+    active_nav: &'static str,
     home_url: &'static str,
 }
 
@@ -1444,6 +1505,7 @@ async fn account_settings_page(State(pool): State<Pool>, jar: CookieJar) -> Resp
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
         is_keyholder,
+        active_nav: "account",
         home_url: if is_keyholder {
             "/dashboard"
         } else {
@@ -1455,6 +1517,8 @@ async fn account_settings_page(State(pool): State<Pool>, jar: CookieJar) -> Resp
 #[derive(Template)]
 #[template(path = "assignment_proof.html")]
 struct AssignmentProofTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     assignment_id: String,
     title: String,
     accepted_media: String,
@@ -1494,6 +1558,8 @@ async fn assignment_proof_page(
         .unwrap_or_else(|| vec!["photo".to_string()]);
 
     render(AssignmentProofTemplate {
+        is_keyholder: false,
+        active_nav: "",
         assignment_id,
         title: a.title,
         accepted_media: media_options.join(", "),
@@ -1506,6 +1572,8 @@ async fn assignment_proof_page(
 #[derive(Template)]
 #[template(path = "play_session_templates.html")]
 struct PlaySessionTemplatesTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -1521,6 +1589,8 @@ async fn play_session_templates_page(State(pool): State<Pool>, jar: CookieJar) -
     }
 
     render(PlaySessionTemplatesTemplate {
+        is_keyholder: true,
+        active_nav: "play_sessions",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -1529,6 +1599,8 @@ async fn play_session_templates_page(State(pool): State<Pool>, jar: CookieJar) -
 #[derive(Template)]
 #[template(path = "limits_catalog.html")]
 struct LimitsCatalogTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -1544,6 +1616,8 @@ async fn limits_catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Respon
     }
 
     render(LimitsCatalogTemplate {
+        is_keyholder: true,
+        active_nav: "limits",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })
@@ -1552,6 +1626,8 @@ async fn limits_catalog_page(State(pool): State<Pool>, jar: CookieJar) -> Respon
 #[derive(Template)]
 #[template(path = "submissive_play_sessions.html")]
 struct SubmissivePlaySessionsTemplate {
+    is_keyholder: bool,
+    active_nav: &'static str,
     display_name: String,
     initial: String,
 }
@@ -1565,6 +1641,8 @@ async fn submissive_play_sessions_page(State(pool): State<Pool>, jar: CookieJar)
     }
 
     render(SubmissivePlaySessionsTemplate {
+        is_keyholder: false,
+        active_nav: "play_sessions",
         initial: initial_of(&user.display_name),
         display_name: user.display_name,
     })

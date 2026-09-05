@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="icon" type="image/png" href="/static/images/favicon.png" />
-<title>Owner's Cock Ledger — {{ display_name }}</title>
+<title>Owner's Cock Ledger — {{ submissive_display_name }}</title>
 <link href="/static/css/fonts.css" rel="stylesheet">
 <link href="/static/css/app.css" rel="stylesheet">
 <script src="/static/js/jquery.min.js"></script>
@@ -15,64 +15,11 @@
 </head>
 <body class="h-full bg-slate-950 text-slate-100">
 
-<nav class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
-  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-    <div class="flex items-center gap-8">
-      <a class="flex items-center gap-2 font-semibold tracking-tight" href="/dashboard">
-        <img src="/static/images/logo.png" class="h-8 w-auto" alt="Owner's Cock Ledger" />
-        <span class="hidden sm:inline">Owner's Cock Ledger</span>
-      </a>
-      <div class="hidden lg:flex items-center gap-6 text-sm">
-        <a href="/dashboard" class="text-slate-100 font-medium">Submissives</a>
-        <a href="/keyholder/catalog" class="text-slate-400 hover:text-slate-200">Catalog</a>
-        <a href="/keyholder/review" class="text-slate-400 hover:text-slate-200">Review queue</a>
-        <a href="/keyholder/checkin-templates" class="text-slate-400 hover:text-slate-200">Check-ins</a>
-        <a href="/keyholder/play-session-templates" class="text-slate-400 hover:text-slate-200">Play Sessions</a>
-        <a href="/keyholder/limit-items" class="text-slate-400 hover:text-slate-200">Limits</a>
-        <a href="/keyholder/safety-alerts" class="text-slate-400 hover:text-slate-200">Safety Alerts</a>
-        <a href="/keyholder/redemption-requests" class="text-slate-400 hover:text-slate-200">Redemptions</a>
-      </div>
-    </div>
-    <div class="flex items-center gap-3">
-      <div class="relative">
-        <button id="notif-bell-btn" class="relative text-slate-400 hover:text-slate-200 p-1.5" title="Notifications">
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
-          <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 h-4 min-w-[1rem] px-1 rounded-full bg-amber-600 text-[10px] leading-4 text-center font-semibold text-slate-950">0</span>
-        </button>
-        <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-20">
-          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-800">
-            <span class="text-xs font-semibold">Notifications</span>
-            <button id="notif-mark-all-btn" class="text-[11px] text-amber-500 hover:text-amber-400">Mark all read</button>
-          </div>
-          <div id="notif-panel-list"></div>
-        </div>
-      </div>
-      <button id="notif-enable-push-btn" class="hidden text-[11px] font-medium text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2 py-1">Enable push</button>
-      <span class="hidden sm:inline-block text-xs px-2 py-1 rounded-full bg-amber-600/10 text-amber-500 border border-amber-600/30 font-medium">Keyholder</span>
-      <a href="/account" title="Profile & security" class="hidden sm:inline text-sm text-slate-300 hover:text-slate-100">{{ keyholder_display_name }}</a>
-      <a href="/account" title="Profile & security" class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold hover:bg-slate-600">{{ keyholder_initial }}</a>
-      <button id="mobile-menu-btn" class="lg:hidden h-9 w-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-300" aria-label="Menu">
-        <svg id="menu-icon-open" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-        <svg id="menu-icon-close" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"/></svg>
-      </button>
-      <button id="logout-btn" class="text-xs font-medium text-slate-400 hover:text-slate-200 px-2 py-1">Log out</button>
-    </div>
-  </div>
-      <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-800 bg-slate-900 px-3 py-3 space-y-1">
-        <a href="/dashboard" class="block px-3 py-2.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-100">Submissives</a>
-        <a href="/keyholder/catalog" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Catalog</a>
-        <a href="/keyholder/review" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Review queue</a>
-        <a href="/keyholder/checkin-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Check-ins</a>
-        <a href="/keyholder/play-session-templates" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Play Sessions</a>
-        <a href="/keyholder/limit-items" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Limits</a>
-        <a href="/keyholder/safety-alerts" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Safety Alerts</a>
-        <a href="/keyholder/redemption-requests" class="block px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200">Redemptions</a>
-      </div>
-</nav>
+{% include "partials/nav.html" %}
 
 <main class="max-w-4xl mx-auto px-6 py-8 space-y-6" data-submissive-id="{{ submissive_id }}" data-link-id="{{ link_id }}" data-points-enabled="{% if points_enabled %}true{% else %}false{% endif %}">
   <div class="flex items-center justify-between">
-    <h1 class="text-2xl font-semibold tracking-tight">{{ display_name }}</h1>
+    <h1 class="text-2xl font-semibold tracking-tight">{{ submissive_display_name }}</h1>
     <div class="flex items-center gap-4">
       <a href="/checkins/new?submissive_id={{ submissive_id }}" class="text-xs text-amber-500 hover:text-amber-400">Log a check-in &rarr;</a>
       <a href="/keyholder/submissives/{{ submissive_id }}/review" class="text-xs text-amber-500 hover:text-amber-400">Review proof &rarr;</a>
@@ -150,7 +97,7 @@
       <p class="text-sm font-semibold">Oversight</p>
       {% if oversight_paused %}<span class="text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">paused</span>{% endif %}
     </div>
-    <p class="text-xs text-slate-500 mb-3">Freezes task/punishment deadlines and new verification codes for {{ display_name }} all at once — for when you're genuinely unreachable, instead of extending each deadline by hand.</p>
+    <p class="text-xs text-slate-500 mb-3">Freezes task/punishment deadlines and new verification codes for {{ submissive_display_name }} all at once — for when you're genuinely unreachable, instead of extending each deadline by hand.</p>
     {% if oversight_paused %}
       <p class="text-sm text-slate-300 mb-3">{% if let Some(msg) = oversight_pause_message %}&ldquo;{{ msg }}&rdquo;{% else %}<span class="text-slate-500">No message set.</span>{% endif %}</p>
     {% endif %}
@@ -373,7 +320,7 @@
 
   <!-- link settings -->
   <div id="end-request-panel" class="hidden rounded-xl border border-amber-700/40 bg-amber-500/5 p-5">
-    <p id="end-request-heading" class="text-sm font-semibold text-amber-400 mb-1">{{ display_name }} has requested to end the link</p>
+    <p id="end-request-heading" class="text-sm font-semibold text-amber-400 mb-1">{{ submissive_display_name }} has requested to end the link</p>
     <p id="end-request-reason" class="text-sm text-slate-300 mb-1"></p>
     <p id="end-request-meta" class="text-xs text-slate-500 mb-3"></p>
     <div id="end-request-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
@@ -394,13 +341,13 @@
       <input id="self-report-toggle" type="checkbox" {% if self_report_allowed %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700">
       <span>
         <span class="block text-sm font-medium">Allow self-reported unlock</span>
-        <span class="block text-xs text-slate-500 mt-0.5">{{ display_name }} can log "I put it back on" themselves. Off by default — you stay the sole source of truth for lock/unlock events.</span>
+        <span class="block text-xs text-slate-500 mt-0.5">{{ submissive_display_name }} can log "I put it back on" themselves. Off by default — you stay the sole source of truth for lock/unlock events.</span>
       </span>
     </label>
     <label class="flex items-start gap-3 mb-3">
       <input id="catalog-visible-toggle" type="checkbox" {% if catalog_visible_to_submissive %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700">
       <span>
-        <span class="block text-sm font-medium">Catalog visible to {{ display_name }}</span>
+        <span class="block text-sm font-medium">Catalog visible to {{ submissive_display_name }}</span>
         <span class="block text-xs text-slate-500 mt-0.5">They can see titles/descriptions of your task, reward &amp; punishment templates (read-only).</span>
       </span>
     </label>
@@ -408,7 +355,7 @@
       <input id="points-enabled-toggle" type="checkbox" {% if points_enabled %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700">
       <span>
         <span class="block text-sm font-medium">Points enabled</span>
-        <span class="block text-xs text-slate-500 mt-0.5">A running balance from tasks/manual adjustments, and lets {{ display_name }} request self-redeemable rewards. Off by default.</span>
+        <span class="block text-xs text-slate-500 mt-0.5">A running balance from tasks/manual adjustments, and lets {{ submissive_display_name }} request self-redeemable rewards. Off by default.</span>
       </span>
     </label>
     <button id="save-link-settings-btn" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2 mb-5">Save settings</button>
@@ -419,7 +366,7 @@
       {% endif %}
       <button id="end-link-btn" class="text-xs font-semibold text-red-400 border border-red-900/50 hover:bg-red-950/30 rounded-lg px-3 py-2">End link</button>
     </div>
-    <p class="text-[11px] text-slate-500 mt-2">Pausing or ending the <em>link</em> is different from pausing the lock timer above — it governs the relationship itself, not the confinement countdown. Ending is permanent: {{ display_name }} would need a new invite to link again, and this page becomes unreachable.</p>
+    <p class="text-[11px] text-slate-500 mt-2">Pausing or ending the <em>link</em> is different from pausing the lock timer above — it governs the relationship itself, not the confinement countdown. Ending is permanent: {{ submissive_display_name }} would need a new invite to link again, and this page becomes unreachable.</p>
   </div>
 
   </div>
@@ -494,8 +441,8 @@
   }
 
   $('#oversight-pause-btn').on('click', function () {
-    if (!confirm('Pause oversight for ' + '{{ display_name }}' + '? This freezes every open task/punishment deadline and stops new verification codes from being issued, and also pauses the lock timer if a session is open, until you resume.')) return;
-    const message = prompt('Pause message (optional) — shown to ' + '{{ display_name }}') || '';
+    if (!confirm('Pause oversight for ' + '{{ submissive_display_name }}' + '? This freezes every open task/punishment deadline and stops new verification codes from being issued, and also pauses the lock timer if a session is open, until you resume.')) return;
+    const message = prompt('Pause message (optional) — shown to ' + '{{ submissive_display_name }}') || '';
     apiCall('POST', '/api/v1/keyholder/submissives/' + subId + '/oversight-pause', { message: message })
       .done(function () { window.location.reload(); })
       .fail(function (xhr) { showOversightMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not pause oversight.', false); });
