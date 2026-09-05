@@ -1,0 +1,130 @@
+// Shared by keyholder_submissive_statistics.html and
+// submissive_statistics.html (Duplication Ledger #1, docs/17-duplication-ledger.md
+// §2) — the two pages render identical numbers in an identical shape,
+// differing only in which endpoint to fetch and one label's wording,
+// both read from #stats-root's data attributes rather than branched
+// here.
+
+function fmtDuration(seconds) {
+  seconds = Math.max(0, Math.round(seconds));
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return days + 'd' + (hours > 0 ? ' ' + hours + 'h' : '');
+  if (hours > 0) return hours + 'h' + (minutes > 0 ? ' ' + minutes + 'm' : '');
+  return minutes + 'm';
+}
+
+function statCard(label, value, sub) {
+  const $card = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+  $card.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text(label));
+  $card.append($('<p class="text-3xl font-bold text-slate-100">').text(value));
+  if (sub) $card.append($('<p class="text-xs text-slate-500 mt-1">').text(sub));
+  return $card;
+}
+
+function dl(rows) {
+  const $dl = $('<dl class="text-sm space-y-2.5">');
+  rows.forEach(function (r) {
+    const $row = $('<div class="flex items-center justify-between">');
+    $row.append($('<dt>').addClass(r.cls || 'text-slate-400').text(r.label));
+    $row.append($('<dd class="font-medium">').text(r.value));
+    $dl.append($row);
+  });
+  return $dl;
+}
+
+function renderStatistics($root, s, bestLabel) {
+  $root.empty();
+
+  $root.append($('<h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">').text('This period'));
+
+  const pctOfBest = s.personal_best_streak_seconds > 0
+    ? Math.min(100, Math.round((s.current_streak_seconds / s.personal_best_streak_seconds) * 100))
+    : 0;
+  const $hero = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-6 mb-4">');
+  const $heroTop = $('<div class="flex items-start justify-between mb-4">');
+  const $heroLeft = $('<div>');
+  $heroLeft.append($('<p class="text-sm text-slate-400">').text('Current chastity streak'));
+  $heroLeft.append($('<p class="text-4xl font-bold text-slate-100 mt-1">').text(fmtDuration(s.current_streak_seconds)));
+  $heroTop.append($heroLeft);
+  $hero.append($heroTop);
+  const $heroMeta = $('<div class="flex items-center justify-between text-xs mb-1.5">');
+  $heroMeta.append($('<span class="text-slate-400">').text(pctOfBest + '% of personal best (' + fmtDuration(s.personal_best_streak_seconds) + ')'));
+  if (s.current_streak_seconds < s.personal_best_streak_seconds) {
+    $heroMeta.append($('<span class="text-amber-400 font-medium">').text(fmtDuration(s.personal_best_streak_seconds - s.current_streak_seconds) + ' to beat it'));
+  }
+  $hero.append($heroMeta);
+  const $bar = $('<div class="h-2 rounded-full bg-slate-800 overflow-hidden">');
+  $bar.append($('<div class="h-full bg-sky-500 rounded-full">').css('width', pctOfBest + '%'));
+  $hero.append($bar);
+  $root.append($hero);
+
+  const $row1 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">');
+  $row1.append(statCard('Consistency', s.consistency_pct + '%', 'Time spent locked, this period'));
+  $row1.append(statCard('Best period', fmtDuration(s.session_lengths.longest_seconds), 'Longest completed session, this period'));
+  $root.append($row1);
+
+  const $row2 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">');
+  const $lengths = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+  $lengths.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Session lengths'));
+  $lengths.append(dl([
+    { label: 'Shortest', value: fmtDuration(s.session_lengths.shortest_seconds) },
+    { label: 'Longest', value: fmtDuration(s.session_lengths.longest_seconds) },
+    { label: 'Average', value: fmtDuration(s.session_lengths.average_seconds) },
+  ]));
+  $row2.append($lengths);
+  const $verif = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+  $verif.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Verification compliance'));
+  $verif.append(dl([
+    { label: 'Verified', value: s.verification.verified, cls: 'text-emerald-400' },
+    { label: 'Failed', value: s.verification.failed, cls: 'text-red-400' },
+    { label: 'Missed window', value: s.verification.missed, cls: 'text-slate-400' },
+  ]));
+  $row2.append($verif);
+  $root.append($row2);
+
+  const $row3 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">');
+  const $tasks = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+  $tasks.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Tasks'));
+  $tasks.append(dl([
+    { label: 'Assigned', value: s.tasks.assigned },
+    { label: 'Completed', value: s.tasks.completed, cls: 'text-emerald-400' },
+    { label: 'Failed', value: s.tasks.failed, cls: 'text-red-400' },
+    { label: 'Escalated from those', value: s.tasks.escalated, cls: 'text-amber-400' },
+  ]));
+  $row3.append($tasks);
+  const $rpt = $('<div class="rounded-xl border border-slate-800 bg-slate-900 p-5">');
+  $rpt.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">').text('Rewards, punishments & timer'));
+  $rpt.append(dl([
+    { label: 'Rewards given', value: s.rewards_given },
+    { label: 'Punishments given', value: s.punishments_given },
+    { label: 'Added by punishments', value: fmtDuration(s.timer_adjustments.added_seconds), cls: 'text-amber-400' },
+    { label: 'Removed by Keyholder', value: fmtDuration(s.timer_adjustments.removed_seconds), cls: 'text-emerald-400' },
+  ]));
+  $row3.append($rpt);
+  $root.append($row3);
+
+  $root.append($('<h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">').text('Global (all time, regardless of filter)'));
+  const $row4 = $('<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">');
+  $row4.append(statCard('Longest session ever', fmtDuration(s.personal_best_streak_seconds), bestLabel));
+  $row4.append(statCard('Total locked (lifetime)', fmtDuration(s.lifetime_locked_seconds), 'Cumulative across every session'));
+  $root.append($row4);
+}
+
+function loadStatistics() {
+  const $root = $('#stats-root');
+  const period = $('#period-select').val();
+  $.ajax({
+    url: $root.data('endpoint') + '?period=' + period,
+    method: 'GET',
+    headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
+  }).done(function (stats) {
+    renderStatistics($root, stats, $root.data('best-label'));
+  }).fail(function () {
+    $root.html('<p class="text-sm text-red-400">Could not load statistics.</p>');
+  });
+}
+
+$('#period-select').on('change', loadStatistics);
+loadStatistics();
