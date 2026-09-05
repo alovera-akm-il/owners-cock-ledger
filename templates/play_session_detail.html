@@ -8,6 +8,7 @@
 <link href="/static/css/fonts.css" rel="stylesheet">
 <link href="/static/css/app.css" rel="stylesheet">
 <script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/app-shell.js"></script>
 <script src="/static/js/notifications.js" defer></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -77,7 +78,7 @@
 
         <div id="schedule-panel" class="hidden rounded-xl border border-slate-800 bg-slate-900 p-5">
           <div class="flex items-center justify-between mb-3">
-            <p class="text-xs font-medium text-slate-400">Mid-session check-ins</p>
+            <p class="text-xs font-medium text-slate-400">Check-ins</p>
             <span id="schedule-progress" class="text-[11px] text-slate-500"></span>
           </div>
           <div id="schedule-list" class="space-y-2"></div>
@@ -192,25 +193,6 @@
   const IS_KEYHOLDER = {{ is_keyholder }};
   const BASE = IS_KEYHOLDER ? '/api/v1/keyholder' : '/api/v1/submissive';
 
-  function getCookie(name) {
-    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-    return match ? decodeURIComponent(match[1]) : null;
-  }
-  function apiCall(method, path, body) {
-    return $.ajax({
-      url: path, method: method, contentType: 'application/json',
-      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
-      data: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  }
-  function errorMessage(xhr, fallback) {
-    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
-  }
-
-  $('#logout-btn').on('click', function () {
-    apiCall('POST', '/api/v1/auth/logout').always(function () { window.location = '/login'; });
-  });
-
   const STATUS_LABEL = {
     scheduled: ['Scheduled', 'bg-slate-800 text-slate-300'],
     in_progress: ['In progress', 'bg-emerald-500/10 text-emerald-400'],
@@ -263,12 +245,14 @@
     return parts.join(' · ');
   }
 
-  // Full detail view of one fulfilled check-in, opened from the schedule
-  // row -- separate from the "reopen live" edit action, which only shows
-  // up here (and only while the session is still live) rather than being
-  // the row's default click behavior.
-  function openCheckinModal(slot, checkin, templateLabel, liveEligible) {
-    $('#checkin-modal-title').text('Slot ' + slot.sequence_number + ' · ' + templateLabel);
+  // Full detail view of one check-in, opened from either a scheduled
+  // slot's row or an ad-hoc check-in's row. `reopenLiveHref` is only
+  // passed for a fulfilled *scheduled* slot while the session is still
+  // live -- an ad-hoc check-in (logged through the free-choice
+  // /checkins/new form, not tied to any slot) has no live-edit flow to
+  // reopen, so that link stays hidden for it.
+  function openCheckinModal(title, checkin, reopenLiveHref) {
+    $('#checkin-modal-title').text(title);
     $('#checkin-modal-color').removeClass().addClass('text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ' + (COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800')).text(checkin.color);
     $('#checkin-modal-submitted').text('Submitted ' + new Date(checkin.created_at).toLocaleString());
     const $fields = $('#checkin-modal-fields').empty();
@@ -283,8 +267,8 @@
         ));
       });
     }
-    if (liveEligible) {
-      $('#checkin-modal-reopen-live').removeClass('hidden').attr('href', '/play-sessions/' + SESSION_ID + '/checkin-live?template=' + encodeURIComponent(checkin.template_id) + '&slot=' + slot.sequence_number);
+    if (reopenLiveHref) {
+      $('#checkin-modal-reopen-live').removeClass('hidden').attr('href', reopenLiveHref);
     } else {
       $('#checkin-modal-reopen-live').addClass('hidden');
     }
@@ -294,12 +278,56 @@
   $('#checkin-modal-close-btn').on('click', function () { $('#checkin-modal-backdrop').addClass('hidden'); });
   $('#checkin-modal-backdrop').on('click', function (e) { if (e.target === this) $(this).addClass('hidden'); });
 
+  // A generic, view-only row for a check-in that isn't (or is no longer)
+  // tied to a specific numbered slot -- used both for a session with no
+  // check-in plan at all, and for any check-ins logged *beyond* a
+  // session's planned slots (see below).
+  function appendCheckinRow($list, checkin) {
+    const label = checkinTemplateTitles[checkin.template_id] || 'Check-in';
+    const title = label + ' · ' + new Date(checkin.created_at).toLocaleString();
+    const $wrap = $('<div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5">');
+    const $row = $('<button type="button" class="w-full flex items-center justify-between text-left hover:opacity-90">');
+    $row.append($('<span class="text-sm text-slate-300">').text(title));
+    $row.append($('<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full">').addClass(COLOR_BADGE[checkin.color] || 'text-slate-400 bg-slate-800').text(checkin.color + ' ✓ — view →'));
+    $row.on('click', function () { openCheckinModal(title, checkin, null); });
+    $wrap.append($row);
+    const summary = fieldSummary(checkin);
+    if (summary) $wrap.append($('<p class="text-[11px] text-slate-500 mt-1.5">').text(summary));
+    $list.append($wrap);
+  }
+
+  // A session with no check-in plan at all (no template configured a
+  // check-in template + interval) never gets `checkin_schedule` rows,
+  // but a check-in can still be logged against it through the
+  // free-choice /checkins/new fallback (see the "Log a check-in" button
+  // below) -- those need somewhere to show up too, not just scheduled
+  // ones. `checkinsById` already holds every check-in tied to this
+  // session (fetched by `related_play_session_id`, not by slot), so an
+  // ad-hoc one is just whatever's in there when there's no schedule.
+  function renderAdhocCheckins(session) {
+    const list = Object.values(checkinsById).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    $('#schedule-panel').toggleClass('hidden', list.length === 0);
+    if (list.length === 0) return;
+    $('#schedule-progress').text(list.length + ' logged');
+    const $list = $('#schedule-list').empty();
+    list.forEach(function (checkin) { appendCheckinRow($list, checkin); });
+  }
+
   function renderSchedule(session) {
     const schedule = session.checkin_schedule || [];
-    $('#schedule-panel').toggleClass('hidden', schedule.length === 0);
-    if (schedule.length === 0) return;
+    if (schedule.length === 0) { renderAdhocCheckins(session); return; }
+    $('#schedule-panel').removeClass('hidden');
     const done = schedule.filter(s => s.fulfilled_checkin_id).length;
-    $('#schedule-progress').text(done + ' of ' + schedule.length + ' done');
+    // Logging a check-in beyond the planned slots (e.g. every slot is
+    // already filled but the session's still going) still creates a real
+    // checkin row tied to this session -- it just isn't referenced by
+    // any slot's fulfilled_checkin_id, so it needs to be found and shown
+    // separately rather than silently dropped.
+    const scheduledIds = new Set(schedule.map(s => s.fulfilled_checkin_id).filter(Boolean));
+    const extra = Object.values(checkinsById)
+      .filter(c => !scheduledIds.has(c.id))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    $('#schedule-progress').text(done + ' of ' + schedule.length + ' done' + (extra.length ? ' · ' + extra.length + ' extra' : ''));
     const $list = $('#schedule-list').empty();
     const liveEligible = session.status === 'in_progress';
     const elapsed = session.started_at ? (Date.now() - new Date(session.started_at).getTime()) / 1000 : null;
@@ -330,7 +358,8 @@
         $row.append($('<span class="text-[11px] text-slate-500">').text('not filled in yet'));
       }
       if (checkin) {
-        $row.on('click', function () { openCheckinModal(slot, checkin, label, liveEligible); });
+        const reopenLiveHref = liveEligible ? liveHref : null;
+        $row.on('click', function () { openCheckinModal('Slot ' + slot.sequence_number + ' · ' + label, checkin, reopenLiveHref); });
       }
       $wrap.append($row);
       if (checkin) {
@@ -339,6 +368,10 @@
       }
       $list.append($wrap);
     });
+    if (extra.length) {
+      $list.append($('<p class="text-[11px] uppercase tracking-wide text-slate-600 pt-1">').text('Beyond the plan'));
+      extra.forEach(function (checkin) { appendCheckinRow($list, checkin); });
+    }
   }
 
   function renderToys(session) {

@@ -8,6 +8,7 @@
 <link href="/static/css/fonts.css" rel="stylesheet">
 <link href="/static/css/app.css" rel="stylesheet">
 <script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/app-shell.js"></script>
 <script src="/static/js/notifications.js" defer></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
@@ -68,25 +69,31 @@
   const BASE = IS_KEYHOLDER ? '/api/v1/keyholder' : '/api/v1/submissive';
   const TEMPLATES_PATH = IS_KEYHOLDER ? '/api/v1/keyholder/checkin-templates' : '/api/v1/submissive/checkin-templates';
 
-  function getCookie(name) {
-    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-    return match ? decodeURIComponent(match[1]) : null;
-  }
-  function apiCall(method, path, body) {
-    return $.ajax({
-      url: path, method: method, contentType: 'application/json',
-      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
-      data: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  }
-  function errorMessage(xhr, fallback) {
-    return (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || fallback;
-  }
   function showMsg(text, ok) {
     const cls = ok
       ? 'bg-emerald-600/10 border border-emerald-600/30 text-emerald-300'
       : 'bg-red-600/10 border border-red-600/30 text-red-300';
     $('#message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-4 ' + cls).removeClass('hidden').text(text);
+  }
+
+  // A more noticeable success state than showMsg's small banner, since
+  // this one has to hold attention for the few seconds before the page
+  // navigates away on its own -- counts down visibly rather than just
+  // saying "redirecting" and vanishing.
+  function showRedirectBanner(redirectUrl) {
+    let secondsLeft = 5;
+    const render = () => $('#message').attr('class',
+      'rounded-lg border border-emerald-600/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-300 mb-4 flex items-center gap-2'
+    ).removeClass('hidden').html(
+      '<svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' +
+      '<span>Created — taking you back to the play session in ' + secondsLeft + 's&hellip;</span>'
+    );
+    render();
+    const interval = setInterval(function () {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) { clearInterval(interval); window.location = redirectUrl; return; }
+      render();
+    }, 1000);
   }
 
   let template = null;
@@ -216,7 +223,7 @@
     }).done(function (checkin) {
       checkinId = checkin.id;
       $('#create-btn').addClass('hidden');
-      $('#last-updated').removeClass('hidden').text('Created — now live for both of you.');
+      showRedirectBanner((IS_KEYHOLDER ? '/keyholder' : '/submissive') + '/play-sessions/' + SESSION_ID);
     }).fail(function (xhr) {
       showMsg(errorMessage(xhr, 'Could not start this check-in.'), false);
     });

@@ -8,6 +8,7 @@
 <link href="/static/css/fonts.css" rel="stylesheet">
 <link href="/static/css/app.css" rel="stylesheet">
 <script src="/static/js/jquery.min.js"></script>
+<script src="/static/js/app-shell.js"></script>
 <script src="/static/js/notifications.js" defer></script>
 <script src="/static/js/countdown.js" defer></script>
 <style>body{font-family:'Inter',sans-serif;}</style>
@@ -103,15 +104,8 @@
           {% if clock_paused %}
             <p class="text-2xl font-semibold tracking-tight mt-2">{{ t }} remaining</p>
           {% else %}
-            <p class="text-xs font-medium text-slate-400 mt-3" data-target-date-label data-target-date-epoch="{{ target_release_at_epoch.unwrap() }}"></p>
-            <div class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2.5 mt-2 inline-block" data-target-epoch="{{ target_release_at_epoch.unwrap() }}" data-server-now-epoch="{{ server_now_epoch }}">
-              <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] font-mono font-bold text-xl text-slate-100 tabular-nums{% if overdue %} text-red-400{% endif %}">
-                <span data-cd="days" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="hours" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="minutes" class="text-center">00</span><span class="text-slate-700 text-center">:</span><span data-cd="seconds" class="text-center">00</span>
-              </div>
-              <div class="grid grid-cols-[1fr_10px_1fr_10px_1fr_10px_1fr] text-[9px] uppercase tracking-wide text-slate-500 mt-1">
-                <span class="text-center">days</span><span></span><span class="text-center">hrs</span><span></span><span class="text-center">min</span><span></span><span class="text-center">sec</span>
-              </div>
-              <p data-cd="overdue-label" class="{% if !overdue %}hidden {% endif %}text-[10px] text-red-400 font-semibold mt-1 text-center">overdue</p>
+            <div class="mt-3">
+              {% include "partials/countdown_clock.html" %}
             </div>
             {% if let Some(added) = weekly_punishment_added_text %}
               <p class="text-xs text-amber-400 mt-1.5">+{{ added }} added by punishments this week</p>
@@ -433,21 +427,6 @@
 </main>
 
 <script>
-  $('#mobile-menu-btn').on('click', function (e) {
-    e.stopPropagation();
-    $('#mobile-menu').slideToggle(150);
-    $('#menu-icon-open, #menu-icon-close').toggleClass('hidden');
-  });
-  $('#mobile-menu').on('click', function (e) { e.stopPropagation(); });
-  $(document).on('click', function () {
-    $('#mobile-menu').slideUp(150);
-    $('#menu-icon-open').removeClass('hidden');
-    $('#menu-icon-close').addClass('hidden');
-  });
-  function getCookie(name) {
-    const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-    return match ? decodeURIComponent(match[1]) : null;
-  }
   const subId = $('main').data('submissive-id');
 
   $('[data-target-date-label]').each(function () {
@@ -466,26 +445,8 @@
       .fail(function (xhr) { showMsg((xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) || 'Could not review.', false); });
   });
 
-  $('#logout-btn').on('click', function () {
-    $.ajax({
-      url: '/api/v1/auth/logout',
-      method: 'POST',
-      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
-    }).always(function () { window.location = '/login'; });
-  });
-
   function showMsg(text, ok) {
     $('#confinement-message').attr('class', 'mt-3 text-xs ' + (ok ? 'text-emerald-400' : 'text-red-400')).text(text);
-  }
-
-  function apiCall(method, path, body) {
-    return $.ajax({
-      url: path,
-      method: method,
-      contentType: 'application/json',
-      headers: { 'X-CSRF-Token': getCookie('ocl_csrf') || '' },
-      data: body !== undefined ? JSON.stringify(body) : undefined,
-    });
   }
 
   $('#start-btn').on('click', function () {
