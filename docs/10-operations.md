@@ -341,6 +341,22 @@ survives reboots on its own as long as `tailscaled` is running.
 - Check current config: `tailscale serve status`
 - Turn it off: `tailscale serve --https=443 off`
 
+**If it stops working after previously working** (a TLS handshake
+error — `curl` reports `SSL routines::tlsv1 alert internal error` —
+not a connection refusal), the tailnet's MagicDNS suffix likely
+changed (an account/tailnet rename, e.g. `foo.ts.net` →
+`bar.ts.net`). `tailscale serve`'s registered hostname does **not**
+automatically follow a suffix change — it keeps trying to terminate
+TLS for the old, now-unresolvable name, which is what produces that
+specific TLS error rather than a plain DNS failure. Confirm the
+current suffix with `tailscale dns status` (look for "MagicDNS:
+enabled tailnet-wide (suffix = ...)"), then re-register cleanly:
+
+```bash
+tailscale serve reset       # clears every registered hostname, old and new
+tailscale serve --bg 8080   # re-registers under the current suffix
+```
+
 ### Caddy + mkcert (LAN devices)
 
 For devices that aren't on the tailnet, reaching the box over its bare
