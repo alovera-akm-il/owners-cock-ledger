@@ -792,24 +792,23 @@ struct ReviewQueueItem {
     attachment_mime: Option<String>,
 }
 
+/// Distinguishes the per-submissive review page from the cross-roster
+/// Review Queue (Duplication Ledger §08) — `None` renders the aggregate
+/// view (every active link's pending submissions), `Some` scopes to one
+/// submissive's own link (active-or-paused, since a paused link's own
+/// review page should still be reachable even though it's excluded from
+/// the aggregate queue).
+struct SingleSubmissiveContext {
+    id: String,
+    display_name: String,
+}
+
 #[derive(Template)]
 #[template(path = "proof_review.html")]
 struct ProofReviewTemplate {
     is_keyholder: bool,
     active_nav: &'static str,
-    pending: Vec<ReviewQueueItem>,
-    pending_is_empty: bool,
-    display_name: String,
-    initial: String,
-}
-
-#[derive(Template)]
-#[template(path = "submissive_review.html")]
-struct SubmissiveReviewTemplate {
-    is_keyholder: bool,
-    active_nav: &'static str,
-    submissive_id: String,
-    submissive_display_name: String,
+    single_submissive: Option<SingleSubmissiveContext>,
     pending: Vec<ReviewQueueItem>,
     pending_is_empty: bool,
     display_name: String,
@@ -818,14 +817,31 @@ struct SubmissiveReviewTemplate {
 
 /// `/keyholder/submissives/{id}/review` (docs/16-mockup-implementation-gaps.md
 /// item 5) — the single-submissive review view the mockup shows,
-/// reached from that submissive's own page. Additive to the
-/// cross-submissive Review Queue, not a replacement for it: same
-/// `ReviewQueueItem` shape and card markup, scoped to one link instead
-/// of every active one.
+/// reached from that submissive's own page. Thin wrapper around the
+/// shared core the cross-submissive Review Queue also uses.
 async fn submissive_review_page(
     State(pool): State<Pool>,
     jar: CookieJar,
     Path(submissive_id): Path<String>,
+) -> Response {
+    review_queue_page_core(pool, jar, Some(submissive_id)).await
+}
+
+/// `/keyholder/review` — the cross-roster queue. Thin wrapper around the
+/// same shared core, `None` selecting the aggregate view.
+async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
+    review_queue_page_core(pool, jar, None).await
+}
+
+/// Shared by both routes above (Duplication Ledger §08) — `target_id`
+/// is `None` for the aggregate Review Queue (every active link) and
+/// `Some` for one submissive's own review page (active-or-paused,
+/// since that page should stay reachable through an oversight pause
+/// even though the aggregate queue excludes paused links).
+async fn review_queue_page_core(
+    pool: Pool,
+    jar: CookieJar,
+    target_id: Option<String>,
 ) -> Response {
     let Some(user) = resolve_current_user(&pool, &jar).await else {
         return Redirect::to("/login").into_response();
@@ -835,30 +851,68 @@ async fn submissive_review_page(
     }
 
     let keyholder_id = user.user_id.clone();
-    let target_id = submissive_id.clone();
+    let is_single = target_id.is_some();
     let result = tokio::task::spawn_blocking(
-        move || -> anyhow::Result<Option<(String, Vec<ReviewQueueItem>)>> {
+        move || -> anyhow::Result<Option<(Option<SingleSubmissiveContext>, Vec<ReviewQueueItem>)>> {
             let conn = pool.get()?;
-            let Some(link_id) =
-                links::active_or_paused_link_for_keyholder(&conn, &keyholder_id, &target_id)?
-            else {
-                return Ok(None);
+            let (link_ids, single, mut name_cache): (
+                Vec<String>,
+                Option<SingleSubmissiveContext>,
+                std::collections::HashMap<String, String>,
+            ) = match &target_id {
+                Some(target_id) => {
+                    let Some(link_id) = links::active_or_paused_link_for_keyholder(
+                        &conn,
+                        &keyholder_id,
+                        target_id,
+                    )?
+                    else {
+                        return Ok(None);
+                    };
+                    let display_name: String = conn.query_row(
+                        "SELECT display_name FROM users WHERE id = ?1",
+                        params![target_id],
+                        |row| row.get(0),
+                    )?;
+                    let mut name_cache = std::collections::HashMap::new();
+                    name_cache.insert(target_id.clone(), display_name.clone());
+                    (
+                        vec![link_id],
+                        Some(SingleSubmissiveContext {
+                            id: target_id.clone(),
+                            display_name,
+                        }),
+                        name_cache,
+                    )
+                }
+                None => (
+                    links::active_link_ids_for_keyholder(&conn, &keyholder_id)?,
+                    None,
+                    std::collections::HashMap::new(),
+                ),
             };
-            let display_name: String = conn.query_row(
-                "SELECT display_name FROM users WHERE id = ?1",
-                params![target_id],
-                |row| row.get(0),
-            )?;
-            let submissions = proofs::list_for_links(&conn, &[link_id])?;
+            let submissions = proofs::list_for_links(&conn, &link_ids)?;
             let now = session::now();
             let mut items = Vec::new();
             for s in submissions.into_iter().filter(|s| s.status == "pending") {
                 let attachments = proofs::list_attachments(&conn, &s.id)?;
                 let first = attachments.into_iter().next();
+                let submissive_display_name = match name_cache.get(&s.submissive_id) {
+                    Some(name) => name.clone(),
+                    None => {
+                        let name: String = conn.query_row(
+                            "SELECT display_name FROM users WHERE id = ?1",
+                            params![s.submissive_id],
+                            |row| row.get(0),
+                        )?;
+                        name_cache.insert(s.submissive_id.clone(), name.clone());
+                        name
+                    }
+                };
                 items.push(ReviewQueueItem {
                     id: s.id,
                     submissive_id: s.submissive_id,
-                    submissive_display_name: display_name.clone(),
+                    submissive_display_name,
                     kind: s.kind,
                     purpose: s.purpose,
                     submitted_ago: fmt_duration(now - s.submitted_at) + " ago",
@@ -867,82 +921,24 @@ async fn submissive_review_page(
                     attachment_mime: first.as_ref().map(|a| a.mime_type.clone()),
                 });
             }
-            Ok(Some((display_name, items)))
+            Ok(Some((single, items)))
         },
     )
     .await;
 
-    let Ok(Ok(Some((submissive_display_name, pending)))) = result else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    render(SubmissiveReviewTemplate {
-        is_keyholder: true,
-        active_nav: "",
-        submissive_id,
-        submissive_display_name,
-        pending_is_empty: pending.is_empty(),
-        pending,
-        initial: initial_of(&user.display_name),
-        display_name: user.display_name,
-    })
-}
-
-async fn review_queue_page(State(pool): State<Pool>, jar: CookieJar) -> Response {
-    let Some(user) = resolve_current_user(&pool, &jar).await else {
-        return Redirect::to("/login").into_response();
-    };
-    if user.role != Role::Keyholder {
-        return Redirect::to("/submissive").into_response();
-    }
-
-    let keyholder_id = user.user_id.clone();
-    let pending = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<ReviewQueueItem>> {
-        let conn = pool.get()?;
-        let link_ids = links::active_link_ids_for_keyholder(&conn, &keyholder_id)?;
-        let submissions = proofs::list_for_links(&conn, &link_ids)?;
-        let now = session::now();
-        let mut name_cache: std::collections::HashMap<String, String> =
-            std::collections::HashMap::new();
-        let mut items = Vec::new();
-        for s in submissions.into_iter().filter(|s| s.status == "pending") {
-            let attachments = proofs::list_attachments(&conn, &s.id)?;
-            let first = attachments.into_iter().next();
-            let submissive_display_name = match name_cache.get(&s.submissive_id) {
-                Some(name) => name.clone(),
-                None => {
-                    let name: String = conn.query_row(
-                        "SELECT display_name FROM users WHERE id = ?1",
-                        params![s.submissive_id],
-                        |row| row.get(0),
-                    )?;
-                    name_cache.insert(s.submissive_id.clone(), name.clone());
-                    name
-                }
-            };
-            items.push(ReviewQueueItem {
-                id: s.id,
-                submissive_id: s.submissive_id,
-                submissive_display_name,
-                kind: s.kind,
-                purpose: s.purpose,
-                submitted_ago: fmt_duration(now - s.submitted_at) + " ago",
-                code: s.verification_code_value,
-                attachment_id: first.as_ref().map(|a| a.id.clone()),
-                attachment_mime: first.as_ref().map(|a| a.mime_type.clone()),
-            });
-        }
-        Ok(items)
-    })
-    .await;
-
-    let Ok(Ok(pending)) = pending else {
+    let Ok(Ok(outcome)) = result else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let Some((single_submissive, pending)) = outcome else {
+        // Only the single-submissive branch can produce this — the
+        // aggregate branch never returns `Ok(None)`.
+        return StatusCode::NOT_FOUND.into_response();
     };
 
     render(ProofReviewTemplate {
         is_keyholder: true,
-        active_nav: "review",
+        active_nav: if is_single { "" } else { "review" },
+        single_submissive,
         pending_is_empty: pending.is_empty(),
         pending,
         initial: initial_of(&user.display_name),

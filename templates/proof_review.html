@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="icon" type="image/png" href="/static/images/favicon.png" />
-<title>Owner's Cock Ledger — Review Queue</title>
+<title>Owner's Cock Ledger — {% if let Some(s) = single_submissive %}Review {{ s.display_name }}{% else %}Review Queue{% endif %}</title>
 <link href="/static/css/fonts.css" rel="stylesheet">
 <link href="/static/css/app.css" rel="stylesheet">
 <script src="/static/js/jquery.min.js"></script>
@@ -17,16 +17,27 @@
 {% include "partials/nav.html" %}
 
 <main class="max-w-4xl mx-auto px-6 py-8">
+  {% if let Some(s) = single_submissive %}
+  <a href="/keyholder/submissives/{{ s.id }}" class="text-xs text-slate-500 hover:text-slate-300">&larr; Back to {{ s.display_name }}</a>
+  <h1 class="text-2xl font-semibold tracking-tight mb-1 mt-3">Review {{ s.display_name }}</h1>
+  <p class="text-sm text-slate-400 mb-6">Just this submissive's pending proof submissions, newest first.</p>
+  {% else %}
   <h1 class="text-2xl font-semibold tracking-tight mb-1">Review queue</h1>
   <p class="text-sm text-slate-400 mb-6">Pending proof submissions across your roster, newest first.</p>
+  {% endif %}
 
   <div class="rounded-xl border border-slate-800 bg-slate-900 divide-y divide-slate-800">
     {% for item in pending %}
     <div class="p-5 flex gap-4" data-submission-id="{{ item.id }}" data-submissive-id="{{ item.submissive_id }}">
       <div class="flex-1 min-w-0">
         <p class="text-sm">
+          {% if single_submissive.is_none() %}
           <span class="font-medium text-slate-200">{{ item.submissive_display_name }}</span>
           <span class="text-slate-500">&middot; {{ item.kind }} &middot; {{ item.purpose }} &middot; {{ item.submitted_ago }}</span>
+          {% else %}
+          <span class="font-medium">{{ item.kind }}</span>
+          <span class="text-slate-500">&middot; {{ item.purpose }} &middot; {{ item.submitted_ago }}</span>
+          {% endif %}
         </p>
         {% if let Some(code) = item.code %}
           <p class="text-xs text-slate-500 mt-1">code: <span class="font-mono text-slate-300">{{ code }}</span></p>
@@ -84,7 +95,7 @@
     </div>
     {% endfor %}
     {% if pending_is_empty %}
-    <div class="p-8 text-center text-sm text-slate-500">Nothing waiting on review.</div>
+    <div class="p-8 text-center text-sm text-slate-500">Nothing waiting on review{% if let Some(s) = single_submissive %} for {{ s.display_name }}{% endif %}.</div>
     {% endif %}
   </div>
 </main>
