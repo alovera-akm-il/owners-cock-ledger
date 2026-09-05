@@ -188,6 +188,114 @@ pub fn list_items_with_ratings_for_submissive(
         .collect())
 }
 
+pub struct KeyholderRating {
+    pub keyholder_id: String,
+    pub limit_item_id: String,
+    pub rating: String,
+    pub notes: Option<String>,
+    pub updated_at: i64,
+}
+
+fn row_to_keyholder_rating(row: &rusqlite::Row) -> rusqlite::Result<KeyholderRating> {
+    Ok(KeyholderRating {
+        keyholder_id: row.get(0)?,
+        limit_item_id: row.get(1)?,
+        rating: row.get(2)?,
+        notes: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+const KEYHOLDER_RATING_COLUMNS: &str = "keyholder_id, limit_item_id, rating, notes, updated_at";
+
+pub fn list_ratings_for_keyholder(
+    conn: &Connection,
+    keyholder_id: &str,
+) -> rusqlite::Result<Vec<KeyholderRating>> {
+    let sql = format!(
+        "SELECT {KEYHOLDER_RATING_COLUMNS} FROM keyholder_limit_ratings WHERE keyholder_id = ?1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    stmt.query_map(params![keyholder_id], row_to_keyholder_rating)?
+        .collect()
+}
+
+/// Same idea as `list_items_with_ratings_for_submissive`, but the
+/// catalog-owner and the rating-owner are the same person here — a
+/// Keyholder rates their own catalog, rather than a submissive rating
+/// their Keyholder's.
+pub fn list_items_with_ratings_for_keyholder(
+    conn: &Connection,
+    keyholder_id: &str,
+) -> rusqlite::Result<Vec<(LimitItem, Option<KeyholderRating>)>> {
+    let items = list_items_for_keyholder(conn, keyholder_id)?
+        .into_iter()
+        .filter(|i| i.active)
+        .collect::<Vec<_>>();
+    let ratings = list_ratings_for_keyholder(conn, keyholder_id)?;
+    Ok(items
+        .into_iter()
+        .map(|item| {
+            let rating = ratings
+                .iter()
+                .find(|r| r.limit_item_id == item.id)
+                .map(|r| KeyholderRating {
+                    keyholder_id: r.keyholder_id.clone(),
+                    limit_item_id: r.limit_item_id.clone(),
+                    rating: r.rating.clone(),
+                    notes: r.notes.clone(),
+                    updated_at: r.updated_at,
+                });
+            (item, rating)
+        })
+        .collect())
+}
+
+/// `PUT /keyholder/limit-ratings/{item_id}` — a Keyholder rating their
+/// own catalog, mirroring `set_rating` exactly.
+pub fn set_keyholder_rating(
+    conn: &Connection,
+    keyholder_id: &str,
+    limit_item_id: &str,
+    rating: &str,
+    notes: Option<&str>,
+) -> Result<(), SetRatingError> {
+    if !matches!(rating, "hard" | "soft" | "okay") {
+        return Err(SetRatingError::InvalidRating);
+    }
+    if get_item(conn, limit_item_id)?.is_none() {
+        return Err(SetRatingError::ItemNotFound);
+    }
+    conn.execute(
+        "INSERT INTO keyholder_limit_ratings (id, keyholder_id, limit_item_id, rating, notes, updated_at)
+         VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT (keyholder_id, limit_item_id)
+         DO UPDATE SET rating = excluded.rating, notes = excluded.notes, updated_at = excluded.updated_at",
+        params![
+            uuid::Uuid::new_v4().to_string(),
+            keyholder_id,
+            limit_item_id,
+            rating,
+            notes,
+            crate::auth::session::now(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// `DELETE /keyholder/limit-ratings/{item_id}` — mirrors `clear_rating`.
+pub fn clear_keyholder_rating(
+    conn: &Connection,
+    keyholder_id: &str,
+    limit_item_id: &str,
+) -> rusqlite::Result<bool> {
+    let affected = conn.execute(
+        "DELETE FROM keyholder_limit_ratings WHERE keyholder_id = ?1 AND limit_item_id = ?2",
+        params![keyholder_id, limit_item_id],
+    )?;
+    Ok(affected > 0)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SetRatingError {
     #[error("invalid rating value")]
@@ -425,5 +533,91 @@ mod tests {
             .find(|(i, _)| i.id == "seed-impact-cane")
             .unwrap();
         assert!(cane.1.is_none());
+    }
+
+    #[test]
+    fn set_keyholder_rating_upserts_and_rejects_an_invalid_value() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (kh, _sub) = seed_users(&conn);
+
+        assert!(matches!(
+            set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "bogus", None),
+            Err(SetRatingError::InvalidRating)
+        ));
+        assert!(matches!(
+            set_keyholder_rating(&conn, &kh, "no-such-item", "hard", None),
+            Err(SetRatingError::ItemNotFound)
+        ));
+
+        set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "hard", Some("no")).unwrap();
+        let ratings = list_ratings_for_keyholder(&conn, &kh).unwrap();
+        assert_eq!(ratings.len(), 1);
+        assert_eq!(ratings[0].rating, "hard");
+
+        // Upsert: rating the same item again replaces, doesn't duplicate.
+        set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "soft", None).unwrap();
+        let ratings = list_ratings_for_keyholder(&conn, &kh).unwrap();
+        assert_eq!(ratings.len(), 1);
+        assert_eq!(ratings[0].rating, "soft");
+        assert!(ratings[0].notes.is_none());
+    }
+
+    #[test]
+    fn clear_keyholder_rating_returns_to_not_discussed() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (kh, _sub) = seed_users(&conn);
+
+        assert!(!clear_keyholder_rating(&conn, &kh, "seed-impact-paddle").unwrap());
+        set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "hard", None).unwrap();
+        assert!(clear_keyholder_rating(&conn, &kh, "seed-impact-paddle").unwrap());
+        assert!(
+            list_ratings_for_keyholder(&conn, &kh)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn list_items_with_keyholder_ratings_pairs_correctly_and_leaves_unrated_as_none() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (kh, _sub) = seed_users(&conn);
+
+        set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "hard", None).unwrap();
+        let paired = list_items_with_ratings_for_keyholder(&conn, &kh).unwrap();
+        let paddle = paired
+            .iter()
+            .find(|(i, _)| i.id == "seed-impact-paddle")
+            .unwrap();
+        assert_eq!(paddle.1.as_ref().unwrap().rating, "hard");
+
+        let cane = paired
+            .iter()
+            .find(|(i, _)| i.id == "seed-impact-cane")
+            .unwrap();
+        assert!(cane.1.is_none());
+    }
+
+    #[test]
+    fn keyholder_ratings_are_scoped_to_the_rating_keyholder_only() {
+        let (_dir, pool) = temp_pool();
+        let conn = pool.get().unwrap();
+        let (kh, _sub) = seed_users(&conn);
+        let other_kh = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash, role, display_name, created_at)
+             VALUES (?1, ?1 || '@example.test', 'hash', 'keyholder', 'KH2', 0)",
+            params![other_kh],
+        )
+        .unwrap();
+
+        set_keyholder_rating(&conn, &kh, "seed-impact-paddle", "hard", None).unwrap();
+        assert!(
+            list_ratings_for_keyholder(&conn, &other_kh)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

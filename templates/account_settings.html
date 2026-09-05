@@ -51,16 +51,6 @@
         <input id="profile-emergency-contact" type="text" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
       </div>
       {% endif %}
-      <div class="grid sm:grid-cols-2 gap-3">
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Hard limits</label>
-          <textarea id="profile-hard-limits" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1.5">Soft limits</label>
-          <textarea id="profile-soft-limits" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100"></textarea>
-        </div>
-      </div>
       <div class="max-w-xs">
         <label class="block text-xs font-medium text-slate-400 mb-1.5">Timezone</label>
         <input id="profile-timezone" type="text" placeholder="e.g. America/New_York" class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100" />
@@ -69,25 +59,37 @@
     </form>
   </section>
 
-  {% if !is_keyholder %}
-  <!-- ============ YOUR KEYHOLDER'S BOUNDARIES ============ -->
+  <!-- ============ LIMITS & BOUNDARIES ============ -->
   <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
-    <h2 class="text-sm font-semibold mb-1">Your Keyholder's boundaries</h2>
-    <p class="text-xs text-slate-500 mb-4">Read-only — set by your Keyholder on their own profile.</p>
-    <div id="kh-boundaries" class="space-y-3 text-sm">
-      <div class="text-center text-sm text-slate-500 py-4">Loading…</div>
+    <h2 class="text-sm font-semibold mb-1">Limits & boundaries</h2>
+    <p class="text-xs text-slate-500 mb-4">Type freely — a name that matches the catalog autocompletes, so you're not guessing at exact wording. An item left out of all three just means "not discussed yet" — it's never assumed okay.</p>
+    <div id="limits-message" class="hidden rounded-lg px-3 py-2 text-xs mb-3"></div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-red-400 mb-1.5">Hard limits</label>
+        <div id="limits-hard" class="limit-input w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-amber-600/60" contenteditable="true" data-tier="hard" data-placeholder="Type a limit — matching items autocomplete"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-amber-400 mb-1.5">Soft limits</label>
+        <div id="limits-soft" class="limit-input w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-amber-600/60" contenteditable="true" data-tier="soft" data-placeholder="Type a limit — matching items autocomplete"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-emerald-400 mb-1.5">Okay</label>
+        <div id="limits-okay" class="limit-input w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-amber-600/60" contenteditable="true" data-tier="okay" data-placeholder="Type a limit — matching items autocomplete"></div>
+      </div>
     </div>
-  </section>
+    <button id="save-limits-btn" type="button" class="text-xs font-semibold text-slate-950 bg-amber-600 hover:bg-amber-500 rounded-lg px-4 py-2 mt-3">Save limits</button>
 
-  <!-- ============ LIMITS & KINKS ============ -->
-  <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
-    <h2 class="text-sm font-semibold mb-1">Limits & kinks</h2>
-    <p class="text-xs text-slate-500 mb-4">Rate each item as it applies to you. An unrated item just means "not discussed yet" — it's never assumed okay. Your Keyholder can see these ratings, same as your free-text limits above.</p>
-    <div id="item-list" class="space-y-6">
-      <div class="text-center text-sm text-slate-500 py-6">Loading…</div>
+    {% if !is_keyholder %}
+    <div class="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 mt-4">
+      <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Your Keyholder's boundaries</p>
+      <p class="text-[11px] text-slate-600 mb-1.5 normal-case">Read-only — set on their own profile, never editable here.</p>
+      <div id="kh-boundaries" class="grid sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+        <div class="text-center text-slate-500 py-4 col-span-3">Loading…</div>
+      </div>
     </div>
+    {% endif %}
   </section>
-  {% endif %}
 
   <!-- ============ PASSWORD ============ -->
   <section class="rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -249,9 +251,10 @@
     apiCall('GET', '/api/v1/profile').done(function (p) {
       $('#profile-display-name').val(p.display_name || '');
       $('#profile-bio').val(p.bio || '');
-      $('#profile-hard-limits').val(p.hard_limits || '');
-      $('#profile-soft-limits').val(p.soft_limits || '');
       $('#profile-timezone').val(p.timezone || '');
+      $('#limits-hard').text(p.hard_limits || '');
+      $('#limits-soft').text(p.soft_limits || '');
+      $('#limits-okay').text(p.okay_limits || '');
       {% if is_keyholder %}
       $('#profile-contact-info').val(p.contact_info || '');
       {% else %}
@@ -273,8 +276,6 @@
     const payload = {
       display_name: displayName,
       bio: $('#profile-bio').val() || null,
-      hard_limits: $('#profile-hard-limits').val() || null,
-      soft_limits: $('#profile-soft-limits').val() || null,
       timezone: $('#profile-timezone').val() || null,
     };
     {% if is_keyholder %}
@@ -287,6 +288,114 @@
       $('#profile-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-emerald-600/10 border border-emerald-600/30 text-emerald-300').text('Profile saved.').removeClass('hidden');
     }).fail(function (xhr) {
       $('#profile-message').attr('class', 'rounded-lg px-3 py-2 text-xs bg-red-600/10 border border-red-600/30 text-red-300').text(errorMessage(xhr, 'Could not save profile.')).removeClass('hidden');
+    });
+  });
+
+  // ---------- Limits & boundaries ----------
+  // Catalog list (role-appropriate — a submissive's Keyholder-authored
+  // items, or a Keyholder's own) used purely as the autocomplete word
+  // list; matched labels sync the structured rating via a PUT, same
+  // "no row = not discussed" semantics as everywhere else in this API.
+  const LIMIT_ITEMS_URL = {% if is_keyholder %}'/api/v1/keyholder/limit-ratings'{% else %}'/api/v1/submissive/limit-items'{% endif %};
+  const RATING_URL_PREFIX = {% if is_keyholder %}'/api/v1/keyholder/limit-ratings/'{% else %}'/api/v1/submissive/limit-ratings/'{% endif %};
+  let limitCatalog = [];
+
+  function loadLimitCatalog() {
+    apiCall('GET', LIMIT_ITEMS_URL).done(function (list) {
+      limitCatalog = list;
+    });
+  }
+  loadLimitCatalog();
+
+  function currentSegment(el) {
+    const text = el.textContent;
+    const parts = text.split(',');
+    return parts[parts.length - 1].replace(/^\s+/, '');
+  }
+
+  function replaceSegmentWith(el, label) {
+    const text = el.textContent;
+    const parts = text.split(',');
+    parts[parts.length - 1] = ' ' + label;
+    el.textContent = parts.join(',').replace(/^\s+/, '') + ', ';
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function caretRect() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    const range = sel.getRangeAt(0).cloneRange();
+    range.collapse(true);
+    const rect = range.getClientRects()[0];
+    if (rect) return rect;
+    const node = range.startContainer;
+    return (node.nodeType === 1 ? node : node.parentElement).getBoundingClientRect();
+  }
+
+  const $limitsAc = $('<div class="hidden fixed z-30 w-56 rounded-lg border border-slate-800 bg-slate-900 shadow-xl py-1 text-sm">').appendTo('body');
+  let limitsAcMatches = [];
+
+  function closeLimitsAc() { $limitsAc.addClass('hidden').empty(); limitsAcMatches = []; }
+
+  function syncRating($field, item) {
+    const tier = $field.data('tier');
+    apiCall('PUT', RATING_URL_PREFIX + item.id, { rating: tier, notes: item.notes || null });
+  }
+
+  function pickLimitMatch($field, item) {
+    replaceSegmentWith($field[0], item.label);
+    $field.addClass('field-flash');
+    setTimeout(function () { $field.removeClass('field-flash'); }, 1000);
+    syncRating($field, item);
+    closeLimitsAc();
+  }
+
+  $('.limit-input').on('input', function () {
+    const $field = $(this);
+    const seg = currentSegment(this);
+    if (seg.length < 1) { closeLimitsAc(); return; }
+    limitsAcMatches = limitCatalog.filter(function (item) {
+      return item.label.toLowerCase().indexOf(seg.toLowerCase()) === 0 && item.label.toLowerCase() !== seg.toLowerCase();
+    }).slice(0, 5);
+    if (limitsAcMatches.length === 0) { closeLimitsAc(); return; }
+    const rect = caretRect();
+    $limitsAc.empty().removeClass('hidden').css({ left: (rect ? rect.left : 0) + 'px', top: (rect ? rect.bottom : 0) + 4 + 'px' });
+    limitsAcMatches.forEach(function (item, i) {
+      $('<div class="ac-item px-3 py-1.5 cursor-pointer' + (i === 0 ? ' hi' : '') + '">')
+        .html('<b></b>')
+        .find('b').text(item.label).end()
+        .on('mousedown', function (e) { e.preventDefault(); pickLimitMatch($field, item); })
+        .appendTo($limitsAc);
+    });
+  });
+
+  $('.limit-input').on('keydown', function (e) {
+    if ($limitsAc.hasClass('hidden')) return;
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      if (limitsAcMatches.length) pickLimitMatch($(this), limitsAcMatches[0]);
+    } else if (e.key === 'Escape') {
+      closeLimitsAc();
+    }
+  });
+
+  $('.limit-input').on('blur', function () { setTimeout(closeLimitsAc, 120); });
+
+  $('#save-limits-btn').on('click', function () {
+    $('#limits-message').addClass('hidden');
+    apiCall('PATCH', '/api/v1/profile', {
+      hard_limits: $('#limits-hard').text().trim() || null,
+      soft_limits: $('#limits-soft').text().trim() || null,
+      okay_limits: $('#limits-okay').text().trim() || null,
+    }).done(function () {
+      $('#limits-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-emerald-600/10 border border-emerald-600/30 text-emerald-300').text('Limits saved.').removeClass('hidden');
+    }).fail(function (xhr) {
+      $('#limits-message').attr('class', 'rounded-lg px-3 py-2 text-xs mb-3 bg-red-600/10 border border-red-600/30 text-red-300').text(errorMessage(xhr, 'Could not save limits.')).removeClass('hidden');
     });
   });
 
@@ -497,110 +606,21 @@
     apiCall('GET', '/api/v1/submissive/keyholder-profile').done(function (p) {
       const $wrap = $('#kh-boundaries').empty();
       const rows = [
-        ['Bio', p.bio],
-        ['Hard limits', p.hard_limits],
-        ['Soft limits', p.soft_limits],
+        ['Hard', p.hard_limits],
+        ['Soft', p.soft_limits],
+        ['Okay', p.okay_limits],
       ];
       rows.forEach(function (row) {
-        const $row = $('<div>');
-        $row.append($('<p class="text-xs font-medium text-slate-400 mb-0.5">').text(row[0]));
-        $row.append($('<p class="text-slate-200 whitespace-pre-wrap">').text(row[1] || '—'));
+        const $row = $('<p>');
+        $row.append($('<span class="text-slate-500">').text(row[0] + ': '));
+        $row.append($('<span class="text-slate-300 whitespace-pre-wrap">').text(row[1] || '—'));
         $wrap.append($row);
       });
     }).fail(function () {
-      $('#kh-boundaries').empty().append($('<div class="text-center text-sm text-slate-500 py-4">').text('Not available.'));
+      $('#kh-boundaries').empty().append($('<div class="text-center text-slate-500 py-4 col-span-3">').text('Not available.'));
     });
   }
   loadKeyholderBoundaries();
-
-  // ---------- Limits & kinks ----------
-  const RATING_STYLE = {
-    hard: { active: 'border-red-500 bg-red-500/10 text-red-400', label: 'Hard limit' },
-    soft: { active: 'border-amber-500 bg-amber-500/10 text-amber-400', label: 'Soft limit' },
-    okay: { active: 'border-emerald-500 bg-emerald-500/10 text-emerald-400', label: 'Okay' },
-  };
-  const IDLE_BTN_CLASS = 'rating-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-xs font-semibold py-1.5';
-
-  function saveRating($card, itemId, rating, notes) {
-    apiCall('PUT', '/api/v1/submissive/limit-ratings/' + itemId, { rating: rating, notes: notes || null }).done(function () {
-      $card.find('.saved-note').text('Saved ✓').removeClass('hidden');
-      clearTimeout($card.data('savedTimer'));
-      $card.data('savedTimer', setTimeout(() => $card.find('.saved-note').addClass('hidden'), 2000));
-    });
-  }
-
-  function clearRating($card, itemId) {
-    apiCall('DELETE', '/api/v1/submissive/limit-ratings/' + itemId).done(function () {
-      $card.find('.rating-btn').attr('class', IDLE_BTN_CLASS);
-      $card.find('.saved-note').text('Cleared — back to not discussed').removeClass('hidden');
-      clearTimeout($card.data('savedTimer'));
-      $card.data('savedTimer', setTimeout(() => $card.find('.saved-note').addClass('hidden'), 2000));
-    });
-  }
-
-  function limitItemCard(item) {
-    const $card = $('<div class="rounded-xl border border-slate-800 bg-slate-950 p-4">');
-    const $head = $('<div class="flex items-start justify-between mb-2">');
-    const $title = $('<div>');
-    $title.append($('<p class="text-sm font-medium">').text(item.label));
-    if (item.description) $title.append($('<p class="text-xs text-slate-500 mt-0.5">').text(item.description));
-    $head.append($title);
-    $card.append($head);
-
-    const $btnRow = $('<div class="flex gap-2 mb-2">');
-    ['hard', 'soft', 'okay'].forEach(function (rating) {
-      const isActive = item.rating === rating;
-      const $btn = $('<button type="button">').attr('class', isActive ? 'rating-btn flex-1 rounded-lg border-2 text-xs font-semibold py-1.5 ' + RATING_STYLE[rating].active : IDLE_BTN_CLASS).text(RATING_STYLE[rating].label);
-      $btn.on('click', function () {
-        const notes = $card.find('.notes-input').val();
-        $card.find('.rating-btn').attr('class', IDLE_BTN_CLASS);
-        $btn.attr('class', 'rating-btn flex-1 rounded-lg border-2 text-xs font-semibold py-1.5 ' + RATING_STYLE[rating].active);
-        saveRating($card, item.id, rating, notes);
-      });
-      $btnRow.append($btn);
-    });
-    $card.append($btnRow);
-
-    const $notes = $('<textarea rows="1" placeholder="Notes (optional) — e.g. \'okay, but only if we\'ve talked about it that day\'" class="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs p-2 text-slate-300 notes-input">').val(item.notes || '');
-    $notes.on('blur', function () {
-      if (!item.rating) return;
-      saveRating($card, item.id, item.rating, $notes.val());
-    });
-    $card.append($notes);
-
-    if (!item.rating) {
-      $card.append($('<p class="text-[11px] text-slate-600 mt-1.5">').text('Not discussed yet'));
-    }
-    $card.append($('<p class="saved-note hidden text-[11px] text-emerald-400 mt-1.5">'));
-
-    const $clear = $('<button type="button" class="text-[11px] text-slate-500 hover:text-red-400 mt-1.5">').text('Clear rating').on('click', function () { clearRating($card, item.id); });
-    if (item.rating) $card.append($clear);
-
-    return $card;
-  }
-
-  function loadLimitItems() {
-    apiCall('GET', '/api/v1/submissive/limit-items').done(function (list) {
-      const $list = $('#item-list').empty();
-      if (list.length === 0) {
-        $list.append($('<div class="text-center text-sm text-slate-500 py-6">').text('Nothing to rate yet.'));
-        return;
-      }
-      const byCategory = {};
-      list.forEach(function (item) {
-        (byCategory[item.category] = byCategory[item.category] || []).push(item);
-      });
-      Object.keys(byCategory).sort().forEach(function (category) {
-        const $section = $('<div>');
-        $section.append($('<p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">').text(category));
-        const $grid = $('<div class="space-y-3">');
-        byCategory[category].forEach(function (item) { $grid.append(limitItemCard(item)); });
-        $section.append($grid);
-        $list.append($section);
-      });
-    });
-  }
-  loadLimitItems();
 
   // ---------- End the link ----------
   function refreshEndRequestUi(pending, escalated) {

@@ -268,6 +268,91 @@ async fn clear_own_rating(
     .map_err(|_| INTERNAL_ERROR)?
 }
 
+/// `GET /keyholder/limit-ratings` — a Keyholder's own catalog paired
+/// with their own rating of each, mirroring `list_own_items` on the
+/// submissive side.
+async fn list_own_items_for_keyholder(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+) -> Result<Json<Vec<ItemWithRatingResponse>>, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        let list = limits::list_items_with_ratings_for_keyholder(&conn, &user.user_id)
+            .map_err(|_| INTERNAL_ERROR)?;
+        Ok(Json(
+            list.into_iter()
+                .map(|(item, rating)| item_with_keyholder_rating_response(item, rating))
+                .collect(),
+        ))
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+fn item_with_keyholder_rating_response(
+    item: limits::LimitItem,
+    rating: Option<limits::KeyholderRating>,
+) -> ItemWithRatingResponse {
+    ItemWithRatingResponse {
+        id: item.id,
+        category: item.category,
+        label: item.label,
+        description: item.description,
+        rating: rating.as_ref().map(|r| r.rating.clone()),
+        notes: rating.as_ref().and_then(|r| r.notes.clone()),
+        rated_at: rating.map(|r| iso8601(r.updated_at)),
+    }
+}
+
+async fn set_own_rating_for_keyholder(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(item_id): Path<String>,
+    Json(req): Json<SetRatingRequest>,
+) -> Result<StatusCode, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        limits::set_keyholder_rating(
+            &conn,
+            &user.user_id,
+            &item_id,
+            &req.rating,
+            req.notes.as_deref(),
+        )
+        .map_err(|e| match e {
+            limits::SetRatingError::InvalidRating => BAD_REQUEST,
+            limits::SetRatingError::ItemNotFound => NOT_FOUND,
+            limits::SetRatingError::Db(_) => INTERNAL_ERROR,
+        })?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
+/// `DELETE /keyholder/limit-ratings/{item_id}` — back to "not
+/// discussed," not to some default value.
+async fn clear_own_rating_for_keyholder(
+    State(pool): State<Pool>,
+    user: CurrentUser,
+    Path(item_id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    user.require_role(&[Role::Keyholder])
+        .map_err(|_| FORBIDDEN)?;
+    tokio::task::spawn_blocking(move || -> Result<StatusCode, ApiError> {
+        let conn = pool.get().map_err(|_| INTERNAL_ERROR)?;
+        limits::clear_keyholder_rating(&conn, &user.user_id, &item_id)
+            .map_err(|_| INTERNAL_ERROR)?;
+        Ok(StatusCode::NO_CONTENT)
+    })
+    .await
+    .map_err(|_| INTERNAL_ERROR)?
+}
+
 /// `GET /keyholder/submissives/{id}/limit-ratings` — read-only, same
 /// visibility as the free-text limits fields on the submissive detail
 /// page.
@@ -304,6 +389,14 @@ pub fn router() -> Router<db::AppState> {
         .route(
             "/submissive/limit-ratings/{item_id}",
             put(set_own_rating).delete(clear_own_rating),
+        )
+        .route(
+            "/keyholder/limit-ratings",
+            get(list_own_items_for_keyholder),
+        )
+        .route(
+            "/keyholder/limit-ratings/{item_id}",
+            put(set_own_rating_for_keyholder).delete(clear_own_rating_for_keyholder),
         )
         .route(
             "/keyholder/submissives/{id}/limit-ratings",

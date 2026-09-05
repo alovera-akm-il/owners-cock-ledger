@@ -41,6 +41,7 @@ struct KeyholderProfileResponse {
     timezone: Option<String>,
     hard_limits: Option<String>,
     soft_limits: Option<String>,
+    okay_limits: Option<String>,
 }
 
 impl From<profiles::KeyholderProfile> for KeyholderProfileResponse {
@@ -52,6 +53,7 @@ impl From<profiles::KeyholderProfile> for KeyholderProfileResponse {
             timezone: p.timezone,
             hard_limits: p.hard_limits,
             soft_limits: p.soft_limits,
+            okay_limits: p.okay_limits,
         }
     }
 }
@@ -63,6 +65,7 @@ struct SubmissiveProfileResponse {
     safeword: Option<String>,
     hard_limits: Option<String>,
     soft_limits: Option<String>,
+    okay_limits: Option<String>,
     emergency_contact: Option<String>,
     timezone: Option<String>,
     // Only ever populated for the Keyholder-viewing-a-submissive path
@@ -80,6 +83,7 @@ impl From<profiles::SubmissiveProfile> for SubmissiveProfileResponse {
             safeword: p.safeword,
             hard_limits: p.hard_limits,
             soft_limits: p.soft_limits,
+            okay_limits: p.okay_limits,
             emergency_contact: p.emergency_contact,
             timezone: p.timezone,
             keyholder_notes: None,
@@ -140,6 +144,8 @@ struct PatchOwnProfileRequest {
     hard_limits: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_some")]
     soft_limits: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    okay_limits: Option<Option<String>>,
     // Submissive-only field; ignored when sent by a keyholder.
     #[serde(default, deserialize_with = "deserialize_some")]
     safeword: Option<Option<String>>,
@@ -179,6 +185,7 @@ async fn patch_own_profile(
                         timezone: req.timezone.as_ref().map(|v| v.as_deref()),
                         hard_limits: req.hard_limits.as_ref().map(|v| v.as_deref()),
                         soft_limits: req.soft_limits.as_ref().map(|v| v.as_deref()),
+                        okay_limits: req.okay_limits.as_ref().map(|v| v.as_deref()),
                     },
                 )
                 .map_err(|_| INTERNAL_ERROR)?;
@@ -192,6 +199,7 @@ async fn patch_own_profile(
                         safeword: req.safeword.as_ref().map(|v| v.as_deref()),
                         hard_limits: req.hard_limits.as_ref().map(|v| v.as_deref()),
                         soft_limits: req.soft_limits.as_ref().map(|v| v.as_deref()),
+                        okay_limits: req.okay_limits.as_ref().map(|v| v.as_deref()),
                         emergency_contact: req.emergency_contact.as_ref().map(|v| v.as_deref()),
                         timezone: req.timezone.as_ref().map(|v| v.as_deref()),
                     },

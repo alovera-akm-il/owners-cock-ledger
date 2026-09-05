@@ -2695,7 +2695,7 @@ mod tests {
         keyholder
             .patch(
                 "/api/v1/profile",
-                serde_json::json!({"bio": "Firm but fair.", "hard_limits": "no permanent marks", "soft_limits": "ask first"}),
+                serde_json::json!({"bio": "Firm but fair.", "hard_limits": "no permanent marks", "soft_limits": "ask first", "okay_limits": "impact play"}),
             )
             .await;
 
@@ -2704,6 +2704,7 @@ mod tests {
         assert_eq!(kh_profile["bio"], "Firm but fair.");
         assert_eq!(kh_profile["hard_limits"], "no permanent marks");
         assert_eq!(kh_profile["soft_limits"], "ask first");
+        assert_eq!(kh_profile["okay_limits"], "impact play");
         assert!(kh_profile.get("contact_info").is_some());
 
         // A keyholder has no linked keyholder of their own to fetch.
@@ -5895,6 +5896,127 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, sub_items) = submissive.get("/api/v1/submissive/limit-items").await;
         let paddle = sub_items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "seed-impact-paddle")
+            .unwrap();
+        assert!(paddle["rating"].is_null());
+    }
+
+    /// Limits & boundaries redesign: a Keyholder rates their own catalog
+    /// the same way a submissive rates theirs — same endpoints shape,
+    /// same "no row = not discussed" semantics, but scoped to the
+    /// Keyholder's own id on both sides (catalog owner and rating owner
+    /// are the same person here).
+    #[tokio::test]
+    async fn keyholder_can_rate_their_own_limits_scoped_to_themselves() {
+        let (_dir, pool) = temp_pool();
+        let (mut keyholder, mut submissive, _blob_dir) = linked_keyholder_and_submissive(
+            &pool,
+            "kh-selflimits@example.test",
+            "sub-selflimits@example.test",
+        )
+        .await;
+
+        // Initially unrated, all seed items visible.
+        let (status, items) = keyholder.get("/api/v1/keyholder/limit-ratings").await;
+        assert_eq!(status, StatusCode::OK);
+        let items = items.as_array().unwrap();
+        assert!(items.iter().any(|i| i["id"] == "seed-impact-paddle"));
+        assert!(items.iter().all(|i| i["rating"].is_null()));
+
+        // A submissive can't touch these endpoints at all.
+        let (status, _) = submissive.get("/api/v1/keyholder/limit-ratings").await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = submissive
+            .request(
+                "PUT",
+                "/api/v1/keyholder/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "hard"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // Invalid rating rejected.
+        let (status, _) = keyholder
+            .request(
+                "PUT",
+                "/api/v1/keyholder/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "bogus"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Rate one item, then upsert it to a different tier.
+        let (status, _) = keyholder
+            .request(
+                "PUT",
+                "/api/v1/keyholder/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "hard", "notes": "never"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = keyholder
+            .request(
+                "PUT",
+                "/api/v1/keyholder/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "soft"})),
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, items) = keyholder.get("/api/v1/keyholder/limit-ratings").await;
+        let paddle = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "seed-impact-paddle")
+            .unwrap();
+        assert_eq!(paddle["rating"], "soft");
+
+        // A different Keyholder rating their own catalog never affects
+        // this one's ratings.
+        seed_keyholder(
+            &pool,
+            "kh-selflimits-other@example.test",
+            "correct horse battery staple",
+        );
+        let mut other_kh = TestClient::new(pool.clone());
+        other_kh.get("/health").await;
+        other_kh
+            .post(
+                "/api/v1/auth/login",
+                serde_json::json!({"email": "kh-selflimits-other@example.test", "password": "correct horse battery staple"}),
+            )
+            .await;
+        other_kh
+            .request(
+                "PUT",
+                "/api/v1/keyholder/limit-ratings/seed-impact-paddle",
+                Some(serde_json::json!({"rating": "okay"})),
+            )
+            .await;
+        let (_, items) = keyholder.get("/api/v1/keyholder/limit-ratings").await;
+        let paddle = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "seed-impact-paddle")
+            .unwrap();
+        assert_eq!(paddle["rating"], "soft");
+
+        // Clearing returns to "not discussed."
+        let (status, _) = keyholder
+            .request(
+                "DELETE",
+                "/api/v1/keyholder/limit-ratings/seed-impact-paddle",
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, items) = keyholder.get("/api/v1/keyholder/limit-ratings").await;
+        let paddle = items
             .as_array()
             .unwrap()
             .iter()

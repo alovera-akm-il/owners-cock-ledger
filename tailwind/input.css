@@ -66,10 +66,31 @@
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+@keyframes field-flash {
+  0% { border-color: rgba(217, 119, 6, 0.8); }
+  100% { border-color: rgb(30 41 59); }
+}
+.field-flash {
+  animation: field-flash 1s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .flash-updated, .pulse-urgent, .pulse-live, .panel-fade, .slide-in, .dropdown-in {
+  .flash-updated, .pulse-urgent, .pulse-live, .panel-fade, .slide-in, .dropdown-in, .field-flash {
     animation: none;
   }
+}
+
+/* The free-text autocomplete fields on `account_settings.html`'s
+   "Limits & boundaries" section (contenteditable divs, not
+   input/textarea — a caret-positioned dropdown needs the Selection/
+   Range API, which only contenteditable elements expose) and their
+   suggestion dropdown. */
+.limit-input:empty::before {
+  content: attr(data-placeholder);
+  color: theme('colors.slate.600');
+}
+.ac-item:hover, .ac-item.hi {
+  background: theme('colors.slate.800');
 }
 
 /* The shared confirm/detail-modal shell (Duplication Ledger §03): every

@@ -13,6 +13,7 @@ pub struct KeyholderProfile {
     pub timezone: Option<String>,
     pub hard_limits: Option<String>,
     pub soft_limits: Option<String>,
+    pub okay_limits: Option<String>,
 }
 
 pub fn get_keyholder_profile(
@@ -20,7 +21,7 @@ pub fn get_keyholder_profile(
     user_id: &str,
 ) -> rusqlite::Result<KeyholderProfile> {
     conn.query_row(
-        "SELECT bio, contact_info, timezone, hard_limits, soft_limits
+        "SELECT bio, contact_info, timezone, hard_limits, soft_limits, okay_limits
          FROM keyholder_profiles WHERE user_id = ?1",
         params![user_id],
         |row| {
@@ -30,6 +31,7 @@ pub fn get_keyholder_profile(
                 timezone: row.get(2)?,
                 hard_limits: row.get(3)?,
                 soft_limits: row.get(4)?,
+                okay_limits: row.get(5)?,
             })
         },
     )
@@ -42,6 +44,7 @@ pub struct KeyholderProfileEdit<'a> {
     pub timezone: Option<Option<&'a str>>,
     pub hard_limits: Option<Option<&'a str>>,
     pub soft_limits: Option<Option<&'a str>>,
+    pub okay_limits: Option<Option<&'a str>>,
 }
 
 /// A field left `None` here keeps its current value; `Some(None)`
@@ -59,15 +62,17 @@ pub fn update_keyholder_profile(
     let timezone = edit.timezone.unwrap_or(current.timezone.as_deref());
     let hard_limits = edit.hard_limits.unwrap_or(current.hard_limits.as_deref());
     let soft_limits = edit.soft_limits.unwrap_or(current.soft_limits.as_deref());
+    let okay_limits = edit.okay_limits.unwrap_or(current.okay_limits.as_deref());
     conn.execute(
         "UPDATE keyholder_profiles SET bio = ?1, contact_info = ?2, timezone = ?3,
-            hard_limits = ?4, soft_limits = ?5 WHERE user_id = ?6",
+            hard_limits = ?4, soft_limits = ?5, okay_limits = ?6 WHERE user_id = ?7",
         params![
             bio,
             contact_info,
             timezone,
             hard_limits,
             soft_limits,
+            okay_limits,
             user_id
         ],
     )?;
@@ -79,6 +84,7 @@ pub struct SubmissiveProfile {
     pub safeword: Option<String>,
     pub hard_limits: Option<String>,
     pub soft_limits: Option<String>,
+    pub okay_limits: Option<String>,
     pub emergency_contact: Option<String>,
     // Never returned from a submissive's own profile fetch
     // (01-data-model.md §2) — enforced by the API layer choosing a
@@ -93,7 +99,7 @@ pub fn get_submissive_profile(
 ) -> rusqlite::Result<SubmissiveProfile> {
     conn.query_row(
         "SELECT bio, safeword, hard_limits, soft_limits, emergency_contact,
-                keyholder_notes, timezone
+                keyholder_notes, timezone, okay_limits
          FROM submissive_profiles WHERE user_id = ?1",
         params![user_id],
         |row| {
@@ -105,6 +111,7 @@ pub fn get_submissive_profile(
                 emergency_contact: row.get(4)?,
                 keyholder_notes: row.get(5)?,
                 timezone: row.get(6)?,
+                okay_limits: row.get(7)?,
             })
         },
     )
@@ -116,6 +123,7 @@ pub struct SubmissiveProfileEdit<'a> {
     pub safeword: Option<Option<&'a str>>,
     pub hard_limits: Option<Option<&'a str>>,
     pub soft_limits: Option<Option<&'a str>>,
+    pub okay_limits: Option<Option<&'a str>>,
     pub emergency_contact: Option<Option<&'a str>>,
     pub timezone: Option<Option<&'a str>>,
 }
@@ -134,13 +142,14 @@ pub fn update_submissive_profile(
     let safeword = edit.safeword.unwrap_or(current.safeword.as_deref());
     let hard_limits = edit.hard_limits.unwrap_or(current.hard_limits.as_deref());
     let soft_limits = edit.soft_limits.unwrap_or(current.soft_limits.as_deref());
+    let okay_limits = edit.okay_limits.unwrap_or(current.okay_limits.as_deref());
     let emergency_contact = edit
         .emergency_contact
         .unwrap_or(current.emergency_contact.as_deref());
     let timezone = edit.timezone.unwrap_or(current.timezone.as_deref());
     conn.execute(
         "UPDATE submissive_profiles SET bio = ?1, safeword = ?2, hard_limits = ?3,
-            soft_limits = ?4, emergency_contact = ?5, timezone = ?6 WHERE user_id = ?7",
+            soft_limits = ?4, emergency_contact = ?5, timezone = ?6, okay_limits = ?7 WHERE user_id = ?8",
         params![
             bio,
             safeword,
@@ -148,6 +157,7 @@ pub fn update_submissive_profile(
             soft_limits,
             emergency_contact,
             timezone,
+            okay_limits,
             user_id
         ],
     )?;

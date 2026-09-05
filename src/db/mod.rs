@@ -112,6 +112,10 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../migrations/0036_checkin_audio_and_video.sql"
         )),
+        M::up(include_str!("../../migrations/0037_okay_limits.sql")),
+        M::up(include_str!(
+            "../../migrations/0038_keyholder_limit_ratings.sql"
+        )),
     ])
 }
 
