@@ -202,11 +202,7 @@
   $('.color-btn').on('click', function () {
     const color = $(this).data('color');
     selectedColor = color;
-    const map = {
-      green: 'border-emerald-500 bg-emerald-500/10 text-emerald-400',
-      yellow: 'border-amber-500 bg-amber-500/10 text-amber-400',
-      red: 'border-red-500 bg-red-500/10 text-red-400',
-    };
+    const map = CHECKIN_COLORS.picker;
     $('.color-btn').attr('class', 'color-btn flex-1 rounded-lg border-2 border-slate-800 text-slate-400 text-sm font-semibold py-2');
     $(this).attr('class', 'color-btn flex-1 rounded-lg border-2 text-sm font-semibold py-2 ' + map[color]);
   });

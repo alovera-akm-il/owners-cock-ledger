@@ -207,11 +207,7 @@
     return values;
   }
 
-  const COLOR_MAP = {
-    green: { bg: 'bg-emerald-600/20', border: 'border-emerald-600/40', text: 'text-emerald-400', label: 'GREEN — SAFE / OK' },
-    yellow: { bg: 'bg-amber-600/20', border: 'border-amber-600/40', text: 'text-amber-400', label: 'YELLOW — NEAR LIMIT' },
-    red: { bg: 'bg-red-600/20', border: 'border-red-600/40', text: 'text-red-400', label: 'RED — IMMEDIATE STOP' },
-  };
+  const COLOR_MAP = CHECKIN_COLORS.banner;
 
   function setColor(color, fromRemote) {
     currentColor = color;

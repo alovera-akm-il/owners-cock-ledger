@@ -35,13 +35,7 @@
 
 <script>
 
-  const STATUS_LABEL = {
-    scheduled: ['scheduled', 'bg-slate-800 text-slate-400'],
-    in_progress: ['in progress', 'bg-emerald-500/10 text-emerald-400'],
-    pending_judgement: ['awaiting judgement', 'bg-amber-500/10 text-amber-400'],
-    completed: ['completed', 'bg-slate-800 text-slate-400'],
-    cancelled: ['cancelled', 'bg-slate-800 text-slate-500'],
-  };
+  const STATUS_LABEL = PLAY_SESSION_STATUS_LABELS;
 
   function sessionRow(s) {
     const $a = $('<a class="flex items-center justify-between px-5 py-4 hover:bg-slate-800/40">').attr('href', '/submissive/play-sessions/' + s.id);

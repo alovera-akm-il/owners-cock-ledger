@@ -196,13 +196,7 @@
   const IS_KEYHOLDER = {{ is_keyholder }};
   const BASE = IS_KEYHOLDER ? '/api/v1/keyholder' : '/api/v1/submissive';
 
-  const STATUS_LABEL = {
-    scheduled: ['Scheduled', 'bg-slate-800 text-slate-300'],
-    in_progress: ['In progress', 'bg-emerald-500/10 text-emerald-400'],
-    pending_judgement: ['Pending judgement', 'bg-amber-500/10 text-amber-400'],
-    completed: ['Completed', 'bg-slate-800 text-slate-400'],
-    cancelled: ['Cancelled', 'bg-slate-800 text-slate-500'],
-  };
+  const STATUS_LABEL = PLAY_SESSION_STATUS_LABELS;
 
   let toyNames = {};
   let checkinTemplateTitles = {};
@@ -217,11 +211,7 @@
     return Math.round(seconds / 60) + ' min';
   }
 
-  const COLOR_BADGE = {
-    green: 'text-emerald-400 bg-emerald-500/10',
-    yellow: 'text-amber-400 bg-amber-500/10',
-    red: 'text-red-400 bg-red-500/10',
-  };
+  const COLOR_BADGE = CHECKIN_COLORS.badge;
 
   function fieldLabelFor(templateId, key) {
     const template = checkinTemplatesById[templateId];
