@@ -1,0 +1,23 @@
+<!-- Secondary nav for the four pages scoped to one submissive's
+     "workspace" — Review, Toys, Recurring tasks, Statistics — reached
+     from submissive_detail.html's row of outbound links. Lets a
+     Keyholder jump directly between siblings (e.g. Toys -> Statistics)
+     instead of detouring back through the Overview page every time.
+     submissive_detail.html itself stays a separate hub above this strip
+     rather than joining it as a tab, since its content (confinement,
+     devices, oversight, points) is much heavier than any one tab's.
+     Needs `single_submissive: Option<SingleSubmissiveContext>` and
+     `active_subnav: &'static str` on the including template — `None`
+     renders nothing (used by proof_review.html's aggregate Review Queue
+     view, which has no single submissive to scope a strip to). -->
+{% if let Some(s) = single_submissive %}
+<div class="border-b border-slate-800 bg-slate-900/40">
+  <div class="max-w-4xl mx-auto px-6 h-11 flex items-center gap-5 text-sm overflow-x-auto">
+    <a href="/keyholder/submissives/{{ s.id }}" class="text-slate-500 hover:text-slate-300 shrink-0">&larr; {{ s.display_name }}</a>
+    <a href="/keyholder/submissives/{{ s.id }}/review" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "review" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Review</a>
+    <a href="/keyholder/submissives/{{ s.id }}/toys" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "toys" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Toys</a>
+    <a href="/keyholder/submissives/{{ s.id }}/recurring-tasks" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "recurring_tasks" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Recurring tasks</a>
+    <a href="/keyholder/submissives/{{ s.id }}/statistics" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "statistics" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Statistics</a>
+  </div>
+</div>
+{% endif %}

@@ -808,6 +808,7 @@ struct SingleSubmissiveContext {
 struct ProofReviewTemplate {
     is_keyholder: bool,
     active_nav: &'static str,
+    active_subnav: &'static str,
     single_submissive: Option<SingleSubmissiveContext>,
     pending: Vec<ReviewQueueItem>,
     pending_is_empty: bool,
@@ -938,6 +939,7 @@ async fn review_queue_page_core(
     render(ProofReviewTemplate {
         is_keyholder: true,
         active_nav: if is_single { "" } else { "review" },
+        active_subnav: if is_single { "review" } else { "" },
         single_submissive,
         pending_is_empty: pending.is_empty(),
         pending,
@@ -1008,6 +1010,8 @@ async fn redemption_requests_page(State(pool): State<Pool>, jar: CookieJar) -> R
 struct ToyCatalogTemplate {
     is_keyholder: bool,
     active_nav: &'static str,
+    active_subnav: &'static str,
+    single_submissive: Option<SingleSubmissiveContext>,
     submissive_id: String,
     submissive_display_name: String,
     display_name: String,
@@ -1051,6 +1055,11 @@ async fn keyholder_toy_catalog_page(
     render(ToyCatalogTemplate {
         is_keyholder: true,
         active_nav: "",
+        active_subnav: "toys",
+        single_submissive: Some(SingleSubmissiveContext {
+            id: submissive_id.clone(),
+            display_name: submissive_display_name.clone(),
+        }),
         submissive_id,
         submissive_display_name,
         initial: initial_of(&user.display_name),
@@ -1063,6 +1072,8 @@ async fn keyholder_toy_catalog_page(
 struct RecurringTasksTemplate {
     is_keyholder: bool,
     active_nav: &'static str,
+    active_subnav: &'static str,
+    single_submissive: Option<SingleSubmissiveContext>,
     submissive_id: String,
     submissive_display_name: String,
     display_name: String,
@@ -1106,6 +1117,11 @@ async fn keyholder_recurring_tasks_page(
     render(RecurringTasksTemplate {
         is_keyholder: true,
         active_nav: "",
+        active_subnav: "recurring_tasks",
+        single_submissive: Some(SingleSubmissiveContext {
+            id: submissive_id.clone(),
+            display_name: submissive_display_name.clone(),
+        }),
         submissive_id,
         submissive_display_name,
         initial: initial_of(&user.display_name),
@@ -1118,6 +1134,8 @@ async fn keyholder_recurring_tasks_page(
 struct KeyholderSubmissiveStatisticsTemplate {
     is_keyholder: bool,
     active_nav: &'static str,
+    active_subnav: &'static str,
+    single_submissive: Option<SingleSubmissiveContext>,
     submissive_id: String,
     submissive_display_name: String,
     display_name: String,
@@ -1161,6 +1179,11 @@ async fn keyholder_submissive_statistics_page(
     render(KeyholderSubmissiveStatisticsTemplate {
         is_keyholder: true,
         active_nav: "",
+        active_subnav: "statistics",
+        single_submissive: Some(SingleSubmissiveContext {
+            id: submissive_id.clone(),
+            display_name: submissive_display_name.clone(),
+        }),
         submissive_id,
         submissive_display_name,
         initial: initial_of(&user.display_name),
