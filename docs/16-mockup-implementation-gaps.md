@@ -77,7 +77,7 @@ by actually driving the page through that specific state.
 | 12 | Device `description` field: API accepts it, no UI input (mockup never had one either) | Submissive detail (devices) | **Fixed** |
 | 13 | No Audit Log UI (backend writes the log; nothing reads it back) | `audit_log.html` (`/keyholder/audit-log`) | **Fixed** — see note below the table |
 | 14 | No submissive History page | `submissive_history.html` (`/submissive/history`) | **Fixed** — see note below the table |
-| 15 | No keyholder-wide cross-submissive Toy catalog view | — (page doesn't exist) | Deferred (scoped out earlier) |
+| 15 | No keyholder-wide cross-submissive Toy catalog view | `partials/submissive_subnav.html` | **Fixed differently than the mockup** — see note below the table |
 | 16 | A submissive cannot see their Keyholder's stated boundaries anywhere (mockup's `submissive-profile.html` "Your Keyholder's boundaries" read-only panel has no real counterpart) | `submissive-profile.html` | **Fixed** |
 | 17 | Mockup's `keyholder-profile.html` has a "Your submissive's boundaries" read-only mirror; real has no equivalent on the Keyholder's own profile page | `keyholder-profile.html` | Not a gap — see note below |
 | 18 | Keyholder dashboard is missing an entire feature the mockup designed: a cross-roster "Needs your attention" priority feed, four stat cards, and an enriched roster table (lock status/last verification/pending/open items) — the real page was a bare two-column table with a literal "not built yet" placeholder comment still in the code | `keyholder-dashboard.html` | **Fixed** |
@@ -133,6 +133,31 @@ resolving `on_failure_template_id` to a catalog title, not just
 another assignment already in the list). The "↳ escalated to/from" chain
 info that *is* shown is resolved client-side from the same fetched
 assignments list — no chain-walking endpoint needed for that part.
+
+**Item 15 shipped as a different shape than the mockup's**, by
+deliberate choice rather than a mockup fidelity gap. The mockup's
+`keyholder-toy-catalog.html` is a global page with a submissive-picker
+dropdown; the real fix instead adds that same picker directly to
+`partials/submissive_subnav.html` — the tab strip already shared by
+`toy_catalog.html`, `submissive_review.html`, `recurring_tasks.html`,
+and `keyholder_submissive_statistics.html` (Duplication Ledger §4,
+`docs/17-duplication-ledger.md`). Switching submissives works from
+all four tabs, not just Toys, since the "have to go back to the
+roster to switch" friction the mockup's picker solves is identical on
+any of them — a strictly larger fix than a Toys-only picker, for the
+same implementation cost. No new "global toy catalog" page or
+cross-submissive listing endpoint was built; a Keyholder still reaches
+a submissive's catalog by drilling in once, then can hop sideways
+from there. Unlike the primary nav's earlier width regression this
+session (a plain `justify-between` row with no overflow handling,
+where content past the container's cap silently collided rather than
+wrapping), this strip already had `overflow-x-auto` on its flex row
+before this change — content that doesn't fit scrolls instead of
+overlapping, so the same bug class isn't reachable here by
+construction. Confirmed visually at 1100px with three submissives
+seeded (Riley/Sam/Jordan) and no crowding; didn't repeat the primary
+nav's bounding-box measurement here since `overflow-x-auto` already
+rules out the silent-collision failure mode that check was for.
 
 Items 5 and 6 were resolved by direct consultation rather than
 unilateral judgment, per explicit instruction after the first research

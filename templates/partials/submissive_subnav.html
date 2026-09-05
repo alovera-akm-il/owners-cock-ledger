@@ -9,15 +9,48 @@
      Needs `single_submissive: Option<SingleSubmissiveContext>` and
      `active_subnav: &'static str` on the including template — `None`
      renders nothing (used by proof_review.html's aggregate Review Queue
-     view, which has no single submissive to scope a strip to). -->
+     view, which has no single submissive to scope a strip to).
+
+     The submissive-picker on the right (Duplication Ledger #2's
+     follow-up, docs/17-duplication-ledger.md's intro: item 15's
+     cross-submissive Toy catalog gap) lets a Keyholder switch which
+     submissive's workspace they're viewing without detouring through
+     the roster first — generalized to all four tabs here rather than
+     a Toys-only picker, since the "have to go back to switch" friction
+     is identical on any of them. `data-nav-suffix` (derived from
+     `active_subnav`, not re-typed as a separate template field) tells
+     the picker which sibling URL to build on change. -->
 {% if let Some(s) = single_submissive %}
 <div class="border-b border-slate-800 bg-slate-900/40">
-  <div class="max-w-4xl mx-auto px-6 h-11 flex items-center gap-5 text-sm overflow-x-auto">
-    <a href="/keyholder/submissives/{{ s.id }}" class="text-slate-500 hover:text-slate-300 shrink-0">&larr; {{ s.display_name }}</a>
-    <a href="/keyholder/submissives/{{ s.id }}/review" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "review" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Review</a>
-    <a href="/keyholder/submissives/{{ s.id }}/toys" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "toys" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Toys</a>
-    <a href="/keyholder/submissives/{{ s.id }}/recurring-tasks" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "recurring_tasks" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Recurring tasks</a>
-    <a href="/keyholder/submissives/{{ s.id }}/statistics" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "statistics" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Statistics</a>
+  <div class="max-w-4xl mx-auto px-6 h-11 flex items-center justify-between gap-4 text-sm overflow-x-auto">
+    <div class="flex items-center gap-5 shrink-0">
+      <a href="/keyholder/submissives/{{ s.id }}" class="text-slate-500 hover:text-slate-300 shrink-0">&larr; {{ s.display_name }}</a>
+      <a href="/keyholder/submissives/{{ s.id }}/review" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "review" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Review</a>
+      <a href="/keyholder/submissives/{{ s.id }}/toys" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "toys" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Toys</a>
+      <a href="/keyholder/submissives/{{ s.id }}/recurring-tasks" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "recurring_tasks" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Recurring tasks</a>
+      <a href="/keyholder/submissives/{{ s.id }}/statistics" class="h-11 flex items-center border-b-2 shrink-0 {% if active_subnav == "statistics" %}text-slate-100 border-amber-500{% else %}text-slate-400 hover:text-slate-200 border-transparent{% endif %}">Statistics</a>
+    </div>
+    <select id="subnav-submissive-switch"
+            data-current-id="{{ s.id }}"
+            data-nav-suffix="{% if active_subnav == "review" %}review{% else if active_subnav == "toys" %}toys{% else if active_subnav == "recurring_tasks" %}recurring-tasks{% else %}statistics{% endif %}"
+            class="shrink-0 bg-slate-900 border border-slate-800 rounded-lg text-xs px-2 py-1 text-slate-300 max-w-[9rem]">
+      <option value="{{ s.id }}">{{ s.display_name }}</option>
+    </select>
   </div>
 </div>
+<script>
+  (function () {
+    var $sel = $('#subnav-submissive-switch');
+    apiCall('GET', '/api/v1/keyholder/submissives').done(function (roster) {
+      var currentId = $sel.data('current-id');
+      $sel.empty();
+      roster.forEach(function (r) {
+        $('<option>').val(r.submissive_id).text(r.display_name).prop('selected', r.submissive_id === currentId).appendTo($sel);
+      });
+    });
+    $sel.on('change', function () {
+      window.location = '/keyholder/submissives/' + $(this).val() + '/' + $sel.data('nav-suffix');
+    });
+  })();
+</script>
 {% endif %}
